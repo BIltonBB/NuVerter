@@ -2,6 +2,6 @@ services:
   - type: web
     name: nuverter-web
     env: node
-    buildCommand: ""
-    startCommand: node web/server.cjs
+    buildCommand: "npm install"
+    startCommand: "node web/server.cjs"
     plan: free
