@@ -1,0 +1,10 @@
+# Tauri updater private key (keep secret)
+tauri/src-tauri/.tauri/updater.key
+
+# Build artifacts
+node_modules/
+desktop/node_modules/
+dist/
+tauri/src-tauri/target/
+*.pdb
+web/downloads/
