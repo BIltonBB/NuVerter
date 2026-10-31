@@ -1,0 +1,16 @@
+/* Appearance customization extensions */
+html { font-size: calc(16px * var(--font-size-scale, 1)); }
+body { letter-spacing: var(--letter-spacing, 0px); }
+:root { --line-height-base: var(--line-height-scale, 1); }
+.compact-mode .stage-card, .compact-mode .settings-item { padding: 8px !important; margin-bottom: 6px !important; }
+.compact-mode .field { margin-top: 6px !important; }
+.high-contrast { --border: #000; --text: #000; --bg: #fff; }
+.high-contrast html[data-theme="dark"] { --border: #fff; --text: #fff; --bg: #000; }
+body.has-bg-gradient { background: var(--bg-gradient) !important; }
+body.has-bg-gradient .ambient { opacity: .35; }
+:root { --shadow-multiplier: var(--shadow-scale, 1); }
+.btn, .card, .stage-card, .modal { border-style: var(--border-style, solid); }
+.modal, .stage-card { backdrop-filter: blur(var(--backdrop-blur, 0px)); }
+.stage-card, .panel { opacity: var(--panel-opacity, 1); }
+*, *::before, *::after { transition-duration: calc(var(--anim-scale, 1) * 150ms) !important; }
+.reduce-motion *, .reduce-motion *::before, .reduce-motion *::after { transition-duration: 0ms !important; }
