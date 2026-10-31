@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: nuverter-web
+    env: node
+    buildCommand: ""
+    startCommand: node web/server.cjs
+    plan: free
