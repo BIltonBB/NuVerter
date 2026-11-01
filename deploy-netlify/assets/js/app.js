@@ -8183,7 +8183,7 @@ function settingsBody() {
       <div class="modal-section-title">${icon('download')}Desktop app (Tauri)</div>
       <div class="modal-note" style="font-size:10.5px;line-height:1.65">Download the optimized desktop app (Tauri, system webview). Extract the zip and run <code>NuVerter-Tauri.exe</code>. Includes storage directories, models, and auto-update wiring (configure endpoints to enable updates).</div>
       <div style="display:flex;gap:6px;margin-top:9px;flex-wrap:wrap">
-        <a class="btn btn-primary btn-sm" href="https://github.com/BIltonBB/NuVerter/releases/latest" target="_blank" rel="noopener">${icon('download')}Download desktop app</a>
+        <button class="btn btn-primary btn-sm" data-action="download-app">${icon('download')}Download desktop app</button>
       </div>
     </div>
 
@@ -9048,7 +9048,7 @@ async function handleAction(action, el) {
     case 'open-nav': openNav(); break;
     case 'close-nav': closeNav(); break;
     case 'engine-info': openEngineInfo(); break;
-     case 'download-app': { window.open('https://github.com/BIltonBB/NuVerter/releases/latest', '_blank'); } break;
+     case 'download-app': { openDesktopAppInfo(); } break;
      case 'install-pwa': installPwa(); break;
     case 'privacy': openPrivacy(); break;
     case 'settings': openSettings(); break;
