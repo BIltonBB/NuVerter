@@ -19,6 +19,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Sync version from tag
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}" -replace '^v',''
+          $conf = 'tauri/src-tauri/tauri.conf.json'
+          (Get-Content $conf) -replace '"version":\s*"[^"]+"', ('"version": "' + $tag + '"') | Set-Content $conf
+          $cargo = 'tauri/src-tauri/Cargo.toml'
+          (Get-Content $cargo) -replace '^version = ".*"', ('version = "' + $tag + '"') | Set-Content $cargo
+          Write-Host "Synced version to $tag"
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
