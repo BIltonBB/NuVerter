@@ -5127,7 +5127,11 @@ async function generateAiImage() {
         + '&width=' + size + '&height=' + size
         + '&seed=' + seed
         + (negative ? '&negative=' + encodeURIComponent(negative) : '');
-      const res = await fetch(url, { cache: 'no-store', headers: state.aiImage.apiKey ? { 'X-Pollinations-Key': state.aiImage.apiKey } : {} });
+      const directUrl = 'https://image.pollinations.ai/prompt/' + encodeURIComponent(prompt) + '?model=' + encodeURIComponent(model) + '&width=' + size + '&height=' + size + '&seed=' + seed + (negative ? '&negative=' + encodeURIComponent(negative) : '') + '&nologo=true';
+      const headers = state.aiImage.apiKey ? { 'X-Pollinations-Key': state.aiImage.apiKey } : {};
+      let res;
+      try { res = await fetch(url, { cache: 'no-store', headers }); if (!res.ok) throw new Error('proxy ' + res.status); }
+      catch { res = await fetch(directUrl, { cache: 'no-store', headers }); }
       if (!res.ok) throw new Error('The online model returned HTTP ' + res.status + '.');
       const blob = await res.blob();
       showAiImageResult(
@@ -8186,7 +8190,8 @@ function settingsBody() {
     <div class="modal-section">
       <div class="modal-section-title">${icon('info')}About this build</div>
       <div class="engine-info-grid">
-        <div class="engine-info-cell"><span>App</span><strong>NuVerter 1.0.8</strong></div>
+        <div class="engine-info-cell"><span>App</span><strong id="app-version-label">NuVerter 1.0.8</strong></div>
+        <div class="engine-info-cell"><span>Latest release</span><strong id="latest-release-label">Checking…</strong></div>
         <div class="engine-info-cell"><span>Engine</span><strong>ffmpeg.wasm 0.12</strong></div>
         <div class="engine-info-cell"><span>Served from</span><strong>${esc(protocol)}</strong></div>
         <div class="engine-info-cell"><span>Data sent</span><strong>0 bytes</strong></div>
@@ -8221,6 +8226,21 @@ function renderSettingsBody() {
   } catch {}
 }
 
+async function syncLatestReleaseLabel() {
+  const el = document.getElementById('latest-release-label');
+  if (!el) return;
+  try {
+    const res = await fetch('https://api.github.com/repos/BIltonBB/NuVerter/releases/latest', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const j = await res.json();
+    const raw = String(j?.name || j?.tag_name || '').trim();
+    const version = raw.replace(/^NuVerter\s*/i, '').replace(/^v/i, '').trim() || raw;
+    el.textContent = version ? ('v' + version) : 'Unknown';
+  } catch {
+    el.textContent = 'Unavailable';
+  }
+}
+
 function openSettings() {
   openModal({
     title: 'Settings',
@@ -8230,6 +8250,7 @@ function openSettings() {
     body: `<div id="settings-body">${settingsBody()}</div>`,
     footer: `<button class="btn btn-primary" data-action="close-modal">Done</button>`
   });
+  syncLatestReleaseLabel();
 }
 
 function resetPreferences() {
