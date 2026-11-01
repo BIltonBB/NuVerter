@@ -45,7 +45,8 @@
         "sidebarImage": "icons/sidebar.bmp",
         "uninstallerHeaderImage": "icons/header.bmp",
         "installMode": "both",
-        "displayLanguageSelector": false
+        "displayLanguageSelector": false,
+        "template": "installer.nsi"
       }
     }
   },
