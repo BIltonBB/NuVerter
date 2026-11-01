@@ -3,6 +3,7 @@
 use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
+use tauri_plugin_updater::UpdaterExt;
 
 fn config_path(app: &tauri::AppHandle) -> PathBuf {
     app.path().app_data_dir().unwrap_or_else(|_| PathBuf::from(".")).join("nuverter-config.json")
