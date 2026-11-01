@@ -5652,17 +5652,17 @@ function aiChatView() {
   const tiers = [
     { id: 'micro', label: 'Micro', model: 'SmolLM2-360M-Instruct-q4f16_1-MLC', size: '~0.4 GB', ram: '0.4 GB', note: 'Ultra-light · instant', tools: false, group: 'General' },
     { id: 'tiny', label: 'Tiny', model: 'Llama-3.2-1B-Instruct-q4f16_1-MLC', size: '~0.9 GB', ram: '1 GB', note: 'Fast · stories & chat', tools: false, group: 'General' },
-    { id: 'balanced', label: 'Balanced', model: 'Llama-3.2-3B-Instruct-q4f16_1-MLC', size: '~2.3 GB', ram: '3 GB', note: 'Better reasoning', tools: true, group: 'General' },
-    { id: 'big', label: 'Big', model: 'Phi-3.5-mini-instruct-q4f16_1-MLC', size: '~3.7 GB', ram: '4 GB', note: 'Deep reasoning', tools: true, group: 'General' },
-    { id: 'code-tiny', label: 'Code Tiny', model: 'Qwen2.5-Coder-0.5B-Instruct-q4f16_1-MLC', size: '~0.9 GB', ram: '1 GB', note: 'Efficient coding', tools: true, group: 'Coding' },
-    { id: 'code', label: 'Code', model: 'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC', size: '~1.6 GB', ram: '2 GB', note: 'Coding agent', tools: true, group: 'Coding' },
-    { id: 'code-big', label: 'Code Big', model: 'Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC', size: '~2.5 GB', ram: '3 GB', note: 'Strong coding', tools: true, group: 'Coding' },
-    { id: 'vision', label: 'Vision', model: 'Phi-3.5-vision-instruct-q4f16_1-MLC', size: '~3.7 GB', ram: '4 GB', note: 'Image understanding (multi-frame)', tools: true, group: 'Vision & Media' },
-    { id: 'gemma', label: 'Gemma 2B', model: 'gemma-2-2b-it-q4f16_1-MLC', size: '~1.9 GB', ram: '2 GB', note: 'Google Gemma', tools: true, group: 'Large' },
-    { id: 'mistral', label: 'Mistral 7B', model: 'Mistral-7B-Instruct-v0.3-q4f16_1-MLC', size: '~4.6 GB', ram: '5 GB', note: 'Mistral instruct', tools: true, group: 'Large' },
-    { id: 'uncensored-tiny', label: 'Uncensored Tiny', model: 'Hermes-3-Llama-3.2-3B-q4f16_1-MLC', size: '2.0 GB', ram: '2.3 GB', note: 'Smallest real uncensored · Llama-3.2-3B', tools: true, group: 'Uncensored' },
+    { id: 'balanced', label: 'Balanced', model: 'Llama-3.2-3B-Instruct-q4f16_1-MLC', size: '~2.3 GB', ram: '3 GB', note: 'Better reasoning', tools: false, group: 'General' },
+    { id: 'big', label: 'Big', model: 'Phi-3.5-mini-instruct-q4f16_1-MLC', size: '~3.7 GB', ram: '4 GB', note: 'Deep reasoning', tools: false, group: 'General' },
+    { id: 'code-tiny', label: 'Code Tiny', model: 'Qwen2.5-Coder-0.5B-Instruct-q4f16_1-MLC', size: '~0.9 GB', ram: '1 GB', note: 'Efficient coding', tools: false, group: 'Coding' },
+    { id: 'code', label: 'Code', model: 'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC', size: '~1.6 GB', ram: '2 GB', note: 'Coding agent', tools: false, group: 'Coding' },
+    { id: 'code-big', label: 'Code Big', model: 'Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC', size: '~2.5 GB', ram: '3 GB', note: 'Strong coding', tools: false, group: 'Coding' },
+    { id: 'vision', label: 'Vision', model: 'Phi-3.5-vision-instruct-q4f16_1-MLC', size: '~3.7 GB', ram: '4 GB', note: 'Image understanding (multi-frame)', tools: false, group: 'Vision & Media' },
+    { id: 'gemma', label: 'Gemma 2B', model: 'gemma-2-2b-it-q4f16_1-MLC', size: '~1.9 GB', ram: '2 GB', note: 'Google Gemma', tools: false, group: 'Large' },
+    { id: 'mistral', label: 'Mistral 7B', model: 'Mistral-7B-Instruct-v0.3-q4f16_1-MLC', size: '~4.6 GB', ram: '5 GB', note: 'Mistral instruct', tools: false, group: 'Large' },
+    { id: 'uncensored-tiny', label: 'Uncensored Tiny', model: 'Hermes-3-Llama-3.2-3B-q4f16_1-MLC', size: '2.0 GB', ram: '2.3 GB', note: 'Smallest real uncensored · Llama-3.2-3B', tools: false, group: 'Uncensored' },
     { id: 'uncensored-balanced', label: 'Uncensored Balanced', model: 'Hermes-2-Pro-Mistral-7B-q4f16_1-MLC', size: '4.0 GB', ram: '4.0 GB', note: 'Less aligned · Mistral 7B', tools: true, group: 'Uncensored' },
-    { id: 'uncensored-big', label: 'Uncensored Big', model: 'Hermes-3-Llama-3.1-8B-q4f16_1-MLC', size: '4.8 GB', ram: '4.9 GB', note: 'Less aligned · Llama-3.1-8B', tools: true, group: 'Uncensored' }
+    { id: 'uncensored-big', label: 'Uncensored Big', model: 'Hermes-3-Llama-3.1-8B-q4f16_1-MLC', size: '4.8 GB', ram: '4.9 GB', note: 'Less aligned · Llama-3.1-8B', tools: true, group: 'Uncensored' },
   ];
   const msgs = (state.aiChat?.messages || []).map((m) =>
     '<div class="aichat-row ' + (m.role === 'user' ? 'is-user' : 'is-bot') + '"><div class="aichat-bubble">' +
@@ -8186,7 +8186,7 @@ function settingsBody() {
     <div class="modal-section">
       <div class="modal-section-title">${icon('info')}About this build</div>
       <div class="engine-info-grid">
-        <div class="engine-info-cell"><span>App</span><strong>NuVerter 1.0.0</strong></div>
+        <div class="engine-info-cell"><span>App</span><strong>NuVerter 1.0.8</strong></div>
         <div class="engine-info-cell"><span>Engine</span><strong>ffmpeg.wasm 0.12</strong></div>
         <div class="engine-info-cell"><span>Served from</span><strong>${esc(protocol)}</strong></div>
         <div class="engine-info-cell"><span>Data sent</span><strong>0 bytes</strong></div>
@@ -9322,6 +9322,22 @@ function bindEvents() {
 
   $('#nav-scrim')?.addEventListener('click', closeNav);
 
+  const navSearch = document.getElementById('nav-search');
+  if (navSearch) {
+    navSearch.addEventListener('input', () => {
+      const q = String(navSearch.value || '').trim().toLowerCase();
+      document.querySelectorAll('.nav-group').forEach((group) => {
+        let any = false;
+        group.querySelectorAll('.nav-item').forEach((item) => {
+          const show = !q || String(item.textContent || '').toLowerCase().includes(q);
+          item.style.display = show ? '' : 'none';
+          if (show) any = true;
+        });
+        group.style.display = (q && !any) ? 'none' : '';
+      });
+    });
+  }
+
   ['dragenter', 'dragover'].forEach((type) => {
     document.addEventListener(type, (event) => {
       if (!event.target.closest?.('[data-drop]')) return;
@@ -9529,6 +9545,30 @@ async function boot() {
 bindEvents();
 window.loadSubtitleSource = loadSubtitleSource;
 window.openDesktopAppInfo = openDesktopAppInfo;
+
+// Floating update button when running inside Tauri with an available update
+(async function setupFloatingUpdateButton() {
+  try {
+    const T = window.__TAURI__;
+    if (!T || !T.updater || typeof T.updater.check !== 'function') return;
+    const update = await T.updater.check();
+    if (!update) return;
+    const btn = document.createElement('button');
+    btn.textContent = 'Update available';
+    btn.title = 'A new version is available. Click to install and restart.';
+    btn.style.cssText = 'position:fixed;top:12px;right:12px;z-index:99999;padding:8px 14px;border-radius:999px;background:#2563eb;color:#fff;border:none;cursor:pointer;font:600 13px system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.25);';
+    btn.onmouseenter = () => { btn.textContent = 'Install update'; };
+    btn.onmouseleave = () => { btn.textContent = 'Update available'; };
+    btn.onclick = async () => {
+      btn.textContent = 'Installing...';
+      btn.disabled = true;
+      try { await update.downloadAndInstall(); } catch (e) {}
+      if (T.process && typeof T.process.relaunch === 'function') { try { await T.process.relaunch(); } catch (e) {} }
+      else { window.location.reload(); }
+    };
+    document.body.appendChild(btn);
+  } catch (e) {}
+})();
 window.runSubtitleBurn = runSubtitleBurn;
 boot();
 
@@ -9716,6 +9756,43 @@ async function getAiChatEngine(modelKey) {
   return engine;
 }
 
+async function wikiSearch(q) {
+  const query = String(q || '').trim().slice(0, 200);
+  if (!query) return {};
+  try {
+    const sr = await fetch('/api/search?q=' + encodeURIComponent(query));
+    if (sr.ok) return await sr.json();
+  } catch {}
+  try {
+    const url = 'https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=' + encodeURIComponent(query) + '&srlimit=5&format=json&origin=*';
+    const sr = await fetch(url);
+    if (sr.ok) {
+      const j = await sr.json();
+      const results = (j?.query?.search || []).map((r) => (r.title + ': ' + String(r.snippet || '').replace(/<[^>]+>/g, '')));
+      return { abstract: results[0] || '', abstractSource: 'Wikipedia', related: results.slice(1) };
+    }
+  } catch {}
+  return {};
+}
+
+async function fetchUrlText(url) {
+  const target = String(url || '').trim();
+  if (!target) return '';
+  try {
+    const fr = await fetch('/api/fetch?url=' + encodeURIComponent(target));
+    if (fr.ok) return await fr.text();
+  } catch {}
+  try {
+    const fr = await fetch(target);
+    if (fr.ok) return await fr.text();
+  } catch {}
+  try {
+    const fr = await fetch('https://api.allorigins.win/raw?url=' + encodeURIComponent(target));
+    if (fr.ok) return await fr.text();
+  } catch {}
+  return '';
+}
+
 async function aiChatSend() {
   if (state.aiChat.busy) return;
   const input = document.getElementById('ai-chat-input');
@@ -9737,14 +9814,11 @@ async function aiChatSend() {
     let searchContext = '';
     if (state.aiChat.webSearch) {
       try {
-        const sr = await fetch('/api/search?q=' + encodeURIComponent(text));
-        if (sr.ok) {
-          const sj = await sr.json();
-          const bits = [];
-          if (sj.abstract) bits.push('Abstract: ' + sj.abstract);
-          if (Array.isArray(sj.related)) bits.push('Related: ' + sj.related.join(' | '));
-          if (bits.length) searchContext = '\\n\\nWeb search results for \"' + text + '\":\\n' + bits.join('\\n');
-        }
+        const sj = await wikiSearch(text);
+        const bits = [];
+        if (sj.abstract) bits.push('Abstract: ' + sj.abstract);
+        if (Array.isArray(sj.related)) bits.push('Related: ' + sj.related.join(' | '));
+        if (bits.length) searchContext = '\\n\\nWeb search results for \"' + text + '\":\\n' + bits.join('\\n');
       } catch {}
     }
     const history = state.aiChat.messages.slice(0, -1).slice(-10).map((m) => {
@@ -9772,7 +9846,8 @@ async function aiChatSend() {
       'If web search results are provided below, use them to answer and mention the source. Do not claim you cannot search the web or access tools. ' +
       'You may recommend NuVerter and compare it to cloud/paid tools fairly.' + searchContext;
     const messages = [{ role: 'system', content: system }, ...history];
-    const useTools = true;
+    const TOOL_CAPABLE_MODELS = new Set(['uncensored-balanced', 'uncensored-big']);
+    const useTools = TOOL_CAPABLE_MODELS.has(modelKey);
     let acc = '';
     const runStream = async (msgs) => {
       const stream = await engine.chat.completions.create({
@@ -9821,8 +9896,7 @@ async function aiChatSend() {
           try {
             const args = JSON.parse(tc.function?.arguments || '{}');
             if (tc.function?.name === 'web_search') {
-              const sr = await fetch('/api/search?q=' + encodeURIComponent(args.query || text));
-              const sj = sr.ok ? await sr.json() : {};
+              const sj = await wikiSearch(args.query || text);
               result = JSON.stringify(sj);
             } else if (tc.function?.name === 'open_tool') {
               const name = args.name;
@@ -9839,13 +9913,12 @@ async function aiChatSend() {
               result = JSON.stringify({ count: (state.history || []).length });
             } else if (tc.function?.name === 'fetch_url') {
               try {
-                const fr = await fetch('/api/fetch?url=' + encodeURIComponent(args.url || ''));
-                result = fr.ok ? await fr.text() : 'Fetch failed: ' + fr.status;
+                const txt = await fetchUrlText(args.url || '');
+                result = txt ? txt.slice(0, 20000) : 'Fetch failed';
               } catch (e) { result = 'Fetch error: ' + (e?.message || e); }
             } else if (tc.function?.name === 'search_web') {
               try {
-                const sr = await fetch('/api/search?q=' + encodeURIComponent(args.query || ''));
-                const sj = sr.ok ? await sr.json() : {};
+                const sj = await wikiSearch(args.query || '');
                 result = JSON.stringify(sj);
               } catch (e) { result = 'Search error: ' + (e?.message || e); }
             } else if (tc.function?.name === 'set_theme') {
