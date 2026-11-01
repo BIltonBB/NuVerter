@@ -8190,7 +8190,7 @@ function settingsBody() {
     <div class="modal-section">
       <div class="modal-section-title">${icon('info')}About this build</div>
       <div class="engine-info-grid">
-        <div class="engine-info-cell"><span>App</span><strong id="app-version-label">NuVerter 1.0.8</strong></div>
+        <div class="engine-info-cell"><span>App</span><strong id="app-version-label">NuVerter 1.0.9</strong></div>
         <div class="engine-info-cell"><span>Latest release</span><strong id="latest-release-label">Checking…</strong></div>
         <div class="engine-info-cell"><span>Engine</span><strong>ffmpeg.wasm 0.12</strong></div>
         <div class="engine-info-cell"><span>Served from</span><strong>${esc(protocol)}</strong></div>
