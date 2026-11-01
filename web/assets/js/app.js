@@ -8179,7 +8179,7 @@ function settingsBody() {
       <div class="modal-section-title">${icon('download')}Desktop app (Tauri)</div>
       <div class="modal-note" style="font-size:10.5px;line-height:1.65">Download the optimized desktop app (Tauri, system webview). Extract the zip and run <code>NuVerter-Tauri.exe</code>. Includes storage directories, models, and auto-update wiring (configure endpoints to enable updates).</div>
       <div style="display:flex;gap:6px;margin-top:9px;flex-wrap:wrap">
-        <a class="btn btn-primary btn-sm" href="NuVerter-Tauri-Portable.zip" download>${icon('download')}Download desktop app (zip)</a>
+        <button class="btn btn-primary btn-sm" data-action="download-app">${icon('download')}Download desktop app</button>
       </div>
     </div>
 
@@ -8510,17 +8510,23 @@ async function installPwa() {
   });
 }
 
-function openDesktopAppInfo() {
-  if (APP_DOWNLOAD_URL) {
-    const a = document.createElement('a');
-    a.href = APP_DOWNLOAD_URL;
-    a.download = 'NuVerter-portable.zip';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    toast('Download started', 'NuVerter-portable.zip is downloading. Unzip and run NuVerter.exe.', 'success');
-    return;
-  }
+async function openDesktopAppInfo() {
+  try {
+    const res = await fetch('https://api.github.com/repos/BIltonBB/NuVerter/releases');
+    const rels = await res.json();
+    const rel = (rels || []).find(r => (r.assets || []).some(a => /\.exe$|\.msi$/i.test(a.name)));
+    const asset = rel && (rel.assets || []).find(a => /\.exe$|\.msi$/i.test(a.name));
+    if (asset) {
+      const a = document.createElement('a');
+      a.href = asset.browser_download_url;
+      a.download = asset.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      toast('Download started', asset.name + ' is downloading.', 'success');
+      return;
+    }
+  } catch (e) {}
   openModal({
     title: 'Get the desktop app',
     subtitle: 'Same UI, native shell, auto-update.',
@@ -9039,7 +9045,7 @@ async function handleAction(action, el) {
     case 'open-nav': openNav(); break;
     case 'close-nav': closeNav(); break;
     case 'engine-info': openEngineInfo(); break;
-     case 'download-app': { const a = document.createElement('a'); a.href = 'NuVerter-Tauri-Portable.zip'; a.download = 'NuVerter-Tauri-Portable.zip'; document.body.appendChild(a); a.click(); a.remove(); } break;
+     case 'download-app': { openDesktopAppInfo(); } break;
      case 'install-pwa': installPwa(); break;
     case 'privacy': openPrivacy(); break;
     case 'settings': openSettings(); break;
