@@ -22,7 +22,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
    the ad slot. Leave '' to keep the placeholder.
    ---------------------------------------------------------------- */
 const PAYMENT_URL = 'https://sociabuzz.com/biltonb/shop';
-const APP_DOWNLOAD_URL = 'https://github.com/BIltonBB/NuVerter/releases/latest'; // Latest Tauri installer via GitHub Releases
+const APP_DOWNLOAD_URL = 'https://github.com/BIltonBB/NuVerter/releases/latest'; // Latest Tauri installer via GitHub Releases (resolved to asset URL at runtime)
 const AD_SNIPPET = '';
 
 function icon(name, cls = '') {
@@ -8514,17 +8514,24 @@ async function installPwa() {
   });
 }
 
-function openDesktopAppInfo() {
-  if (APP_DOWNLOAD_URL) {
-    const a = document.createElement('a');
-    a.href = APP_DOWNLOAD_URL;
-    a.download = 'NuVerter-portable.zip';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    toast('Download started', 'NuVerter-portable.zip is downloading. Unzip and run NuVerter.exe.', 'success');
-    return;
-  }
+async function openDesktopAppInfo() {
+  try {
+    const res = await fetch('https://api.github.com/repos/BIltonBB/NuVerter/releases/latest');
+    const rel = await res.json();
+    const asset = (rel.assets || []).find(a => /\.exe$|\.msi$/i.test(a.name));
+    if (asset) {
+      const a = document.createElement('a');
+      a.href = asset.browser_download_url;
+      a.download = asset.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      toast('Download started', asset.name + ' is downloading.', 'success');
+      return;
+    }
+  } catch (e) {}
+  window.open('https://github.com/BIltonBB/NuVerter/releases/latest', '_blank');
+}
   openModal({
     title: 'Get the desktop app',
     subtitle: 'Same UI, native shell, auto-update.',
