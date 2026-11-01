@@ -46,6 +46,9 @@
         "uninstallerHeaderImage": "icons/header.bmp",
         "installMode": "both",
         "displayLanguageSelector": false,
+        "customLanguageFiles": {
+          "English": "languages/English.nsh"
+        },
         "template": "installer.nsi"
       }
     }
