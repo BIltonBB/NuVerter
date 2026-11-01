@@ -20,6 +20,10 @@ ManifestDPIAwareness PerMonitorV2
 {{/if}}
 
 !include MUI2.nsh
+; Themed colors (approximate web dark theme)
+!define MUI_BGCOLOR "0b0c10"
+!define MUI_TEXTCOLOR "e6e6f0"
+!define MUI_INSTFILESPAGE_COLORS "0b0c10 e6e6f0"
 !include FileFunc.nsh
 !include x64.nsh
 !include WordFunc.nsh
