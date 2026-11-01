@@ -8530,8 +8530,6 @@ async function openDesktopAppInfo() {
       return;
     }
   } catch (e) {}
-  window.open('https://github.com/BIltonBB/NuVerter/releases/latest', '_blank');
-}
   openModal({
     title: 'Get the desktop app',
     subtitle: 'Same UI, native shell, auto-update.',
