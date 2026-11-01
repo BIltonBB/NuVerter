@@ -9477,10 +9477,10 @@ function initDesktopUpdates() {
     if (!window.electronAPI || typeof window.electronAPI.onUpdateStatus !== 'function') return;
     const banner = document.createElement('div');
     banner.id = 'app-update-banner';
-    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;display:none;align-items:center;justify-content:space-between;gap:10px;padding:8px 14px;background:linear-gradient(90deg,#7c3aed,#4f46e5);color:#fff;font-size:12px;font-weight:600;box-shadow:0 2px 10px rgba(0,0,0,.25);';
+    banner.className = 'nv-update-banner';
     const text = document.createElement('span');
     const btn = document.createElement('button');
-    btn.style.cssText = 'background:#fff;color:#4f46e5;border:0;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;';
+    btn.className = 'btn btn-primary btn-sm';
     banner.appendChild(text);
     banner.appendChild(btn);
     document.body.appendChild(banner);
@@ -9574,20 +9574,29 @@ window.openDesktopAppInfo = openDesktopAppInfo;
     if (!T || !T.updater || typeof T.updater.check !== 'function') return;
     const update = await T.updater.check();
     if (!update) return;
-    const btn = document.createElement('button');
-    btn.textContent = 'Update available';
-    btn.title = 'A new version is available. Click to install and restart.';
-    btn.style.cssText = 'position:fixed;top:12px;right:12px;z-index:99999;padding:8px 14px;border-radius:999px;background:#2563eb;color:#fff;border:none;cursor:pointer;font:600 13px system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.25);';
-    btn.onmouseenter = () => { btn.textContent = 'Install update'; };
-    btn.onmouseleave = () => { btn.textContent = 'Update available'; };
-    btn.onclick = async () => {
-      btn.textContent = 'Installing...';
-      btn.disabled = true;
+    const wrap = document.createElement('div');
+    wrap.className = 'nv-update-prompt';
+    wrap.innerHTML = `
+      <div class="nv-update-copy">
+        <strong>Update available</strong>
+        <span>${esc(update?.version ? ('Version ' + update.version + ' is ready to install.') : 'A new version is ready to install.')}</span>
+      </div>
+      <div class="nv-update-actions">
+        <button type="button" class="btn btn-ghost btn-sm nv-update-later">Later</button>
+        <button type="button" class="btn btn-primary btn-sm nv-update-install">Install &amp; restart</button>
+      </div>`;
+    const installBtn = wrap.querySelector('.nv-update-install');
+    const laterBtn = wrap.querySelector('.nv-update-later');
+    laterBtn.onclick = () => { wrap.remove(); };
+    installBtn.onclick = async () => {
+      installBtn.textContent = 'Installing…';
+      installBtn.disabled = true;
+      laterBtn.disabled = true;
       try { await update.downloadAndInstall(); } catch (e) {}
       if (T.process && typeof T.process.relaunch === 'function') { try { await T.process.relaunch(); } catch (e) {} }
       else { window.location.reload(); }
     };
-    document.body.appendChild(btn);
+    document.body.appendChild(wrap);
   } catch (e) {}
 })();
 window.runSubtitleBurn = runSubtitleBurn;
