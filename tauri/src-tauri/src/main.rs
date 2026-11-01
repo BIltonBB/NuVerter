@@ -132,7 +132,15 @@ fn main() {
             tauri::async_runtime::spawn(async move {
                 if let Ok(updater) = handle.updater() {
                     if let Ok(Some(update)) = updater.check().await {
-                        let _ = update.download_and_install(|_, _| {}, || {}).await;
+                        use tauri_plugin_dialog::DialogExt;
+                        let install = handle.dialog()
+                            .message("A new version is available. Install now?")
+                            .title("Update Available")
+                            .blocking_show();
+                        if install {
+                            let _ = update.download_and_install(|_, _| {}, || {}).await;
+                            handle.restart();
+                        }
                     }
                 }
             });
