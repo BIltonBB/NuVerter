@@ -8516,9 +8516,10 @@ async function installPwa() {
 
 async function openDesktopAppInfo() {
   try {
-    const res = await fetch('https://api.github.com/repos/BIltonBB/NuVerter/releases/latest');
-    const rel = await res.json();
-    const asset = (rel.assets || []).find(a => /\.exe$|\.msi$/i.test(a.name));
+    const res = await fetch('https://api.github.com/repos/BIltonBB/NuVerter/releases');
+    const rels = await res.json();
+    const rel = (rels || []).find(r => (r.assets || []).some(a => /\.exe$|\.msi$/i.test(a.name)));
+    const asset = rel && (rel.assets || []).find(a => /\.exe$|\.msi$/i.test(a.name));
     if (asset) {
       const a = document.createElement('a');
       a.href = asset.browser_download_url;
