@@ -848,3 +848,6 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
   transition-duration: .001ms !important;
   scroll-behavior: auto !important;
 }
+
+/* nav search */
+.nav-search{display:flex;align-items:center;gap:8px;margin:8px 12px 4px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--ctrl-radius);background:var(--surface-2);}.nav-search .icon{width:14px;height:14px;opacity:.6;flex-shrink:0;}.nav-search input{border:0;background:transparent;color:var(--text);font-size:13px;width:100%;outline:none;}

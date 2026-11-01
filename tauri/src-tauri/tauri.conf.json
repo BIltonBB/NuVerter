@@ -1,6 +1,6 @@
 {
   "productName": "NuVerter",
-  "version": "1.0.6",
+  "version": "1.0.8",
   "identifier": "com.nuverter.studio",
   "build": {
     "frontendDist": "../../web",
