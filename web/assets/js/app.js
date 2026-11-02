@@ -7076,26 +7076,48 @@ async function imageEditorInpaintApply() {
   const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const maskData = mask.getContext('2d').getImageData(0, 0, mask.width, mask.height);
   const w = canvas.width, h = canvas.height;
-  // for each masked pixel, fill with average of nearby non-masked
-  const radius = data.inpaint.size * 2;
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const mi = (y * w + x) * 4;
-      if (maskData.data[mi + 3] < 50) continue; // not masked
-      let sr = 0, sg = 0, sb = 0, cnt = 0;
-      for (let dy = -radius; dy <= radius; dy++) {
-        for (let dx = -radius; dx <= radius; dx++) {
-          const nx = x + dx, ny = y + dy;
-          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-          const ni = (ny * w + nx) * 4;
-          if (maskData.data[ni + 3] > 50) continue; // skip masked
-          sr += imgData.data[ni]; sg += imgData.data[ni + 1]; sb += imgData.data[ni + 2]; cnt++;
+  const patch = 5;
+  const half = Math.floor(patch / 2);
+  const masked = [];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (maskData.data[(y * w + x) * 4 + 3] > 50) masked.push([x, y]);
+  // process in random order
+  for (let i = masked.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [masked[i], masked[j]] = [masked[j], masked[i]]; }
+  for (const [x, y] of masked) {
+    // build target patch descriptor (known neighbors only)
+    let best = null, bestErr = Infinity;
+    const searchR = 40;
+    for (let sy = Math.max(half, y - searchR); sy < Math.min(h - half, y + searchR); sy++) {
+      for (let sx = Math.max(half, x - searchR); sx < Math.min(w - half, x + searchR); sx++) {
+        // skip if center of candidate is masked
+        if (maskData.data[(sy * w + sx) * 4 + 3] > 50) continue;
+        let err = 0, n = 0;
+        for (let dy = -half; dy <= half; dy++) {
+          for (let dx = -half; dx <= half; dx++) {
+            const tx = x + dx, ty = y + dy;
+            const cx = sx + dx, cy = sy + dy;
+            if (tx < 0 || ty < 0 || tx >= w || ty >= h) continue;
+            if (cx < 0 || cy < 0 || cx >= w || cy >= h) continue;
+            if (maskData.data[(ty * w + tx) * 4 + 3] > 50) continue; // unknown target
+            const ti = (ty * w + tx) * 4;
+            const ci = (cy * w + cx) * 4;
+            err += Math.abs(imgData.data[ti] - imgData.data[ci]) + Math.abs(imgData.data[ti + 1] - imgData.data[ci + 1]) + Math.abs(imgData.data[ti + 2] - imgData.data[ci + 2]);
+            n++;
+          }
         }
+        if (n === 0) continue;
+        err /= n;
+        if (err < bestErr) { bestErr = err; best = [sx, sy]; }
       }
-      if (cnt === 0) continue;
-      imgData.data[mi] = Math.round(sr / cnt);
-      imgData.data[mi + 1] = Math.round(sg / cnt);
-      imgData.data[mi + 2] = Math.round(sb / cnt);
+    }
+    if (best) {
+      const [sx, sy] = best;
+      const si = (sy * w + sx) * 4;
+      const mi = (y * w + x) * 4;
+      imgData.data[mi] = imgData.data[si];
+      imgData.data[mi + 1] = imgData.data[si + 1];
+      imgData.data[mi + 2] = imgData.data[si + 2];
+      // mark as filled in mask
+      maskData.data[mi + 3] = 0;
     }
   }
   ctx.putImageData(imgData, 0, 0);
