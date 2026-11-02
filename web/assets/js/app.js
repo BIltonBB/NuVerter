@@ -6984,6 +6984,7 @@ function buildVideoEditorArgs(data) {
 async function videoEditorExport() {
   console.log('videoEditorExport start');
   const data = state.videoEditor;
+  console.log('args', JSON.stringify(buildVideoEditorArgs(data).args));
   if (!data.source || data.busy) return;
   data.busy = true;
   const progress = document.getElementById('ve-progress');
