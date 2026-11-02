@@ -6642,6 +6642,7 @@ function imageEditorPushHistory() {
   data.history.push(snap);
   if (data.history.length > 40) { data.history.shift(); }
   data.historyIndex = data.history.length - 1;
+  console.log('pushHistory', data.history.length, data.historyIndex);
 }
 
 function imageEditorUndo() {
