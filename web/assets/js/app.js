@@ -8453,6 +8453,7 @@ function settingsBody() {
         <button class="btn btn-secondary btn-sm" data-action="settings-history">${icon('history')}Open history</button>
         <button class="btn btn-danger btn-sm" data-action="clear-history" ${stats.total ? '' : 'disabled'}>${icon('trash-2')}Clear results</button>
         <button class="btn btn-ghost btn-sm" data-action="pref-reset">${icon('rotate-ccw')}Reset preferences</button>
+        <button class="btn btn-danger btn-sm" data-action="privacy-reset">${icon('shield')}Privacy reset</button>
       </div>
     </div>
 
@@ -8573,12 +8574,24 @@ function resetPreferences() {
   toast('Preferences reset', 'Theme stays as you chose. Everything else is back to default.', 'info');
 }
 
+async function privacyReset() {
+  if (!confirm('Privacy reset: clear queue, results, editor state, caches and preferences?')) return;
+  try { state.queue = []; state.queueRunning = false; } catch {}
+  try { await clearHistory(); } catch {}
+  try { if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.map((k) => caches.delete(k))); } } catch {}
+  try { localStorage.removeItem('NuVerter-converter'); localStorage.removeItem('NuVerter-prefs'); localStorage.removeItem('NuVerter-ai-chat'); } catch {}
+  try { state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false }; savePrefs(); applyTheme(); } catch {}
+  try { renderView(); } catch {}
+  toast('Privacy reset', 'Queue, results, caches and preferences cleared. Note: browser/OS may retain other copies.', 'success');
+}
+
 /* ---------- help ---------- */
 function openHelp() {
   const shortcuts = [
     ['⌘ / Ctrl', 'O', 'Add media to the current tool'],
     ['⌘ / Ctrl', '↵', 'Start the current batch or tool'],
     ['⌘ / Ctrl', ',', 'Open settings'],
+    ['⌘ / Ctrl', 'K', 'Command palette (search tools)'],
     ['1 – 7', '', 'Jump between tools'],
     ['?', '', 'Show this shortcut sheet'],
     ['Esc', '', 'Close a dialog, stop a recording or cancel a batch']
@@ -9514,6 +9527,7 @@ async function handleAction(action, el) {
      case 'set-appearance-preset': setAppearancePreset(el.dataset.preset); break;
      case 'reset-appearance': resetAppearance(); break;
     case 'pref-reset': resetPreferences(); break;
+    case 'privacy-reset': privacyReset(); break;
     case 'settings-history': closeModal(); setTool('history'); break;
     case 'change-storage-dir': (async () => {
       var api = window.electronAPI;
