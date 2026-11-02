@@ -453,6 +453,12 @@ const state = {
     trimStart: 0, trimEnd: 100, aspect: 'free', speed: '1',
     history: [], historyIndex: -1,
     settings: { format: 'mp4', quality: 'balanced', keepAudio: true }
+  },
+  reframe: {
+    source: null, result: null, busy: false,
+    target: '9:16', smart: true, manualX: 50,
+    cropX: 0, cropW: 0, cropH: 0,
+    settings: { format: 'mp4', quality: 'balanced', keepAudio: true }
   }
 };
 
@@ -473,7 +479,8 @@ const TOOLS = {
   pdftools: { label: 'PDF Tools', icon: 'file', index: '13' },
   aichat: { label: 'AI Chat', icon: 'command', index: '14' },
   imageditor: { label: 'Image Editor', icon: 'sliders-horizontal', index: '15' },
-  videoeditor: { label: 'Video Editor', icon: 'film', index: '16' }
+  videoeditor: { label: 'Video Editor', icon: 'film', index: '16' },
+  reframe: { label: 'Auto Reframe', icon: 'crop', index: '17' }
 };
 
 let AVIF_SUPPORTED = false;
@@ -7109,6 +7116,173 @@ function bindVideoEditor() {
   });
 }
 
+function reframeView() {
+  const data = state.reframe;
+  const source = data.source;
+  return `
+    ${viewHead({ index: '17', kicker: 'Auto reframe', title: 'Reframe to <span class="accent">portrait or square.</span>', sub: 'Convert landscape video to 9:16 / 1:1 / 4:5. Smart mode keeps the subject in frame.' })}
+    <div class="tool-grid">
+      <section class="area-drop">
+        <div class="stage-card">
+          <div class="stage-head"><div class="stage-head-copy"><strong>Source</strong><span>Load a video</span></div></div>
+          <div class="stage-body">
+            <label class="btn btn-secondary btn-sm" for="rf-file">Choose video</label>
+            <input id="rf-file" type="file" accept="video/*" data-rf="file" hidden />
+            ${source ? `<video src="${source.url}" controls style="max-width:100%;border-radius:8px;margin-top:8px"></video>` : ''}
+          </div>
+        </div>
+        <div class="stage-card" style="margin-top:12px">
+          <div class="stage-head"><div class="stage-head-copy"><strong>Target aspect</strong><span>Output framing</span></div></div>
+          <div class="stage-body">
+            <div class="segmented" role="group">
+              ${['9:16','1:1','4:5','16:9'].map((a) => `<button data-action="rf-aspect" data-aspect="${a}" class="${data.target === a ? 'is-active' : ''}">${a}</button>`).join('')}
+            </div>
+            <div class="field" style="margin-top:10px">
+              <div class="field-head"><span class="field-label">Smart reframe</span><small>Auto-detect subject</small></div>
+              <button class="switch" role="switch" aria-checked="${data.smart}" aria-label="Smart reframe" data-toggle="reframe.smart"></button>
+            </div>
+            ${!data.smart ? `<div class="field">
+              <div class="field-head"><span class="field-label">Horizontal position</span><span class="field-value">${data.manualX}%</span></div>
+              <input type="range" min="0" max="100" step="1" value="${data.manualX}" data-field="reframe.manualX" />
+            </div>` : ''}
+            <button class="btn btn-secondary btn-sm" data-action="rf-analyze" ${source ? '' : 'disabled'} style="margin-top:10px">Analyze subject</button>
+            ${data.cropW ? `<p class="field-help" style="margin-top:6px">Crop: ${data.cropW}×${data.cropH} at x=${data.cropX}</p>` : ''}
+          </div>
+        </div>
+      </section>
+      <section class="area-queue">
+        <div class="stage-card">
+          <div class="stage-head"><div class="stage-head-copy"><strong>Export</strong><span>Render reframed video</span></div></div>
+          <div class="stage-body">
+            <div class="field">
+              <div class="field-head"><span class="field-label">Output format</span></div>
+              <select data-field="reframe.settings.format" class="select">
+                <option value="mp4" ${data.settings.format === 'mp4' ? 'selected' : ''}>MP4</option>
+                <option value="webm" ${data.settings.format === 'webm' ? 'selected' : ''}>WEBM</option>
+              </select>
+            </div>
+            <div class="field">
+              <div class="field-head"><span class="field-label">Keep audio</span></div>
+              <button class="switch" role="switch" aria-checked="${data.settings.keepAudio}" aria-label="Keep audio" data-toggle="reframe.settings.keepAudio"></button>
+            </div>
+            <button class="btn btn-primary btn-sm" data-action="rf-export" ${source ? '' : 'disabled'} style="margin-top:10px">${icon('download')}Export reframed</button>
+            <div id="rf-out" class="util-out"></div>
+            <div id="rf-progress" class="progress-wrap" hidden><div class="progress"><span style="width:0%"></span></div><span class="pct">0%</span></div>
+          </div>
+        </div>
+      </section>
+    </div>`;
+}
+
+async function reframeLoad(file) {
+  const data = state.reframe;
+  if (data.source?._url) URL.revokeObjectURL(data.source._url);
+  const url = URL.createObjectURL(file);
+  const info = await probeFile(file, 'video');
+  data.source = { file, name: file.name, size: file.size, url, width: info.width || 0, height: info.height || 0, duration: info.duration || 0 };
+  data.cropX = 0; data.cropW = 0; data.cropH = 0;
+  data.result = null;
+  renderView();
+  toast('Video loaded', file.name, 'success');
+}
+
+async function reframeAnalyze() {
+  const data = state.reframe;
+  if (!data.source) return;
+  const video = document.createElement('video');
+  video.src = data.source.url;
+  video.muted = true;
+  video.playsInline = true;
+  await new Promise((resolve, reject) => { video.onloadedmetadata = resolve; video.onerror = reject; });
+  const w = video.videoWidth, h = video.videoHeight;
+  const targetAspect = parseAspect(data.target);
+  // sample frames
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  const samples = 8;
+  let minX = w, maxX = 0, minY = h, maxY = 0, found = false;
+  for (let i = 0; i < samples; i++) {
+    video.currentTime = (video.duration * i) / Math.max(1, samples - 1);
+    await new Promise((resolve) => { video.onseeked = resolve; setTimeout(resolve, 1000); });
+    ctx.drawImage(video, 0, 0, w, h);
+    const img = ctx.getImageData(0, 0, w, h);
+    // edge-ish: find non-background (not near-black/white) pixels
+    for (let y = 0; y < h; y += 4) {
+      for (let x = 0; x < w; x += 4) {
+        const idx = (y * w + x) * 4;
+        const r = img.data[idx], g = img.data[idx+1], b = img.data[idx+2];
+        const lum = (r + g + b) / 3;
+        if (lum > 30 && lum < 225) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+          found = true;
+        }
+      }
+    }
+  }
+  if (!found) { minX = 0; maxX = w - 1; minY = 0; maxY = h - 1; }
+  const subjCx = (minX + maxX) / 2;
+  const cropH = h;
+  const cropW = Math.round(cropH * targetAspect);
+  let cropX = Math.round(subjCx - cropW / 2);
+  cropX = Math.max(0, Math.min(w - cropW, cropX));
+  if (cropW > w) { data.cropW = w; data.cropH = Math.round(w / targetAspect); data.cropX = 0; }
+  else { data.cropW = cropW; data.cropH = cropH; data.cropX = cropX; }
+  renderView();
+  toast('Analyzed', 'Subject detected. Adjust if needed.', 'success');
+}
+
+function parseAspect(a) {
+  const [x, y] = String(a).split(':').map(Number);
+  if (!x || !y) return 16 / 9;
+  return x / y;
+}
+
+async function reframeExport() {
+  const data = state.reframe;
+  if (!data.source || data.busy) return;
+  data.busy = true;
+  const progress = document.getElementById('rf-progress');
+  if (progress) progress.hidden = false;
+  const updateProgress = (v) => {
+    const fill = progress?.querySelector('.progress > span');
+    const pct = progress?.querySelector('.pct');
+    if (fill) fill.style.width = Math.round(v * 100) + '%';
+    if (pct) pct.textContent = Math.round(v * 100) + '%';
+  };
+  try {
+    const fmt = data.settings.format === 'webm' ? 'webm' : 'mp4';
+    const w = data.cropW || 0, h = data.cropH || 0, x = data.cropX || 0;
+    const args = ['-hide_banner', '-y', '-i', '{in}'];
+    if (w > 0 && h > 0 && w <= (data.source.width || 9999)) {
+      args.push('-vf', `crop=${w}:${h}:${x}:0,scale=${w}:${h}`);
+    }
+    if (fmt === 'webm') args.push('-c:v', 'libvpx', '-b:v', '2M'); else args.push('-c:v', 'libx264', '-preset', 'fast', '-crf', '23');
+    if (data.settings.keepAudio) args.push('-c:a', 'aac', '-b:a', '128k'); else args.push('-an');
+    args.push('{out}');
+    const result = await Engine.run({ blob: data.source.file, inputName: extOf(data.source.name) || 'mp4', outputName: fmt, args, mime: fmt === 'webm' ? 'video/webm' : 'video/mp4', onProgress: updateProgress });
+    const name = data.source.name.replace(/\\.[^.]+$/, '') + '-reframed.' + fmt;
+    const record = await registerOutput({ tool: 'reframe', sourceName: data.source.name, sourceSize: data.source.size, blob: result.blob, name, mime: result.mime || (fmt === 'webm' ? 'video/webm' : 'video/mp4') });
+    data.result = record;
+    const out = document.getElementById('rf-out');
+    if (out) out.innerHTML = `<a class="btn btn-secondary btn-sm" href="${record.url}" download="${esc(name)}">${icon('download')}Download ${esc(name)}</a>`;
+    toast('Reframed', name, 'success');
+  } catch (e) {
+    toast('Reframe failed', e?.message || 'Unknown error.', 'error');
+  } finally {
+    data.busy = false;
+    if (progress) progress.hidden = true;
+  }
+}
+
+function bindReframe() {
+  const fileInput = document.getElementById('rf-file');
+  if (fileInput) fileInput.onchange = (e) => { const f = e.target.files?.[0]; if (f) reframeLoad(f); };
+}
+
 function renderView() {
   const view = $('#view');
   if (!view) return;
@@ -7126,6 +7300,7 @@ function renderView() {
   else if (state.tool === 'devtools') html = devToolsView();
   else if (state.tool === 'imageditor') html = imageEditorView();
   else if (state.tool === 'videoeditor') html = videoEditorView();
+  else if (state.tool === 'reframe') html = reframeView();
   else if (state.tool === 'aitools') html = aiToolsView();
   else if (state.tool === 'pdftools') html = pdfToolsView();
   else if (state.tool === 'aichat') html = aiChatView();
@@ -7150,6 +7325,7 @@ function renderView() {
   if (state.tool === 'history') renderHistoryList();
   if (state.tool === 'imageditor') bindImageEditor();
   if (state.tool === 'videoeditor') bindVideoEditor();
+  if (state.tool === 'reframe') bindReframe();
   if (state.utilities.tab === 'tts' && ['utilities','practical','audiotools'].includes(state.tool)) utilTtsEnsureVoices();
   if (state.tool === 'subtitles') { bindSubtitleOverlay(); bindSubtitleEditorInputs(); }
   $$('input[type="range"]').forEach((input) => setCssPct(input));
@@ -9721,6 +9897,9 @@ function updateLiveValues(path, value) {
   } else if (path === 'subtitleEditor.fontSize') {
     const overlay = document.getElementById('sub-overlay');
     if (overlay) overlay.style.fontSize = `${value}px`;
+  } else if (path === 'reframe.manualX') {
+    const el2 = document.querySelector('[data-field="reframe.manualX"]')?.closest('.field')?.querySelector('.field-value');
+    if (el2) el2.textContent = `${value}%`;
   }
 }
 
@@ -9802,6 +9981,7 @@ function handleToggle(el) {
     if (path === 'extractor.settings.fade' || path === 'extractor.settings.normalize') { /* values read at run time */ }
   }
   if (path.startsWith('gif.')) syncToolChrome('gif');
+  if (path.startsWith('reframe.')) renderView();
   if (path.startsWith('recorder.')) {
     const status = state.recorder.status;
     if (!['idle', 'finished'].includes(status)) {
@@ -10042,10 +10222,20 @@ async function handleExtraAction(action, el) {
       if (trig) trig.setAttribute('aria-expanded', String(!menu?.hidden));
       return true;
     }
+    case 'rf-aspect':
+      state.reframe.target = el.dataset.aspect || state.reframe.target;
+      renderView();
+      return true;
+    case 'rf-analyze':
+      await reframeAnalyze();
+      return true;
+    case 'rf-export':
+      await reframeExport();
+      return true;
     default: return false;
   }
 }
-
+ 
 async function handleAction(action, el) {
   if (await handleExtraAction(action, el)) return; 
   const id = el.dataset.id || '';
