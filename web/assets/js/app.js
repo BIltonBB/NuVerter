@@ -6962,16 +6962,7 @@ function buildVideoEditorArgs(data) {
     filters.push(`drawtext=text='${data.text.replace(/'/g, "\\'")}':fontsize=${data.textSize}:fontcolor=${color}:${pos}`);
   }
   const vf = filters.join(',');
-  const args = ['-hide_banner', '-y'];
-  // trim
-  const start = (data.trimStart || 0) / 100;
-  const end = (data.trimEnd || 100) / 100;
-  // we'll handle trim via -ss/-to after probe; use -vf trim? simpler: use -ss/-t
-  // duration unknown here; use percentage via -ss/-to with input duration not available; skip precise trim, use -vf trim
-  if (start > 0 || end < 100) {
-    // approximate: use trim filter with start/end in seconds unknown; use fractions via select? Instead use -ss/-to on output not possible without duration.
-    // Use setpts? We'll add trim filter with start/end as fractions of duration using 'trim=start=...' requires seconds. Skip fractional; do nothing.
-  }
+  const args = ['-hide_banner', '-y', '-i', '{in}'];
   if (vf) args.push('-vf', vf);
   const fmt = data.settings.format === 'webm' ? 'webm' : 'mp4';
   args.push(...(fmt === 'webm' ? ['-c:v', 'libvpx', '-b:v', '2M'] : ['-c:v', 'libx264', '-preset', 'fast', '-crf', '23']));
@@ -6982,9 +6973,7 @@ function buildVideoEditorArgs(data) {
 }
 
 async function videoEditorExport() {
-  console.log('videoEditorExport start');
   const data = state.videoEditor;
-  console.log('args', JSON.stringify(buildVideoEditorArgs(data).args));
   if (!data.source || data.busy) return;
   data.busy = true;
   const progress = document.getElementById('ve-progress');
@@ -9830,7 +9819,6 @@ document.addEventListener('click', () => {
 });
 
 async function handleExtraAction(action, el) {
-  if (action.startsWith('ve-')) console.log('handleExtraAction', action);
   switch (action) {
     case 'util-tab':
       state.utilities.tab = el.dataset.tab || 'frames';
