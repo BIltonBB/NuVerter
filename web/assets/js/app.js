@@ -339,6 +339,7 @@ const state = {
     reduceMotion: false,
     seenWelcome: false,
     processingMode: 'eco',
+    audioReactive: false,
     accentColor: '',
     gradientBg: false,
     appearancePreset: 'studio',
@@ -506,6 +507,7 @@ function loadLocalState() {
     const prefs = JSON.parse(localStorage.getItem('NuVerter-prefs') || '{}');
     state.prefs = { ...state.prefs, ...prefs };
     applyAppearance();
+    applyAudioReactiveTheme();
     state.aiImage.folderName = localStorage.getItem('NuVerter-ai-folder') || '';
     try { state.workflows = JSON.parse(localStorage.getItem('NuVerter-workflows') || '[]'); } catch { state.workflows = []; }
     try {
@@ -1058,6 +1060,21 @@ function resolvedTheme(mode = state.themeMode) {
   return mode === 'dark' || (mode === 'system' && darkMedia.matches) ? 'dark' : 'light';
 }
 
+function applyAudioReactiveTheme() {
+  const style = document.getElementById('audio-reactive-style');
+  if (!state.prefs.audioReactive) {
+    if (style) style.remove();
+    document.body.classList.remove('audio-reactive');
+    return;
+  }
+  if (!style) {
+    const s = document.createElement('style');
+    s.id = 'audio-reactive-style';
+    s.textContent = 'body.audio-reactive::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(circle at 50% 50%, rgba(124,58,237,calc(var(--audio-level,0)*0.4)), transparent 60%);mix-blend-mode:screen;}';
+    document.head.appendChild(s);
+  }
+  document.body.classList.add('audio-reactive');
+}
 function applyTheme() {
   const theme = resolvedTheme();
   document.documentElement.dataset.theme = theme;
@@ -9318,6 +9335,30 @@ function bindExtractorAudio() {
     }
     waveDrag = null;
   });
+  if (state.prefs.audioReactive) {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (Ctx) {
+        const ctx = new Ctx();
+        const src = ctx.createMediaElementSource(audio);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 64;
+        src.connect(analyser);
+        analyser.connect(ctx.destination);
+        const buf = new Uint8Array(analyser.frequencyBinCount);
+        let rafId = null;
+        const tick = () => {
+          analyser.getByteFrequencyData(buf);
+          const avg = buf.reduce((a, b) => a + b, 0) / buf.length / 255;
+          document.documentElement.style.setProperty('--audio-level', String(avg));
+          rafId = requestAnimationFrame(tick);
+        };
+        audio.addEventListener('play', () => { if (!rafId) rafId = requestAnimationFrame(tick); });
+        audio.addEventListener('pause', () => { if (rafId) { cancelAnimationFrame(rafId); rafId = null; } document.documentElement.style.setProperty('--audio-level', '0'); });
+        audio.addEventListener('ended', () => { if (rafId) { cancelAnimationFrame(rafId); rafId = null; } document.documentElement.style.setProperty('--audio-level', '0'); });
+      }
+    } catch {}
+  }
   updateWavePlayhead();
 }
 
@@ -9722,6 +9763,10 @@ function settingsBody() {
             ${['eco','turbo'].map((m) => `<button data-action="set-processing-mode" data-mode="${m}" class="${(state.prefs.processingMode || 'eco') === m ? 'is-active' : ''}">${m === 'eco' ? 'Eco' : 'Turbo'}</button>`).join('')}
           </div>
         </div>
+        <div class="settings-item">
+          <div class="settings-item-copy"><strong>Audio-reactive theme</strong><small>Subtle visual response to audio playback (experimental)</small></div>
+          <button class="switch" role="switch" aria-checked="${state.prefs.audioReactive}" aria-label="Audio-reactive theme" data-toggle="prefs.audioReactive"></button>
+        </div>
       </div>
     </div>
 
@@ -9865,7 +9910,7 @@ function openSettings() {
 }
 
 function resetPreferences() {
-  state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco' };
+  state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false };
   savePrefs();
   applyTheme();
   renderSettingsBody();
@@ -9878,7 +9923,7 @@ async function privacyReset() {
   try { await clearHistory(); } catch {}
   try { if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.map((k) => caches.delete(k))); } } catch {}
   try { localStorage.removeItem('NuVerter-converter'); localStorage.removeItem('NuVerter-prefs'); localStorage.removeItem('NuVerter-ai-chat'); } catch {}
-  try { state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco' }; savePrefs(); applyTheme(); } catch {}
+  try { state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false }; savePrefs(); applyTheme(); } catch {}
   try { renderView(); } catch {}
   toast('Privacy reset', 'Queue, results, caches and preferences cleared. Note: browser/OS may retain other copies.', 'success');
 }
@@ -10463,6 +10508,7 @@ function handleToggle(el) {
     savePrefs();
     applyAppearance();
     if (path === 'prefs.reduceMotion') applyTheme();
+    if (path === 'prefs.audioReactive') applyAudioReactiveTheme();
   }
   if (path.startsWith('converter.')) {
     saveConverter();
