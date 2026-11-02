@@ -6651,6 +6651,7 @@ function imageEditorUndo() {
   if (data.historyIndex <= 0) return;
   data.historyIndex--;
   data.adjustments = JSON.parse(data.history[data.historyIndex]);
+  console.log('undo', data.historyIndex, data.adjustments.brightness);
   renderView();
   imageEditorRender();
 }
