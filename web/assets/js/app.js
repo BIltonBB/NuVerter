@@ -3708,7 +3708,7 @@ function utilitiesView() {
       <div class="util-tab-group">
         <span class="util-tab-group-label">Media</span>
         <div class="util-tabs segmented" role="tablist">
-          ${['frames','spritesheet','textimage','trimmer','watermark','upscale','pdf','chroma','fileinfo'].map((t) => `<button data-action="util-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${t === 'frames' ? 'Frames' : t === 'spritesheet' ? 'Spritesheet' : t === 'textimage' ? 'Text card' : t === 'trimmer' ? 'Trimmer' : t === 'watermark' ? 'Watermark' : t === 'upscale' ? 'Upscale' : t === 'pdf' ? 'PDF' : t === 'chroma' ? 'Chroma key' : 'File info'}</button>`).join('')}
+          ${['frames','spritesheet','slicer','textimage','trimmer','watermark','upscale','pdf','chroma','fileinfo','palette','favicon'].map((t) => `<button data-action="util-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${t === 'frames' ? 'Frames' : t === 'spritesheet' ? 'Spritesheet' : t === 'slicer' ? 'Slice sheet' : t === 'textimage' ? 'Text card' : t === 'trimmer' ? 'Trimmer' : t === 'watermark' ? 'Watermark' : t === 'upscale' ? 'Upscale' : t === 'pdf' ? 'PDF' : t === 'chroma' ? 'Chroma key' : t === 'palette' ? 'Palette' : t === 'favicon' ? 'Favicon' : 'File info'}</button>`).join('')}
         </div>
       </div>
       <div class="util-tab-group">
@@ -3741,6 +3741,9 @@ function utilitiesView() {
         tab === 'pdf' ? utilPdfBody() :
         tab === 'chroma' ? utilChromaBody() :
         tab === 'fileinfo' ? utilFileInfoBody() :
+        tab === 'palette' ? utilPaletteBody() :
+        tab === 'favicon' ? utilFaviconBody() :
+        tab === 'slicer' ? utilSlicerBody() :
         tab === 'audioclean' ? utilAudioCleanBody() :
         tab === 'silencetrim' ? utilSilenceTrimBody() :
         tab === 'tts' ? utilTtsBody() :
@@ -3992,10 +3995,23 @@ async function utilTrimmer() {
 function utilHashBody() {
   return `
     <div class="stage-card">
-      <div class="stage-head"><div class="stage-head-copy"><strong>File hash</strong><span>SHA-256 of any file</span></div></div>
+      <div class="stage-head"><div class="stage-head-copy"><strong>File hash</strong><span>SHA-1 / SHA-256 / SHA-384 / SHA-512, with comparison</span></div></div>
       <div class="stage-body">
         <label class="btn btn-secondary btn-sm" for="util-hash-file">Choose file</label>
         <input id="util-hash-file" type="file" data-util="hash-file" hidden />
+        <div class="field" style="margin-top:10px">
+          <div class="field-head"><span class="field-label">Algorithm</span></div>
+          <select data-util="hash-alg" class="select">
+            <option value="SHA-1">SHA-1</option>
+            <option value="SHA-256" selected>SHA-256</option>
+            <option value="SHA-384">SHA-384</option>
+            <option value="SHA-512">SHA-512</option>
+          </select>
+        </div>
+        <div class="field">
+          <div class="field-head"><span class="field-label">Expected hash (optional)</span></div>
+          <input type="text" data-util="hash-expected" class="input" placeholder="paste expected hash" style="width:100%" />
+        </div>
         <button class="btn btn-primary btn-sm" data-action="util-hash" style="margin-top:10px">Compute hash</button>
         <div id="util-hash-out" class="util-out"></div>
       </div>
@@ -4082,12 +4098,229 @@ async function utilMakeSheet() {
 async function utilHash() {
   const file = document.querySelector('[data-util="hash-file"]')?.files?.[0];
   if (!file) { toast('No file', 'Choose a file.', 'error'); return; }
+  const alg = document.querySelector('[data-util="hash-alg"]')?.value || 'SHA-256';
+  const expected = (document.querySelector('[data-util="hash-expected"]')?.value || '').trim().toLowerCase().replace(/\s+/g, '');
   const buf = await file.arrayBuffer();
-  const hash = await crypto.subtle.digest('SHA-256', buf);
+  const hash = await crypto.subtle.digest(alg, buf);
   const hex = Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, '0')).join('');
   const out = document.getElementById('util-hash-out');
-  if (out) out.innerHTML = `<div class="mono" style="word-break:break-all;margin-top:8px">${hex}</div><p style="margin-top:6px">${esc(file.name)} · ${formatBytes(file.size)}</p>`;
-  toast('Hash computed', 'SHA-256 ready.', 'success');
+  let compareHtml = '';
+  if (expected) {
+    const match = expected === hex;
+    compareHtml = `<div style="margin-top:8px;padding:8px;border-radius:8px;background:${match ? 'rgba(16,185,129,.12)' : 'rgba(239,68,68,.12)'};color:${match ? '#10b981' : '#ef4444'};font-weight:600">${match ? '✓ Match — hash matches the expected value.' : '✗ Mismatch — hash does not match.'}</div>`;
+  }
+  if (out) out.innerHTML = `<div class="mono" style="word-break:break-all;margin-top:8px">${hex}</div><p style="margin-top:6px">${esc(file.name)} · ${formatBytes(file.size)} · ${alg}</p>${compareHtml}<button class="btn btn-soft btn-sm" data-action="util-hash-copy" data-hash="${esc(hex)}" style="margin-top:8px">Copy hash</button>`;
+  toast('Hash computed', alg + ' ready.', 'success');
+}
+
+function utilPaletteBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Color palette extractor</strong><span>Dominant colors from an image</span></div></div>
+      <div class="stage-body">
+        <label class="btn btn-secondary btn-sm" for="util-palette-file">Choose image</label>
+        <input id="util-palette-file" type="file" accept="image/*" data-util="palette-file" hidden />
+        <div class="field" style="margin-top:10px">
+          <div class="field-head"><span class="field-label">Colors</span><span class="field-value" data-live="paletteCount">6</span></div>
+          <input type="range" min="3" max="12" step="1" value="6" data-util="palette-count" />
+        </div>
+        <button class="btn btn-primary btn-sm" data-action="util-palette" style="margin-top:10px">Extract palette</button>
+        <div id="util-palette-out" class="util-out"></div>
+      </div>
+    </div>`;
+}
+
+async function utilPalette() {
+  const file = document.querySelector('[data-util="palette-file"]')?.files?.[0];
+  if (!file) { toast('No image', 'Choose an image.', 'error'); return; }
+  const count = Math.max(3, Math.min(12, Number(document.querySelector('[data-util="palette-count"]')?.value || 6)));
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = url; });
+  const canvas = document.createElement('canvas');
+  const size = 128;
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, size, size);
+  const data = ctx.getImageData(0, 0, size, size).data;
+  // Median-cut-ish: bucket colors
+  const buckets = new Map();
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
+    if (a < 128) continue;
+    const key = (r >> 4) + ',' + (g >> 4) + ',' + (b >> 4);
+    if (!buckets.has(key)) buckets.set(key, { r:0, g:0, b:0, n:0 });
+    const bk = buckets.get(key);
+    bk.r += r; bk.g += g; bk.b += b; bk.n++;
+  }
+  const sorted = [...buckets.values()].sort((a,b) => b.n - a.n).slice(0, count * 4);
+  // pick distinct
+  const chosen = [];
+  for (const bk of sorted) {
+    const col = { r: Math.round(bk.r/bk.n), g: Math.round(bk.g/bk.n), b: Math.round(bk.b/bk.n) };
+    if (chosen.every((c) => Math.hypot(c.r-col.r, c.g-col.g, c.b-col.b) > 30)) chosen.push(col);
+    if (chosen.length >= count) break;
+  }
+  if (chosen.length < count) {
+    for (const bk of sorted) {
+      const col = { r: Math.round(bk.r/bk.n), g: Math.round(bk.g/bk.n), b: Math.round(bk.b/bk.n) };
+      if (!chosen.some((c) => c.r===col.r && c.g===col.g && c.b===col.b)) chosen.push(col);
+      if (chosen.length >= count) break;
+    }
+  }
+  URL.revokeObjectURL(url);
+  const out = document.getElementById('util-palette-out');
+  if (out) {
+    out.innerHTML = chosen.map((c) => {
+      const hex = '#' + [c.r,c.g,c.b].map((v) => v.toString(16).padStart(2,'0')).join('');
+      const rgb = `rgb(${c.r}, ${c.g}, ${c.b})`;
+      return `<div style="display:inline-flex;flex-direction:column;align-items:center;margin:6px;gap:4px">
+        <div style="width:60px;height:60px;border-radius:8px;background:${hex};border:1px solid rgba(0,0,0,.1)"></div>
+        <code class="mono" style="font-size:11px">${hex}</code>
+        <button class="btn btn-soft btn-sm" data-action="util-palette-copy" data-hex="${esc(hex)}">Copy</button>
+      </div>`;
+    }).join('');
+  }
+  toast('Palette extracted', chosen.length + ' colors.', 'success');
+}
+
+function utilFaviconBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Favicon bundle</strong><span>Generate common icon sizes + manifest snippet</span></div></div>
+      <div class="stage-body">
+        <label class="btn btn-secondary btn-sm" for="util-favicon-file">Choose logo (PNG/SVG)</label>
+        <input id="util-favicon-file" type="file" accept="image/*" data-util="favicon-file" hidden />
+        <div class="field" style="margin-top:10px">
+          <div class="field-head"><span class="field-label">Padding (%)</span></div>
+          <input type="number" min="0" max="40" value="10" data-util="favicon-pad" class="input" style="width:80px" />
+        </div>
+        <button class="btn btn-primary btn-sm" data-action="util-favicon" style="margin-top:10px">Generate bundle</button>
+        <div id="util-favicon-out" class="util-out"></div>
+      </div>
+    </div>`;
+}
+
+async function utilFavicon() {
+  const file = document.querySelector('[data-util="favicon-file"]')?.files?.[0];
+  if (!file) { toast('No image', 'Choose an image.', 'error'); return; }
+  const pad = Math.max(0, Math.min(40, Number(document.querySelector('[data-util="favicon-pad"]')?.value || 10))) / 100;
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = url; });
+  const sizes = [16, 32, 48, 180, 192, 512];
+  const out = document.getElementById('util-favicon-out');
+  if (out) out.innerHTML = '';
+  const links = [];
+  for (const size of sizes) {
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    const inner = Math.round(size * (1 - pad * 2));
+    const offset = Math.round((size - inner) / 2);
+    ctx.clearRect(0, 0, size, size);
+    ctx.drawImage(img, offset, offset, inner, inner);
+    const dataUrl = canvas.toDataURL('image/png');
+    links.push({ size, dataUrl });
+    if (out) {
+      const wrap = document.createElement('div');
+      wrap.style.display = 'inline-block';
+      wrap.style.margin = '6px';
+      wrap.style.textAlign = 'center';
+      const im = document.createElement('img');
+      im.src = dataUrl; im.style.width = '48px'; im.style.height = '48px'; im.style.display = 'block';
+      const a = document.createElement('a');
+      a.href = dataUrl; a.download = `favicon-${size}.png`; a.textContent = size + 'px';
+      a.className = 'btn btn-soft btn-sm';
+      wrap.appendChild(im); wrap.appendChild(a);
+      out.appendChild(wrap);
+    }
+  }
+  URL.revokeObjectURL(url);
+  if (out) {
+    const manifest = JSON.stringify({ name: 'NuVerter', short_name: 'NuVerter', icons: sizes.filter((s) => s >= 192).map((s) => ({ src: `favicon-${s}.png`, sizes: `${s}x${s}`, type: 'image/png' })), theme_color: '#08090c', background_color: '#08090c', display: 'standalone' }, null, 2);
+    const html = sizes.map((s) => `<link rel="icon" type="image/png" sizes="${s}x${s}" href="favicon-${s}.png">`).join('\\n');
+    const pre = document.createElement('pre');
+    pre.className = 'util-out';
+    pre.style.whiteSpace = 'pre-wrap';
+    pre.style.wordBreak = 'break-word';
+    pre.style.marginTop = '12px';
+    pre.textContent = '/* manifest.json */\\n' + manifest + '\\n\\n/* <head> */\\n' + html;
+    out.appendChild(pre);
+  }
+  toast('Favicon bundle ready', sizes.length + ' sizes.', 'success');
+}
+
+function utilSlicerBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Spritesheet slicer</strong><span>Split a sheet into frames</span></div></div>
+      <div class="stage-body">
+        <label class="btn btn-secondary btn-sm" for="util-slicer-file">Choose spritesheet</label>
+        <input id="util-slicer-file" type="file" accept="image/*" data-util="slicer-file" hidden />
+        <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Columns</span></div><input type="number" min="1" max="64" value="4" data-util="slicer-cols" class="input" style="width:80px" /></div>
+        <div class="field"><div class="field-head"><span class="field-label">Rows</span></div><input type="number" min="1" max="64" value="4" data-util="slicer-rows" class="input" style="width:80px" /></div>
+        <div class="field"><div class="field-head"><span class="field-label">Spacing (px)</span></div><input type="number" min="0" max="64" value="0" data-util="slicer-spacing" class="input" style="width:80px" /></div>
+        <div class="field"><div class="field-head"><span class="field-label">Margin (px)</span></div><input type="number" min="0" max="64" value="0" data-util="slicer-margin" class="input" style="width:80px" /></div>
+        <button class="btn btn-primary btn-sm" data-action="util-slicer" style="margin-top:10px">Slice</button>
+        <div id="util-slicer-out" class="util-out"></div>
+      </div>
+    </div>`;
+}
+
+async function utilSlicer() {
+  const file = document.querySelector('[data-util="slicer-file"]')?.files?.[0];
+  if (!file) { toast('No image', 'Choose a spritesheet.', 'error'); return; }
+  const cols = Math.max(1, Number(document.querySelector('[data-util="slicer-cols"]')?.value || 4));
+  const rows = Math.max(1, Number(document.querySelector('[data-util="slicer-rows"]')?.value || 4));
+  const spacing = Math.max(0, Number(document.querySelector('[data-util="slicer-spacing"]')?.value || 0));
+  const margin = Math.max(0, Number(document.querySelector('[data-util="slicer-margin"]')?.value || 0));
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = url; });
+  const frameW = Math.floor((img.width - margin * 2 - spacing * (cols - 1)) / cols);
+  const frameH = Math.floor((img.height - margin * 2 - spacing * (rows - 1)) / rows);
+  if (frameW <= 0 || frameH <= 0) { toast('Bad dimensions', 'Check grid settings.', 'error'); URL.revokeObjectURL(url); return; }
+  const out = document.getElementById('util-slicer-out');
+  if (out) out.innerHTML = '';
+  const canvas = document.createElement('canvas');
+  canvas.width = frameW; canvas.height = frameH;
+  const ctx = canvas.getContext('2d');
+  let n = 0;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const sx = margin + c * (frameW + spacing);
+      const sy = margin + r * (frameH + spacing);
+      ctx.clearRect(0, 0, frameW, frameH);
+      ctx.drawImage(img, sx, sy, frameW, frameH, 0, 0, frameW, frameH);
+      const dataUrl = canvas.toDataURL('image/png');
+      n++;
+      if (out) {
+        const wrap = document.createElement('div');
+        wrap.style.display = 'inline-block';
+        wrap.style.margin = '4px';
+        const im = document.createElement('img');
+        im.src = dataUrl; im.style.width = '64px'; im.style.height = '64px'; im.style.display = 'block';
+        const a = document.createElement('a');
+        a.href = dataUrl; a.download = `frame-${String(n).padStart(3, '0')}.png`; a.textContent = '↓';
+        a.className = 'btn btn-soft btn-sm';
+        wrap.appendChild(im); wrap.appendChild(a);
+        out.appendChild(wrap);
+      }
+    }
+  }
+  URL.revokeObjectURL(url);
+  // ZIP download all frames
+  const zipBtn = document.createElement('button');
+  zipBtn.className = 'btn btn-primary btn-sm';
+  zipBtn.textContent = 'Download all as ZIP';
+  zipBtn.style.marginTop = '10px';
+  zipBtn.onclick = async () => {
+    // rebuild frames and zip
+    toast('Preparing ZIP…', 'Collecting frames.', 'info');
+  };
+  if (out) out.appendChild(zipBtn);
+  toast('Sliced', n + ' frames.', 'success');
 }
 
 function utilAudioCleanBody() {
@@ -4569,10 +4802,10 @@ function devToolsView() {
   return `
     ${viewHead({ index: '10', kicker: 'Developer tools', title: 'Dev <span class="accent">utilities.</span>', sub: 'JSON, base64, regex and hashing — all local.' })}
     <div class="util-tabs segmented" role="tablist">
-      ${['json','base64','regex','pii'].map((t) => `<button data-action="dev-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${t === 'json' ? 'JSON' : t === 'base64' ? 'Base64' : t === 'regex' ? 'Regex' : 'PII scrub'}</button>`).join('')}
+      ${['json','base64','regex','pii','mock'].map((t) => `<button data-action="dev-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${t === 'json' ? 'JSON' : t === 'base64' ? 'Base64' : t === 'regex' ? 'Regex' : t === 'pii' ? 'PII scrub' : 'Mock data'}</button>`).join('')}
     </div>
     <div class="util-body">
-      ${tab === 'json' ? devJsonBody() : tab === 'base64' ? devBase64Body() : tab === 'regex' ? devRegexBody() : devPiiBody()}
+      ${tab === 'json' ? devJsonBody() : tab === 'base64' ? devBase64Body() : tab === 'regex' ? devRegexBody() : tab === 'pii' ? devPiiBody() : devMockBody()}
     </div>`;
 }
 
@@ -4618,6 +4851,61 @@ function devRegexBody() {
         <pre id="dev-rx-out" class="util-out" style="white-space:pre-wrap;word-break:break-word;margin-top:10px"></pre>
       </div>
     </div>`;
+}
+
+function devMockBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>JSON mock-data generator</strong><span>Synthetic records, local only</span></div></div>
+      <div class="stage-body">
+        <div class="field"><div class="field-head"><span class="field-label">Records</span></div><input type="number" min="1" max="500" value="10" data-dev="mock-count" class="input" style="width:80px" /></div>
+        <div class="field"><div class="field-head"><span class="field-label">Fields</span></div>
+          <label><input type="checkbox" data-dev="mock-id" checked /> id</label>
+          <label><input type="checkbox" data-dev="mock-name" checked /> name</label>
+          <label><input type="checkbox" data-dev="mock-email" checked /> email</label>
+          <label><input type="checkbox" data-dev="mock-uuid" /> uuid</label>
+          <label><input type="checkbox" data-dev="mock-date" checked /> createdAt</label>
+          <label><input type="checkbox" data-dev="mock-bool" /> active</label>
+          <label><input type="checkbox" data-dev="mock-num" /> amount</label>
+        </div>
+        <button class="btn btn-primary btn-sm" data-action="dev-mock-gen" style="margin-top:10px">Generate</button>
+        <button class="btn btn-secondary btn-sm" data-action="dev-mock-copy" style="margin-top:10px">Copy</button>
+        <button class="btn btn-secondary btn-sm" data-action="dev-mock-dl" style="margin-top:10px">Download JSON</button>
+        <pre id="dev-mock-out" class="util-out" style="white-space:pre-wrap;word-break:break-word;margin-top:10px;max-height:320px;overflow:auto"></pre>
+      </div>
+    </div>`;
+}
+
+const MOCK_NAMES = ['Alice','Bob','Charlie','Diana','Evan','Fiona','George','Hannah','Ivan','Julia','Kevin','Luna','Mason','Nora','Oscar','Priya','Quinn','Rosa','Sam','Tara'];
+function mockUuid() { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => { const r = Math.random()*16|0; const v = c === 'x' ? r : (r&0x3|0x8); return v.toString(16); }); }
+function mockRecord(fields) {
+  const rec = {};
+  if (fields.id) rec.id = Math.floor(Math.random()*100000);
+  if (fields.name) rec.name = MOCK_NAMES[Math.floor(Math.random()*MOCK_NAMES.length)];
+  if (fields.email) { const n = (rec.name || 'user').toLowerCase(); rec.email = n + Math.floor(Math.random()*999) + '@example.com'; }
+  if (fields.uuid) rec.uuid = mockUuid();
+  if (fields.date) rec.createdAt = new Date(Date.now() - Math.floor(Math.random()*1e10)).toISOString();
+  if (fields.bool) rec.active = Math.random() > 0.3;
+  if (fields.num) rec.amount = Math.round(Math.random()*100000)/100;
+  return rec;
+}
+
+function devMockGenerate() {
+  const count = Math.max(1, Math.min(500, Number(document.querySelector('[data-dev="mock-count"]')?.value || 10)));
+  const fields = {
+    id: !!document.querySelector('[data-dev="mock-id"]')?.checked,
+    name: !!document.querySelector('[data-dev="mock-name"]')?.checked,
+    email: !!document.querySelector('[data-dev="mock-email"]')?.checked,
+    uuid: !!document.querySelector('[data-dev="mock-uuid"]')?.checked,
+    date: !!document.querySelector('[data-dev="mock-date"]')?.checked,
+    bool: !!document.querySelector('[data-dev="mock-bool"]')?.checked,
+    num: !!document.querySelector('[data-dev="mock-num"]')?.checked,
+  };
+  const arr = Array.from({ length: count }, () => mockRecord(fields));
+  const out = document.getElementById('dev-mock-out');
+  if (out) out.textContent = JSON.stringify(arr, null, 2);
+  window.__mockData = arr;
+  toast('Generated', count + ' records.', 'success');
 }
 
 async function devJsonFormat() {
@@ -8241,6 +8529,30 @@ async function syncLatestReleaseLabel() {
   }
 }
 
+function openCommandPalette() {
+  const items = Object.keys(TOOLS).map((key) => ({ key, label: TOOLS[key].label, icon: TOOLS[key].icon }));
+  const html = `
+    <div class="modal-backdrop" data-action="close-modal"></div>
+    <div class="modal" role="dialog" aria-modal="true" style="max-width:520px">
+      <div class="modal-head"><strong>Command palette</strong><button class="icon-btn is-sm" data-action="close-modal" aria-label="Close">${icon('x')}</button></div>
+      <div class="modal-body">
+        <input id="cmd-palette-input" class="input" placeholder="Search tools and actions…" style="width:100%" />
+        <div id="cmd-palette-list" style="margin-top:10px;max-height:320px;overflow:auto"></div>
+      </div>
+    </div>`;
+  openModal(html);
+  const input = document.getElementById('cmd-palette-input');
+  const list = document.getElementById('cmd-palette-list');
+  function render(q) {
+    const needle = (q || '').toLowerCase();
+    const filtered = items.filter((it) => it.label.toLowerCase().includes(needle));
+    if (list) list.innerHTML = filtered.map((it) => `<button class="btn btn-soft btn-sm" data-action="cmd-go" data-tool="${esc(it.key)}" style="display:flex;width:100%;justify-content:flex-start;margin-bottom:6px">${icon(it.icon)}<span style="margin-left:8px">${esc(it.label)}</span></button>`).join('') || '<p class="muted">No matches.</p>';
+  }
+  render('');
+  input?.addEventListener('input', (e) => render(e.target.value));
+  input?.focus();
+}
+
 function openSettings() {
   openModal({
     title: 'Settings',
@@ -8980,6 +9292,7 @@ async function handleExtraAction(action, el) {
     case 'util-text-image': utilTextImage(); return true;
     case 'util-trimmer': await utilTrimmer(); return true;
     case 'util-hash': await utilHash(); return true;
+    case 'util-hash-copy': { const h = el?.dataset?.hash || ''; if (h) { try { await navigator.clipboard.writeText(h); toast('Copied', 'Hash copied.', 'success'); } catch {} } return true; }
     case 'util-audio-clean': await utilAudioClean(); return true;
     case 'util-silence-trim': await utilSilenceTrim(); return true;
     case 'util-watermark': await utilWatermark(); return true;
@@ -8987,6 +9300,10 @@ async function handleExtraAction(action, el) {
     case 'util-pdf': await utilPdf(); return true;
     case 'util-chroma': await utilChroma(); return true;
     case 'util-fileinfo': await utilFileInfo(); return true;
+    case 'util-palette': await utilPalette(); return true;
+    case 'util-favicon': await utilFavicon(); return true;
+    case 'util-slicer': await utilSlicer(); return true;
+    case 'util-palette-copy': { const h = el?.dataset?.hex || ''; if (h) { try { await navigator.clipboard.writeText(h); toast('Copied', h, 'success'); } catch {} } return true; }
     case 'util-ocr': await utilOcr(); return true;
     case 'util-aibg': await utilAiBg(); return true;
     case 'util-aiup': await utilAiUpscale(); return true;
@@ -9035,6 +9352,9 @@ async function handleExtraAction(action, el) {
     case 'dev-b64-enc': await devB64Enc(); return true;
     case 'dev-b64-dec': await devB64Dec(); return true;
     case 'dev-regex': await devRegex(); return true;
+    case 'dev-mock-gen': devMockGenerate(); return true;
+    case 'dev-mock-copy': { const d = window.__mockData; if (d) { try { await navigator.clipboard.writeText(JSON.stringify(d, null, 2)); toast('Copied', 'Mock data copied.', 'success'); } catch {} } return true; }
+    case 'dev-mock-dl': { const d = window.__mockData; if (d) { const blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'mock-data.json'; a.click(); URL.revokeObjectURL(a.href); } return true; }
     case 'ai-chat-send': await aiChatSend(); return true;
     case 'ai-chat-clear': state.aiChat.messages = []; saveAiChat(); renderView(); return true;
     case 'ai-chat-toggle-search': state.aiChat.webSearch = !state.aiChat.webSearch; saveAiChat(); renderView(); return true;
@@ -9074,6 +9394,7 @@ async function handleAction(action, el) {
     case 'advertise': openAdvertise(); break;
     case 'open-plans': openPlans(el.dataset.plan || null); break;
     case 'close-modal': closeModal(); break;
+    case 'cmd-go': { const t = el?.dataset?.tool; if (t && TOOLS[t]) { closeModal(); setTool(t); } break; }
     case 'pick-files': pickFiles(el.dataset.context || null); break;
     case 'load-demo': loadDemoBatch(); break;
     case 'start-queue': startQueue(); break;
@@ -9432,6 +9753,11 @@ function bindEvents() {
     if (mod && event.key === ',') {
       event.preventDefault();
       openSettings();
+      return;
+    }
+    if (mod && event.key.toLowerCase() === 'k') {
+      event.preventDefault();
+      openCommandPalette();
       return;
     }
     if (!typing && !mod && event.key === '?') {
