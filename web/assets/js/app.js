@@ -449,7 +449,8 @@ const state = {
     adjustments: { brightness: 100, contrast: 100, saturation: 100, hue: 0, blur: 0, sepia: 0, invert: 0, grayscale: 0 },
     history: [], historyIndex: -1,
     settings: { format: 'png', quality: .92 },
-    heal: { active: false, size: 20 }
+    heal: { active: false, size: 20 },
+    inpaint: { active: false, size: 20, mask: null }
   },
   videoEditor: {
     source: null, result: null, busy: false,
@@ -6821,7 +6822,10 @@ function imageEditorView() {
             <label class="btn btn-secondary btn-sm" for="ie-file">Choose image</label>
             <input id="ie-file" type="file" accept="image/*" data-ie="file" hidden />
             ${source ? `<div class="field"><img src="${source.url}" alt="preview" style="max-width:100%;border-radius:8px;margin-top:8px" /></div>` : ''}
-            <canvas id="ie-canvas" style="max-width:100%;border-radius:8px;margin-top:8px;display:${source ? 'block' : 'none'}"></canvas>
+            <div style="position:relative;display:${source ? 'block' : 'none'}">
+              <canvas id="ie-canvas" style="max-width:100%;border-radius:8px;margin-top:8px"></canvas>
+              <canvas id="ie-mask" style="position:absolute;left:0;top:8px;max-width:100%;border-radius:8px;pointer-events:none;opacity:0.55;display:${source ? 'block' : 'none'}"></canvas>
+            </div>
           </div>
         </div>
         <div class="stage-card" style="margin-top:12px">
@@ -6835,6 +6839,14 @@ function imageEditorView() {
              <div class="field" style="margin-top:8px">
                <div class="field-head"><span class="field-label">Heal mode</span><small>Click on the image to spot-heal</small></div>
                <button class="switch" role="switch" aria-checked="${data.heal.active}" aria-label="Heal mode" data-toggle="imageEditor.heal.active"></button>
+             </div>
+             <div class="field">
+               <div class="field-head"><span class="field-label">Inpaint mode</span><small>Paint a mask, then apply</small></div>
+               <button class="switch" role="switch" aria-checked="${data.inpaint.active}" aria-label="Inpaint mode" data-toggle="imageEditor.inpaint.active"></button>
+             </div>
+             <div style="display:flex;gap:6px;margin-top:6px">
+               <button class="btn btn-secondary btn-sm" data-action="ie-inpaint-apply" ${source && data.inpaint.active ? '' : 'disabled'}>Apply inpaint</button>
+               <button class="btn btn-ghost btn-sm" data-action="ie-inpaint-clear" ${source ? '' : 'disabled'}>Clear mask</button>
              </div>
              <div class="field">
                <div class="field-head"><span class="field-label">Brush size</span><span class="field-value">${data.heal.size}px</span></div>
@@ -7010,6 +7022,63 @@ function imageEditorHeal(cx, cy) {
   newImg.src = canvas.toDataURL();
 }
 
+function imageEditorInpaintClear() {
+  const mask = document.getElementById('ie-mask');
+  if (mask) {
+    const ctx = mask.getContext('2d');
+    ctx.clearRect(0, 0, mask.width, mask.height);
+  }
+}
+
+async function imageEditorInpaintApply() {
+  const data = state.imageEditor;
+  if (!data.source) return;
+  const canvas = document.getElementById('ie-canvas');
+  const mask = document.getElementById('ie-mask');
+  if (!canvas || !mask) return;
+  const ctx = canvas.getContext('2d');
+  // ensure canvas has rendered image
+  imageEditorRender();
+  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const maskData = mask.getContext('2d').getImageData(0, 0, mask.width, mask.height);
+  const w = canvas.width, h = canvas.height;
+  // for each masked pixel, fill with average of nearby non-masked
+  const radius = data.inpaint.size * 2;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const mi = (y * w + x) * 4;
+      if (maskData.data[mi + 3] < 50) continue; // not masked
+      let sr = 0, sg = 0, sb = 0, cnt = 0;
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const ni = (ny * w + nx) * 4;
+          if (maskData.data[ni + 3] > 50) continue; // skip masked
+          sr += imgData.data[ni]; sg += imgData.data[ni + 1]; sb += imgData.data[ni + 2]; cnt++;
+        }
+      }
+      if (cnt === 0) continue;
+      imgData.data[mi] = Math.round(sr / cnt);
+      imgData.data[mi + 1] = Math.round(sg / cnt);
+      imgData.data[mi + 2] = Math.round(sb / cnt);
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+  // update source image from canvas
+  const newImg = new Image();
+  newImg.onload = () => {
+    data.source.img = newImg;
+    data.source.url = canvas.toDataURL();
+    imageEditorInpaintClear();
+    imageEditorPushHistory();
+    renderView();
+    imageEditorRender();
+    toast('Inpainted', 'Masked region filled.', 'success');
+  };
+  newImg.src = canvas.toDataURL();
+}
+
 function bindImageEditor() {
   const fileInput = document.getElementById('ie-file');
   if (fileInput) fileInput.onchange = (e) => { const f = e.target.files?.[0]; if (f) imageEditorLoad(f); };
@@ -7030,18 +7099,48 @@ function bindImageEditor() {
   const sizeInput = document.querySelector('[data-ie-heal="size"]');
   if (sizeInput) sizeInput.oninput = () => { state.imageEditor.heal.size = Number(sizeInput.value); const v = sizeInput.closest('.field')?.querySelector('.field-value'); if (v) v.textContent = sizeInput.value + 'px'; };
   const canvas = document.getElementById('ie-canvas');
+  const maskCanvas = document.getElementById('ie-mask');
   if (canvas) {
-    canvas.style.cursor = state.imageEditor.heal.active ? 'crosshair' : '';
+    canvas.style.cursor = (state.imageEditor.heal.active || state.imageEditor.inpaint.active) ? 'crosshair' : '';
+    // sync mask canvas size
+    if (maskCanvas && state.imageEditor.source) {
+      maskCanvas.width = state.imageEditor.source.width;
+      maskCanvas.height = state.imageEditor.source.height;
+      maskCanvas.style.width = canvas.style.width;
+    }
     canvas.onclick = (e) => {
       const data = state.imageEditor;
-      if (!data.heal.active || !data.source) return;
+      if (!data.source) return;
       const rect = canvas.getBoundingClientRect();
       const scaleX = canvas.width / rect.width;
       const scaleY = canvas.height / rect.height;
       const x = Math.round((e.clientX - rect.left) * scaleX);
       const y = Math.round((e.clientY - rect.top) * scaleY);
-      imageEditorHeal(x, y);
+      if (data.heal.active) imageEditorHeal(x, y);
     };
+    // inpaint mask painting
+    if (state.imageEditor.inpaint.active && maskCanvas) {
+      let painting = false;
+      const paint = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const x = (e.clientX - rect.left) * scaleX;
+        const y = (e.clientY - rect.top) * scaleY;
+        const mctx = maskCanvas.getContext('2d');
+        mctx.fillStyle = 'rgba(255,0,0,0.8)';
+        mctx.beginPath();
+        mctx.arc(x, y, state.imageEditor.inpaint.size, 0, Math.PI * 2);
+        mctx.fill();
+      };
+      canvas.onpointerdown = (e) => { painting = true; paint(e); };
+      canvas.onpointermove = (e) => { if (painting) paint(e); };
+      canvas.onpointerup = () => { painting = false; };
+    } else {
+      canvas.onpointerdown = null;
+      canvas.onpointermove = null;
+      canvas.onpointerup = null;
+    }
   }
   const q = document.querySelector('[data-ie="quality"]');
   if (q) q.oninput = () => { state.imageEditor.settings.quality = Number(q.value); };
@@ -10523,6 +10622,7 @@ function handleToggle(el) {
   if (path.startsWith('gif.')) syncToolChrome('gif');
   if (path.startsWith('reframe.')) renderView();
   if (path.startsWith('imageEditor.heal')) renderView();
+  if (path.startsWith('imageEditor.inpaint')) renderView();
   if (path.startsWith('recorder.')) {
     const status = state.recorder.status;
     if (!['idle', 'finished'].includes(status)) {
@@ -10883,6 +10983,8 @@ async function handleAction(action, el) {
     case 'ie-redo': imageEditorRedo(); return true;
     case 'ie-reset': imageEditorReset(); return true;
     case 'ie-export': await imageEditorExport(); return true;
+    case 'ie-inpaint-apply': await imageEditorInpaintApply(); return true;
+    case 'ie-inpaint-clear': imageEditorInpaintClear(); return true;
     case 've-undo': videoEditorUndo(); return true;
     case 've-redo': videoEditorRedo(); return true;
     case 've-reset': videoEditorReset(); return true;
