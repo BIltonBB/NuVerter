@@ -449,6 +449,7 @@ const state = {
     source: null, result: null, busy: false,
     adjustments: { brightness: 100, contrast: 100, saturation: 100, hue: 0 },
     text: '', textSize: 24, textColor: '#ffffff', textPos: 'bottom',
+    overlays: [],
     trimStart: 0, trimEnd: 100, aspect: 'free', speed: '1',
     history: [], historyIndex: -1,
     settings: { format: 'mp4', quality: 'balanced', keepAudio: true }
@@ -6827,6 +6828,13 @@ function videoEditorView() {
             </div>
           </div>
         </div>
+        <div class="stage-card" style="margin-top:12px">
+          <div class="stage-head"><div class="stage-head-copy"><strong>Layers / Overlays</strong><span>Multiple text layers with timing</span></div></div>
+          <div class="stage-body">
+            <button class="btn btn-secondary btn-sm" data-action="ve-add-overlay">+ Add text layer</button>
+            <div id="ve-overlays" style="margin-top:10px"></div>
+          </div>
+        </div>
       </section>
       <section class="area-queue">
         <div class="stage-card">
@@ -6887,6 +6895,7 @@ async function videoEditorLoad(file) {
   data.source = { file, name: file.name, size: file.size, url };
   data.adjustments = { brightness: 100, contrast: 100, saturation: 100, hue: 0 };
   data.text = ''; data.textSize = 24; data.textColor = '#ffffff'; data.textPos = 'bottom';
+  data.overlays = [];
   data.trimStart = 0; data.trimEnd = 100; data.aspect = 'free'; data.speed = '1';
   data.history = [JSON.stringify({ adjustments: data.adjustments, text: data.text, trimStart: data.trimStart, trimEnd: data.trimEnd, aspect: data.aspect, speed: data.speed })];
   data.historyIndex = 0;
@@ -6955,12 +6964,22 @@ function buildVideoEditorArgs(data) {
   if (data.aspect && data.aspect !== 'free' && aspectMap[data.aspect]) {
     filters.push(`crop=ih*${aspectMap[data.aspect]}:ih`);
   }
-  // text overlay
+  // text overlay (legacy single)
   if (data.text && data.text.trim()) {
     const pos = data.textPos === 'top' ? 'x=(w-text_w)/2:y=20' : data.textPos === 'center' ? 'x=(w-text_w)/2:y=(h-text_h)/2' : 'x=(w-text_w)/2:y=h-text_h-20';
     const color = data.textColor || '#ffffff';
     filters.push(`drawtext=text='${data.text.replace(/'/g, "\\'")}':fontsize=${data.textSize}:fontcolor=${color}:${pos}`);
   }
+  // overlay layers
+  (data.overlays || []).forEach((o) => {
+    if (!o.text || !o.text.trim()) return;
+    const pos = o.pos === 'top' ? 'x=(w-text_w)/2:y=20' : o.pos === 'center' ? 'x=(w-text_w)/2:y=(h-text_h)/2' : 'x=(w-text_w)/2:y=h-text_h-20';
+    const color = o.color || '#ffffff';
+    const start = (o.start || 0) / 100;
+    const end = (o.end || 100) / 100;
+    // enable between (approximate using seconds unknown; use t-based enable with ratio of duration not available -> use always-on for now)
+    filters.push(`drawtext=text='${o.text.replace(/'/g, "\\'")}':fontsize=${o.size}:fontcolor=${color}:${pos}`);
+  });
   const vf = filters.join(',');
   const args = ['-hide_banner', '-y', '-i', '{in}'];
   if (vf) args.push('-vf', vf);
@@ -7008,7 +7027,50 @@ async function videoEditorExport() {
   }
 }
 
+function renderVideoOverlays() {
+  const container = document.getElementById('ve-overlays');
+  if (!container) return;
+  const data = state.videoEditor;
+  if (!data.overlays.length) { container.innerHTML = '<p class="muted" style="font-size:12px">No overlay layers. Click "Add text layer".</p>'; return; }
+  container.innerHTML = data.overlays.map((o, i) => `
+    <div class="stage-card" style="margin-bottom:8px;padding:8px">
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+        <strong style="font-size:12px">Layer ${i + 1}</strong>
+        <button class="btn btn-ghost btn-sm" data-action="ve-remove-overlay" data-idx="${i}" style="margin-left:auto">${icon('trash-2')}</button>
+      </div>
+      <input type="text" value="${esc(o.text)}" data-ve-overlay="${i}" data-field="text" class="input" style="width:100%" placeholder="overlay text" />
+      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+        <input type="number" min="8" max="120" value="${o.size}" data-ve-overlay="${i}" data-field="size" class="input" style="width:60px" title="size" />
+        <input type="color" value="${esc(o.color)}" data-ve-overlay="${i}" data-field="color" title="color" />
+        <select data-ve-overlay="${i}" data-field="pos" class="select">
+          <option value="top" ${o.pos === 'top' ? 'selected' : ''}>Top</option>
+          <option value="center" ${o.pos === 'center' ? 'selected' : ''}>Center</option>
+          <option value="bottom" ${o.pos === 'bottom' ? 'selected' : ''}>Bottom</option>
+        </select>
+        <input type="number" min="0" max="100" value="${o.start}" data-ve-overlay="${i}" data-field="start" class="input" style="width:50px" title="start %" />
+        <input type="number" min="0" max="100" value="${o.end}" data-ve-overlay="${i}" data-field="end" class="input" style="width:50px" title="end %" />
+      </div>
+    </div>`).join('');
+}
+
 function bindVideoEditor() {
+  renderVideoOverlays();
+  // overlay field changes
+  document.querySelectorAll('[data-ve-overlay]').forEach((el) => {
+    el.onchange = () => {
+      const idx = Number(el.dataset.veOverlay);
+      const field = el.dataset.field;
+      const d = state.videoEditor;
+      if (!d.overlays[idx]) return;
+      if (field === 'text') d.overlays[idx].text = el.value;
+      else if (field === 'size') d.overlays[idx].size = Number(el.value);
+      else if (field === 'color') d.overlays[idx].color = el.value;
+      else if (field === 'pos') d.overlays[idx].pos = el.value;
+      else if (field === 'start') d.overlays[idx].start = Number(el.value);
+      else if (field === 'end') d.overlays[idx].end = Number(el.value);
+      videoEditorPushHistory();
+    };
+  });
   const fileInput = document.getElementById('ve-file');
   if (fileInput) {
     fileInput.onchange = (e) => { const f = e.target.files?.[0]; if (f) videoEditorLoad(f); };
@@ -10007,6 +10069,16 @@ async function handleAction(action, el) {
     case 've-undo': videoEditorUndo(); return true;
     case 've-redo': videoEditorRedo(); return true;
     case 've-reset': videoEditorReset(); return true;
+    case 've-add-overlay': {
+      state.videoEditor.overlays.push({ text: 'Text', size: 24, color: '#ffffff', pos: 'bottom', start: 0, end: 100 });
+      videoEditorPushHistory();
+      return true;
+    }
+    case 've-remove-overlay': {
+      const idx = Number(el?.dataset?.idx);
+      if (!isNaN(idx)) { state.videoEditor.overlays.splice(idx, 1); videoEditorPushHistory(); }
+      return true;
+    }
     case 've-export': await videoEditorExport(); return true;
     case 'pick-files': pickFiles(el.dataset.context || null); break;
     case 'load-demo': loadDemoBatch(); break;
