@@ -397,6 +397,7 @@ const state = {
   aiTools: { tab: 'aibg' },
   docSearch: { docs: [], query: '' },
   workflow: { source: null, nodes: [], edges: [], running: false, pan: { x: 0, y: 0 }, zoom: 1, connectFrom: null },
+  workflows: [],
   aiImage: { model: 'sd-turbo', folderName: '', status: '', busy: false, apiKey: (localStorage.getItem('NuVerter-pollinations-key') || '') },
   audioTools: { tab: 'audioclean' },
   compressor: {
@@ -505,6 +506,7 @@ function loadLocalState() {
     state.prefs = { ...state.prefs, ...prefs };
     applyAppearance();
     state.aiImage.folderName = localStorage.getItem('NuVerter-ai-folder') || '';
+    try { state.workflows = JSON.parse(localStorage.getItem('NuVerter-workflows') || '[]'); } catch { state.workflows = []; }
     try {
       const savedChat = JSON.parse(localStorage.getItem('NuVerter-ai-chat') || '{}');
       if (savedChat && typeof savedChat === 'object') {
@@ -7479,6 +7481,11 @@ function workflowView() {
             <div style="margin-top:10px;display:flex;gap:6px">
               <button class="btn btn-primary btn-sm" data-action="wf-run" ${src && data.nodes.length && !data.running ? '' : 'disabled'}>${icon('play')}Run</button>
               <button class="btn btn-ghost btn-sm" data-action="wf-clear">Clear</button>
+              <button class="btn btn-secondary btn-sm" data-action="wf-save">Save</button>
+              <button class="btn btn-secondary btn-sm" data-action="wf-export">Export JSON</button>
+              <button class="btn btn-secondary btn-sm" data-action="wf-import">Import JSON</button>
+              ${state.workflows.length ? `<select id="wf-saved" class="select">${state.workflows.map((w) => `<option value="${esc(w.name)}">${esc(w.name)}</option>`).join('')}</select>
+              <button class="btn btn-secondary btn-sm" data-action="wf-load-saved">Load</button>` : ''}
             </div>
             <div id="wf-out" class="util-out" style="margin-top:8px"></div>
           </div>
@@ -10672,6 +10679,56 @@ async function handleExtraAction(action, el) {
       state.workflow.edges = [];
       state.workflow.connectFrom = null;
       renderView();
+      return true;
+    }
+    case 'wf-save': {
+      const name = prompt('Workflow name:', 'My workflow');
+      if (!name) return true;
+      const snap = { name, nodes: JSON.parse(JSON.stringify(state.workflow.nodes)), edges: JSON.parse(JSON.stringify(state.workflow.edges)) };
+      state.workflows = state.workflows.filter((w) => w.name !== name);
+      state.workflows.push(snap);
+      try { localStorage.setItem('NuVerter-workflows', JSON.stringify(state.workflows)); } catch {}
+      toast('Saved', name, 'success');
+      return true;
+    }
+    case 'wf-export': {
+      const snap = { name: 'workflow', nodes: state.workflow.nodes, edges: state.workflow.edges };
+      const blob = new Blob([JSON.stringify(snap, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = 'workflow.json'; a.click(); URL.revokeObjectURL(a.href);
+      return true;
+    }
+    case 'wf-import': {
+      const input = document.createElement('input');
+      input.type = 'file'; input.accept = 'application/json';
+      input.onchange = () => {
+        const f = input.files?.[0]; if (!f) return;
+        const r = new FileReader();
+        r.onload = () => {
+          try {
+            const j = JSON.parse(r.result);
+            state.workflow.nodes = Array.isArray(j.nodes) ? j.nodes : [];
+            state.workflow.edges = Array.isArray(j.edges) ? j.edges : [];
+            state.workflow.connectFrom = null;
+            renderView();
+            toast('Imported', 'Workflow loaded.', 'success');
+          } catch (e) { toast('Import failed', e?.message || 'Bad JSON.', 'error'); }
+        };
+        r.readAsText(f);
+      };
+      input.click();
+      return true;
+    }
+    case 'wf-load-saved': {
+      const name = document.getElementById('wf-saved')?.value;
+      const w = state.workflows.find((x) => x.name === name);
+      if (w) {
+        state.workflow.nodes = JSON.parse(JSON.stringify(w.nodes || []));
+        state.workflow.edges = JSON.parse(JSON.stringify(w.edges || []));
+        state.workflow.connectFrom = null;
+        renderView();
+        toast('Loaded', name, 'success');
+      }
       return true;
     }
     case 'wf-run': {
