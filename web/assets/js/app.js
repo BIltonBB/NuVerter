@@ -437,6 +437,12 @@ const state = {
     micStream: null,
     countdownTimer: null,
     settings: { format: 'webm', quality: '1080', fps: 30, mic: true, systemAudio: true, countdown: 3, bitrate: 8000 }
+  },
+  imageEditor: {
+    source: null, result: null, busy: false,
+    adjustments: { brightness: 100, contrast: 100, saturation: 100, hue: 0, blur: 0, sepia: 0, invert: 0, grayscale: 0 },
+    history: [], historyIndex: -1,
+    settings: { format: 'png', quality: .92 }
   }
 };
 
@@ -455,7 +461,8 @@ const TOOLS = {
   aitools: { label: 'AI Tools', icon: 'settings', index: '12' },
   audiotools: { label: 'Audio Tools', icon: 'music', index: '12' },
   pdftools: { label: 'PDF Tools', icon: 'file', index: '13' },
-  aichat: { label: 'AI Chat', icon: 'command', index: '14' }
+  aichat: { label: 'AI Chat', icon: 'command', index: '14' },
+  imageditor: { label: 'Image Editor', icon: 'sliders-horizontal', index: '15' }
 };
 
 let AVIF_SUPPORTED = false;
@@ -6539,6 +6546,169 @@ async function handleSubtitleAction(action, el) {
   }
 }
 
+function imageEditorView() {
+  const data = state.imageEditor;
+  const a = data.adjustments;
+  const source = data.source;
+  return `
+    ${viewHead({ index: '15', kicker: 'Image editor', title: 'Non-destructive <span class="accent">adjustments.</span>', sub: 'Adjust, preview, undo/redo, then export. Original is never modified.' })}
+    <div class="tool-grid">
+      <section class="area-drop">
+        <div class="stage-card">
+          <div class="stage-head"><div class="stage-head-copy"><strong>Source</strong><span>Load an image to edit</span></div></div>
+          <div class="stage-body">
+            <label class="btn btn-secondary btn-sm" for="ie-file">Choose image</label>
+            <input id="ie-file" type="file" accept="image/*" data-ie="file" hidden />
+            ${source ? `<div class="field"><img src="${source.url}" alt="preview" style="max-width:100%;border-radius:8px;margin-top:8px" /></div>` : ''}
+            <canvas id="ie-canvas" style="max-width:100%;border-radius:8px;margin-top:8px;display:${source ? 'block' : 'none'}"></canvas>
+          </div>
+        </div>
+        <div class="stage-card" style="margin-top:12px">
+          <div class="stage-head"><div class="stage-head-copy"><strong>Adjustments</strong><span>Live preview</span></div></div>
+          <div class="stage-body">
+            ${[['brightness','Brightness',0,200,1],['contrast','Contrast',0,200,1],['saturation','Saturation',0,200,1],['hue','Hue',-180,180,1],['blur','Blur',0,20,.1],['sepia','Sepia',0,100,1],['grayscale','Grayscale',0,100,1],['invert','Invert',0,100,1]].map(([k,l,min,max,step]) => `
+              <div class="field">
+                <div class="field-head"><span class="field-label">${l}</span><span class="field-value" data-ie-val="${k}">${a[k]}</span></div>
+                <input type="range" min="${min}" max="${max}" step="${step}" value="${a[k]}" data-ie="${k}" />
+              </div>`).join('')}
+          </div>
+        </div>
+      </section>
+      <section class="area-queue">
+        <div class="stage-card">
+          <div class="stage-head"><div class="stage-head-copy"><strong>History</strong><span>Undo / redo</span></div></div>
+          <div class="stage-body">
+            <div style="display:flex;gap:6px;margin-bottom:10px">
+              <button class="btn btn-secondary btn-sm" data-action="ie-undo" ${data.historyIndex <= 0 ? 'disabled' : ''}>${icon('undo-2')}Undo</button>
+              <button class="btn btn-secondary btn-sm" data-action="ie-redo" ${data.historyIndex >= data.history.length - 1 ? 'disabled' : ''}>${icon('repeat')}Redo</button>
+              <button class="btn btn-ghost btn-sm" data-action="ie-reset">${icon('rotate-ccw')}Reset</button>
+            </div>
+            <div class="field">
+              <div class="field-head"><span class="field-label">Export format</span></div>
+              <select data-ie="format" class="select">
+                <option value="png" ${data.settings.format === 'png' ? 'selected' : ''}>PNG</option>
+                <option value="jpg" ${data.settings.format === 'jpg' ? 'selected' : ''}>JPG</option>
+                <option value="webp" ${data.settings.format === 'webp' ? 'selected' : ''}>WEBP</option>
+              </select>
+            </div>
+            <div class="field">
+              <div class="field-head"><span class="field-label">Quality</span></div>
+              <input type="range" min="0.3" max="1" step="0.01" value="${data.settings.quality}" data-ie="quality" />
+            </div>
+            <button class="btn btn-primary btn-sm" data-action="ie-export" ${source ? '' : 'disabled'} style="margin-top:10px">${icon('download')}Export</button>
+            <div id="ie-out" class="util-out"></div>
+          </div>
+        </div>
+      </section>
+    </div>`;
+}
+
+async function imageEditorLoad(file) {
+  const data = state.imageEditor;
+  if (data.source?._url) URL.revokeObjectURL(data.source._url);
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = url; });
+  data.source = { file, name: file.name, size: file.size, url, img, width: img.naturalWidth, height: img.naturalHeight };
+  data.adjustments = { brightness: 100, contrast: 100, saturation: 100, hue: 0, blur: 0, sepia: 0, invert: 0, grayscale: 0 };
+  data.history = [JSON.stringify(data.adjustments)];
+  data.historyIndex = 0;
+  data.result = null;
+  renderView();
+  imageEditorRender();
+  toast('Image loaded', file.name, 'success');
+}
+
+function imageEditorRender() {
+  const data = state.imageEditor;
+  if (!data.source) return;
+  const canvas = document.getElementById('ie-canvas');
+  if (!canvas) return;
+  const img = data.source.img;
+  canvas.width = data.source.width;
+  canvas.height = data.source.height;
+  const ctx = canvas.getContext('2d');
+  const a = data.adjustments;
+  ctx.filter = `brightness(${a.brightness}%) contrast(${a.contrast}%) saturate(${a.saturation}%) hue-rotate(${a.hue}deg) blur(${a.blur}px) sepia(${a.sepia}%) grayscale(${a.grayscale}%) invert(${a.invert}%)`;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0);
+  ctx.filter = 'none';
+}
+
+function imageEditorPushHistory() {
+  const data = state.imageEditor;
+  const snap = JSON.stringify(data.adjustments);
+  if (data.historyIndex < data.history.length - 1) data.history = data.history.slice(0, data.historyIndex + 1);
+  data.history.push(snap);
+  if (data.history.length > 40) { data.history.shift(); }
+  data.historyIndex = data.history.length - 1;
+}
+
+function imageEditorUndo() {
+  const data = state.imageEditor;
+  if (data.historyIndex <= 0) return;
+  data.historyIndex--;
+  data.adjustments = JSON.parse(data.history[data.historyIndex]);
+  renderView();
+  imageEditorRender();
+}
+
+function imageEditorRedo() {
+  const data = state.imageEditor;
+  if (data.historyIndex >= data.history.length - 1) return;
+  data.historyIndex++;
+  data.adjustments = JSON.parse(data.history[data.historyIndex]);
+  renderView();
+  imageEditorRender();
+}
+
+function imageEditorReset() {
+  const data = state.imageEditor;
+  data.adjustments = { brightness: 100, contrast: 100, saturation: 100, hue: 0, blur: 0, sepia: 0, invert: 0, grayscale: 0 };
+  imageEditorPushHistory();
+  renderView();
+  imageEditorRender();
+}
+
+async function imageEditorExport() {
+  const data = state.imageEditor;
+  if (!data.source) return;
+  data.busy = true;
+  const canvas = document.getElementById('ie-canvas');
+  if (!canvas) { data.busy = false; return; }
+  const mime = data.settings.format === 'jpg' ? 'image/jpeg' : data.settings.format === 'webp' ? 'image/webp' : 'image/png';
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, mime, data.settings.quality));
+  if (!blob) { toast('Export failed', 'Encoding unsupported.', 'error'); data.busy = false; return; }
+  const name = data.source.name.replace(/\.[^.]+$/, '') + '-edited.' + (data.settings.format === 'jpg' ? 'jpg' : data.settings.format);
+  const record = await registerOutput({ tool: 'imageditor', sourceName: data.source.name, sourceSize: data.source.size, blob, name, mime });
+  data.result = record;
+  data.busy = false;
+  const out = document.getElementById('ie-out');
+  if (out) out.innerHTML = `<a class="btn btn-secondary btn-sm" href="${record.url}" download="${esc(name)}">${icon('download')}Download ${esc(name)}</a>`;
+  toast('Exported', name, 'success');
+}
+
+function bindImageEditor() {
+  const fileInput = document.getElementById('ie-file');
+  if (fileInput) fileInput.onchange = (e) => { const f = e.target.files?.[0]; if (f) imageEditorLoad(f); };
+  document.querySelectorAll('[data-ie]').forEach((el) => {
+    const key = el.dataset.ie;
+    if (key === 'file' || key === 'format' || key === 'quality') return;
+    el.oninput = () => {
+      const data = state.imageEditor;
+      data.adjustments[key] = Number(el.value);
+      const v = document.querySelector(`[data-ie-val="${key}"]`);
+      if (v) v.textContent = el.value;
+      imageEditorRender();
+    };
+    el.onchange = () => { imageEditorPushHistory(); };
+  });
+  const fmt = document.querySelector('[data-ie="format"]');
+  if (fmt) fmt.onchange = () => { state.imageEditor.settings.format = fmt.value; };
+  const q = document.querySelector('[data-ie="quality"]');
+  if (q) q.oninput = () => { state.imageEditor.settings.quality = Number(q.value); };
+}
+
 function renderView() {
   const view = $('#view');
   if (!view) return;
@@ -6554,6 +6724,7 @@ function renderView() {
   else if (state.tool === 'subtitles') html = subtitleEditorView();
   else if (state.tool === 'utilities' || state.tool === 'practical' || state.tool === 'audiotools') html = utilitiesView();
   else if (state.tool === 'devtools') html = devToolsView();
+  else if (state.tool === 'imageditor') html = imageEditorView();
   else if (state.tool === 'aitools') html = aiToolsView();
   else if (state.tool === 'pdftools') html = pdfToolsView();
   else if (state.tool === 'aichat') html = aiChatView();
@@ -6576,6 +6747,7 @@ function renderView() {
     syncRecorderBar();
   }
   if (state.tool === 'history') renderHistoryList();
+  if (state.tool === 'imageditor') bindImageEditor();
   if (state.utilities.tab === 'tts' && ['utilities','practical','audiotools'].includes(state.tool)) utilTtsEnsureVoices();
   if (state.tool === 'subtitles') { bindSubtitleOverlay(); bindSubtitleEditorInputs(); }
   $$('input[type="range"]').forEach((input) => setCssPct(input));
@@ -9486,6 +9658,10 @@ async function handleAction(action, el) {
     case 'open-plans': openPlans(el.dataset.plan || null); break;
     case 'close-modal': closeModal(); break;
     case 'cmd-go': { const t = el?.dataset?.tool; if (t && TOOLS[t]) { closeModal(); setTool(t); } break; }
+    case 'ie-undo': imageEditorUndo(); return true;
+    case 'ie-redo': imageEditorRedo(); return true;
+    case 'ie-reset': imageEditorReset(); return true;
+    case 'ie-export': await imageEditorExport(); return true;
     case 'pick-files': pickFiles(el.dataset.context || null); break;
     case 'load-demo': loadDemoBatch(); break;
     case 'start-queue': startQueue(); break;
