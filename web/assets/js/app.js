@@ -3759,7 +3759,7 @@ function utilitiesView() {
       <div class="util-tab-group">
         <span class="util-tab-group-label">Media</span>
         <div class="util-tabs segmented" role="tablist">
-          ${['frames','spritesheet','slicer','textimage','trimmer','watermark','upscale','pdf','chroma','fileinfo','palette','favicon'].map((t) => `<button data-action="util-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${t === 'frames' ? 'Frames' : t === 'spritesheet' ? 'Spritesheet' : t === 'slicer' ? 'Slice sheet' : t === 'textimage' ? 'Text card' : t === 'trimmer' ? 'Trimmer' : t === 'watermark' ? 'Watermark' : t === 'upscale' ? 'Upscale' : t === 'pdf' ? 'PDF' : t === 'chroma' ? 'Chroma key' : t === 'palette' ? 'Palette' : t === 'favicon' ? 'Favicon' : 'File info'}</button>`).join('')}
+          ${['frames','spritesheet','slicer','textimage','trimmer','watermark','upscale','pdf','chroma','fileinfo','palette','favicon','vector'].map((t) => `<button data-action="util-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${t === 'frames' ? 'Frames' : t === 'spritesheet' ? 'Spritesheet' : t === 'slicer' ? 'Slice sheet' : t === 'textimage' ? 'Text card' : t === 'trimmer' ? 'Trimmer' : t === 'watermark' ? 'Watermark' : t === 'upscale' ? 'Upscale' : t === 'pdf' ? 'PDF' : t === 'chroma' ? 'Chroma key' : t === 'palette' ? 'Palette' : t === 'favicon' ? 'Favicon' : t === 'vector' ? 'Vectorize' : 'File info'}</button>`).join('')}
         </div>
       </div>
       <div class="util-tab-group">
@@ -3795,6 +3795,7 @@ function utilitiesView() {
         tab === 'palette' ? utilPaletteBody() :
         tab === 'favicon' ? utilFaviconBody() :
         tab === 'slicer' ? utilSlicerBody() :
+        tab === 'vector' ? utilVectorBody() :
         tab === 'audioclean' ? utilAudioCleanBody() :
         tab === 'silencetrim' ? utilSilenceTrimBody() :
         tab === 'tts' ? utilTtsBody() :
@@ -4372,6 +4373,58 @@ async function utilSlicer() {
   };
   if (out) out.appendChild(zipBtn);
   toast('Sliced', n + ' frames.', 'success');
+}
+
+function utilVectorBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Image vectorization</strong><span>Raster image → SVG (Potrace)</span></div></div>
+      <div class="stage-body">
+        <label class="btn btn-secondary btn-sm" for="util-vector-file">Choose image</label>
+        <input id="util-vector-file" type="file" accept="image/*" data-util="vector-file" hidden />
+        <div class="field" style="margin-top:10px">
+          <div class="field-head"><span class="field-label">Turd size (speckle suppression)</span></div>
+          <input type="number" min="0" max="20" value="2" data-util="vector-turd" class="input" style="width:80px" />
+        </div>
+        <div class="field">
+          <div class="field-head"><span class="field-label">Alpha max (corner threshold)</span></div>
+          <input type="number" min="0" max="1.3" step="0.1" value="1" data-util="vector-alpha" class="input" style="width:80px" />
+        </div>
+        <button class="btn btn-primary btn-sm" data-action="util-vector" style="margin-top:10px">Vectorize</button>
+        <div id="util-vector-out" class="util-out"></div>
+      </div>
+    </div>`;
+}
+
+async function utilVector() {
+  const file = document.querySelector('[data-util="vector-file"]')?.files?.[0];
+  if (!file) { toast('No image', 'Choose an image.', 'error'); return; }
+  const out = document.getElementById('util-vector-out');
+  if (out) out.innerHTML = 'Loading Potrace...';
+  if (!window.Potrace) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'vendor/potrace/potrace.js';
+      s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+  const turd = Number(document.querySelector('[data-util="vector-turd"]')?.value || 2);
+  const alpha = Number(document.querySelector('[data-util="vector-alpha"]')?.value || 1);
+  if (window.Potrace?.setParameter) window.Potrace.setParameter({ turdsize: turd, alphamax: alpha });
+  await new Promise((resolve) => {
+    window.Potrace.loadImageFromFile(file);
+    // wait for isReady
+    const check = () => { if (window.Potrace.img?.complete && window.Potrace.img?.naturalWidth) resolve(); else setTimeout(check, 100); };
+    setTimeout(check, 100);
+  });
+  window.Potrace.process(() => {
+    const svg = window.Potrace.getSVG(1);
+    if (out) out.innerHTML = `<div style="margin-top:8px">${svg}</div>
+      <button class="btn btn-secondary btn-sm" data-action="util-vector-dl" style="margin-top:8px">Download SVG</button>`;
+    window.__lastSvg = svg;
+    toast('Vectorized', 'SVG ready.', 'success');
+  });
 }
 
 function utilAudioCleanBody() {
@@ -9574,6 +9627,8 @@ async function handleExtraAction(action, el) {
     case 'util-palette': await utilPalette(); return true;
     case 'util-favicon': await utilFavicon(); return true;
     case 'util-slicer': await utilSlicer(); return true;
+    case 'util-vector': await utilVector(); return true;
+    case 'util-vector-dl': { if (window.__lastSvg) { const blob = new Blob([window.__lastSvg], { type: 'image/svg+xml' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'vectorized.svg'; a.click(); URL.revokeObjectURL(a.href); } return true; }
     case 'util-palette-copy': { const h = el?.dataset?.hex || ''; if (h) { try { await navigator.clipboard.writeText(h); toast('Copied', h, 'success'); } catch {} } return true; }
     case 'util-ocr': await utilOcr(); return true;
     case 'util-aibg': await utilAiBg(); return true;
