@@ -396,6 +396,7 @@ const state = {
   practical: { tab: 'diff' },
   aiTools: { tab: 'aibg' },
   docSearch: { docs: [], query: '' },
+  workflow: { source: null, steps: [], running: false },
   aiImage: { model: 'sd-turbo', folderName: '', status: '', busy: false, apiKey: (localStorage.getItem('NuVerter-pollinations-key') || '') },
   audioTools: { tab: 'audioclean' },
   compressor: {
@@ -482,7 +483,8 @@ const TOOLS = {
   aichat: { label: 'AI Chat', icon: 'command', index: '14' },
   imageditor: { label: 'Image Editor', icon: 'sliders-horizontal', index: '15' },
   videoeditor: { label: 'Video Editor', icon: 'film', index: '16' },
-  reframe: { label: 'Auto Reframe', icon: 'crop', index: '17' }
+  reframe: { label: 'Auto Reframe', icon: 'crop', index: '17' },
+  workflow: { label: 'Workflows', icon: 'repeat', index: '18' }
 };
 
 let AVIF_SUPPORTED = false;
@@ -7440,6 +7442,116 @@ async function reframeExport() {
   }
 }
 
+function workflowView() {
+  const data = state.workflow;
+  const src = data.source;
+  const stepLabels = { trim: 'Trim', extractAudio: 'Extract audio', ocr: 'OCR text' };
+  return `
+    ${viewHead({ index: '18', kicker: 'Workflows', title: 'Sequential <span class="accent">pipelines.</span>', sub: 'Chain a few local operations. Runs in order on this device.' })}
+    <div class="tool-grid">
+      <section class="area-drop">
+        <div class="stage-card">
+          <div class="stage-head"><div class="stage-head-copy"><strong>Source</strong><span>Pick a starting file</span></div></div>
+          <div class="stage-body">
+            <input type="file" id="wf-file" hidden />
+            <label class="btn btn-secondary btn-sm" for="wf-file">Choose file</label>
+            ${src ? `<p style="margin-top:8px">${esc(src.name)}</p>` : ''}
+            <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
+              <select id="wf-add-step" class="select">
+                <option value="trim">Trim</option>
+                <option value="extractAudio">Extract audio</option>
+                <option value="ocr">OCR text</option>
+              </select>
+              <button class="btn btn-secondary btn-sm" data-action="wf-add-step">Add step</button>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="area-queue">
+        <div class="stage-card">
+          <div class="stage-head"><div class="stage-head-copy"><strong>Pipeline</strong><span>${data.steps.length} step(s)</span></div></div>
+          <div class="stage-body">
+            ${data.steps.length ? data.steps.map((s, i) => `
+              <div class="settings-item">
+                <div class="settings-item-copy"><strong>${i + 1}. ${stepLabels[s.type] || s.type}</strong><small>${esc(s.status || 'idle')}${s.error ? ' · ' + esc(s.error) : ''}</small></div>
+                <button class="btn btn-ghost btn-sm" data-action="wf-remove-step" data-idx="${i}">${icon('x')}</button>
+              </div>`).join('') : '<p class="muted">No steps yet.</p>'}
+            <div style="margin-top:10px;display:flex;gap:6px">
+              <button class="btn btn-primary btn-sm" data-action="wf-run" ${src && data.steps.length && !data.running ? '' : 'disabled'}>${icon('play')}Run pipeline</button>
+              <div id="wf-out" class="util-out"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>`;
+}
+
+async function wfRun() {
+  const data = state.workflow;
+  if (!data.source || !data.steps.length || data.running) return;
+  data.running = true;
+  renderView();
+  let currentFile = data.source.file;
+  let currentName = data.source.name;
+  for (let i = 0; i < data.steps.length; i++) {
+    const step = data.steps[i];
+    if (!state.workflow.running) break;
+    step.status = 'running';
+    step.error = '';
+    renderView();
+    try {
+      if (step.type === 'trim') {
+        const start = Number(step.start || 0);
+        const end = Number(step.end || 0);
+        const fmt = extOf(currentName) || 'mp4';
+        const args = ['-hide_banner', '-y'];
+        if (start > 0) args.push('-ss', String(start));
+        args.push('-i', '{in}');
+        if (end > start && end > 0) args.push('-t', String(end - start));
+        args.push('{out}');
+        const result = await Engine.run({ blob: currentFile, inputName: extOf(currentName) || 'mp4', outputName: fmt, args, mime: currentFile.type || 'application/octet-stream' });
+        currentFile = new File([result.blob], currentName, { type: result.mime });
+      } else if (step.type === 'extractAudio') {
+        const result = await Engine.run({ blob: currentFile, inputName: extOf(currentName) || 'mp4', outputName: 'mp3', args: ['-hide_banner', '-y', '-i', '{in}', '-vn', '-c:a', 'libmp3lame', '-b:a', '128k', '{out}'], mime: 'audio/mpeg' });
+        currentFile = new File([result.blob], currentName.replace(/\\.[^.]+$/, '') + '.mp3', { type: 'audio/mpeg' });
+        currentName = currentFile.name;
+      } else if (step.type === 'ocr') {
+        if (!window.__tesseract) window.__tesseract = await import('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js');
+        const Tesseract = window.__tesseract;
+        const worker = await Tesseract.createWorker('eng');
+        const { data: ocrData } = await worker.recognize(currentFile);
+        await worker.terminate();
+        step.text = ocrData.text || '';
+      }
+      step.status = 'done';
+    } catch (e) {
+      step.status = 'error';
+      step.error = e?.message || 'Failed.';
+      break;
+    }
+    renderView();
+  }
+  data.running = false;
+  const out = document.getElementById('wf-out');
+  if (out) {
+    const lastText = data.steps.filter((s) => s.type === 'ocr').map((s) => s.text).join('\\n');
+    if (lastText) out.innerHTML = `<pre style="white-space:pre-wrap">${esc(lastText)}</pre>`;
+    else if (currentFile) {
+      const url = URL.createObjectURL(currentFile);
+      out.innerHTML = `<a class="btn btn-secondary btn-sm" href="${url}" download="${esc(currentName)}">${icon('download')}Download ${esc(currentName)}</a>`;
+    }
+  }
+  renderView();
+}
+
+function bindWorkflow() {
+  const fileInput = document.getElementById('wf-file');
+  if (fileInput) fileInput.onchange = (e) => {
+    const f = e.target.files?.[0];
+    if (f) { state.workflow.source = { file: f, name: f.name, size: f.size }; renderView(); }
+  };
+}
+
 function bindReframe() {
   const fileInput = document.getElementById('rf-file');
   if (fileInput) fileInput.onchange = (e) => { const f = e.target.files?.[0]; if (f) reframeLoad(f); };
@@ -7463,6 +7575,7 @@ function renderView() {
   else if (state.tool === 'imageditor') html = imageEditorView();
   else if (state.tool === 'videoeditor') html = videoEditorView();
   else if (state.tool === 'reframe') html = reframeView();
+  else if (state.tool === 'workflow') html = workflowView();
   else if (state.tool === 'aitools') html = aiToolsView();
   else if (state.tool === 'pdftools') html = pdfToolsView();
   else if (state.tool === 'aichat') html = aiChatView();
@@ -7488,6 +7601,7 @@ function renderView() {
   if (state.tool === 'imageditor') bindImageEditor();
   if (state.tool === 'videoeditor') bindVideoEditor();
   if (state.tool === 'reframe') bindReframe();
+  if (state.tool === 'workflow') bindWorkflow();
   if (state.utilities.tab === 'tts' && ['utilities','practical','audiotools'].includes(state.tool)) utilTtsEnsureVoices();
   if (state.tool === 'subtitles') { bindSubtitleOverlay(); bindSubtitleEditorInputs(); }
   $$('input[type="range"]').forEach((input) => setCssPct(input));
@@ -10452,6 +10566,22 @@ async function handleExtraAction(action, el) {
     case 'rf-export':
       await reframeExport();
       return true;
+    case 'wf-add-step': {
+      const type = document.getElementById('wf-add-step')?.value || 'trim';
+      state.workflow.steps.push({ type, status: 'idle', start: 0, end: 0 });
+      renderView();
+      return true;
+    }
+    case 'wf-remove-step': {
+      const idx = Number(el.dataset.idx);
+      if (!isNaN(idx)) state.workflow.steps.splice(idx, 1);
+      renderView();
+      return true;
+    }
+    case 'wf-run': {
+      await wfRun();
+      return true;
+    }
     default: return false;
   }
 }
