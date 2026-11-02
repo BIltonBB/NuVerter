@@ -447,7 +447,8 @@ const state = {
     source: null, result: null, busy: false,
     adjustments: { brightness: 100, contrast: 100, saturation: 100, hue: 0, blur: 0, sepia: 0, invert: 0, grayscale: 0 },
     history: [], historyIndex: -1,
-    settings: { format: 'png', quality: .92 }
+    settings: { format: 'png', quality: .92 },
+    heal: { active: false, size: 20 }
   },
   videoEditor: {
     source: null, result: null, busy: false,
@@ -6814,6 +6815,14 @@ function imageEditorView() {
                 <div class="field-head"><span class="field-label">${l}</span><span class="field-value" data-ie-val="${k}">${a[k]}</span></div>
                 <input type="range" min="${min}" max="${max}" step="${step}" value="${a[k]}" data-ie="${k}" />
               </div>`).join('')}
+             <div class="field" style="margin-top:8px">
+               <div class="field-head"><span class="field-label">Heal mode</span><small>Click on the image to spot-heal</small></div>
+               <button class="switch" role="switch" aria-checked="${data.heal.active}" aria-label="Heal mode" data-toggle="imageEditor.heal.active"></button>
+             </div>
+             <div class="field">
+               <div class="field-head"><span class="field-label">Brush size</span><span class="field-value">${data.heal.size}px</span></div>
+               <input type="range" min="5" max="60" step="1" value="${data.heal.size}" data-ie-heal="size" />
+             </div>
           </div>
         </div>
       </section>
@@ -6932,6 +6941,58 @@ async function imageEditorExport() {
   toast('Exported', name, 'success');
 }
 
+function imageEditorHeal(cx, cy) {
+  const data = state.imageEditor;
+  if (!data.source) return;
+  const r = data.heal.size;
+  // work on a canvas copy of source image
+  const canvas = document.createElement('canvas');
+  canvas.width = data.source.width;
+  canvas.height = data.source.height;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(data.source.img, 0, 0);
+  // sample average color from annulus r..2r
+  const x0 = Math.max(0, cx - 2 * r);
+  const y0 = Math.max(0, cy - 2 * r);
+  const w = Math.min(canvas.width - x0, 4 * r);
+  const h = Math.min(canvas.height - y0, 4 * r);
+  const region = ctx.getImageData(x0, y0, w, h);
+  let sr = 0, sg = 0, sb = 0, count = 0;
+  for (let yy = 0; yy < h; yy++) {
+    for (let xx = 0; xx < w; xx++) {
+      const dx = (x0 + xx) - cx;
+      const dy = (y0 + yy) - cy;
+      const dist = Math.hypot(dx, dy);
+      if (dist < r || dist > 2 * r) continue;
+      const idx = (yy * w + xx) * 4;
+      sr += region.data[idx]; sg += region.data[idx + 1]; sb += region.data[idx + 2]; count++;
+    }
+  }
+  if (count === 0) { sr = sg = sb = 128; count = 1; }
+  const ar = Math.round(sr / count);
+  const ag = Math.round(sg / count);
+  const ab = Math.round(sb / count);
+  // fill circle
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.fillStyle = `rgb(${ar},${ag},${ab})`;
+  ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+  ctx.restore();
+  // update source
+  const newImg = new Image();
+  newImg.onload = () => {
+    data.source.img = newImg;
+    data.source.url = canvas.toDataURL();
+    imageEditorPushHistory();
+    renderView();
+    imageEditorRender();
+    toast('Healed', 'Spot healed.', 'success');
+  };
+  newImg.src = canvas.toDataURL();
+}
+
 function bindImageEditor() {
   const fileInput = document.getElementById('ie-file');
   if (fileInput) fileInput.onchange = (e) => { const f = e.target.files?.[0]; if (f) imageEditorLoad(f); };
@@ -6949,6 +7010,22 @@ function bindImageEditor() {
   });
   const fmt = document.querySelector('[data-ie="format"]');
   if (fmt) fmt.onchange = () => { state.imageEditor.settings.format = fmt.value; };
+  const sizeInput = document.querySelector('[data-ie-heal="size"]');
+  if (sizeInput) sizeInput.oninput = () => { state.imageEditor.heal.size = Number(sizeInput.value); const v = sizeInput.closest('.field')?.querySelector('.field-value'); if (v) v.textContent = sizeInput.value + 'px'; };
+  const canvas = document.getElementById('ie-canvas');
+  if (canvas) {
+    canvas.style.cursor = state.imageEditor.heal.active ? 'crosshair' : '';
+    canvas.onclick = (e) => {
+      const data = state.imageEditor;
+      if (!data.heal.active || !data.source) return;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const x = Math.round((e.clientX - rect.left) * scaleX);
+      const y = Math.round((e.clientY - rect.top) * scaleY);
+      imageEditorHeal(x, y);
+    };
+  }
   const q = document.querySelector('[data-ie="quality"]');
   if (q) q.oninput = () => { state.imageEditor.settings.quality = Number(q.value); };
 }
@@ -10399,6 +10476,7 @@ function handleToggle(el) {
   }
   if (path.startsWith('gif.')) syncToolChrome('gif');
   if (path.startsWith('reframe.')) renderView();
+  if (path.startsWith('imageEditor.heal')) renderView();
   if (path.startsWith('recorder.')) {
     const status = state.recorder.status;
     if (!['idle', 'finished'].includes(status)) {
