@@ -56,6 +56,14 @@ The server only serves files and sets the `Cross-Origin-Opener-Policy` /
 - **Fully responsive** - desktop sidebar, mobile drawer, adbar never overlaps
   content.
 
+## Static hosting (GitHub Pages, Netlify, etc.)
+
+Only the `web/` folder is needed. The bundled `coi-serviceworker.js` enables
+the cross-origin isolation (COOP/COEP) that FFmpeg.wasm requires on hosts that
+cannot send custom headers. API proxies are optional: the app falls back to
+direct requests when `/api/*` is unavailable. No Node.js or PHP is required for
+the core converter to work.
+
 ## Notes
 
 - AVIF canvas encoding is disabled in this browser build (Chrome does not expose
