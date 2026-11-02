@@ -6702,6 +6702,7 @@ function bindImageEditor() {
       imageEditorRender();
     };
     el.onchange = () => { imageEditorPushHistory(); };
+    el.addEventListener('change', () => { imageEditorPushHistory(); });
   });
   const fmt = document.querySelector('[data-ie="format"]');
   if (fmt) fmt.onchange = () => { state.imageEditor.settings.format = fmt.value; };
