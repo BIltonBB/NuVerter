@@ -6643,7 +6643,6 @@ function imageEditorPushHistory() {
   if (data.history.length > 40) { data.history.shift(); }
   data.historyIndex = data.history.length - 1;
   try { renderView(); } catch {}
-  // console.log('pushHistory', data.history.length, data.historyIndex);
 }
 
 function imageEditorUndo() {
@@ -6651,7 +6650,6 @@ function imageEditorUndo() {
   if (data.historyIndex <= 0) return;
   data.historyIndex--;
   data.adjustments = JSON.parse(data.history[data.historyIndex]);
-  console.log('undo', data.historyIndex, data.adjustments.brightness);
   renderView();
   imageEditorRender();
 }
@@ -6705,7 +6703,6 @@ function bindImageEditor() {
       imageEditorRender();
     };
     el.onchange = () => { imageEditorPushHistory(); };
-    el.addEventListener('change', () => { imageEditorPushHistory(); });
   });
   const fmt = document.querySelector('[data-ie="format"]');
   if (fmt) fmt.onchange = () => { state.imageEditor.settings.format = fmt.value; };
