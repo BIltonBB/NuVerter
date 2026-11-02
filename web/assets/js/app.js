@@ -534,6 +534,20 @@ function savePrefs() {
     localStorage.setItem('NuVerter-prefs', JSON.stringify(state.prefs));
   } catch {}
 }
+function trackUsage(bytes, tool) {
+  try {
+    const raw = JSON.parse(localStorage.getItem('NuVerter-usage') || '{}');
+    const u = { files: 0, bytes: 0, byTool: {}, ...(raw || {}) };
+    u.files = (u.files || 0) + 1;
+    u.bytes = (u.bytes || 0) + (Number(bytes) || 0);
+    u.byTool = u.byTool || {};
+    u.byTool[tool] = (u.byTool[tool] || 0) + 1;
+    localStorage.setItem('NuVerter-usage', JSON.stringify(u));
+  } catch {}
+}
+function getUsage() {
+  try { return JSON.parse(localStorage.getItem('NuVerter-usage') || '{}') || {}; } catch { return {}; }
+}
 const APPEARANCE_PROPS = [
   '--accent', '--accent-2', '--accent-strong', '--accent-bright', '--accent-text',
   '--accent-soft', '--accent-border', '--primary', '--primary-hover', '--primary-ring',
@@ -1527,6 +1541,7 @@ async function registerOutput({ tool, sourceName, blob, name, mime, sourceSize =
   };
   record.url = URL.createObjectURL(blob);
   state.history.unshift(record);
+  try { trackUsage(sourceSize || blob.size, tool); } catch {}
   while (state.history.length > MAX_HISTORY_ITEMS) {
     const removed = state.history.pop();
     URL.revokeObjectURL(removed.url);
@@ -3144,7 +3159,8 @@ function converterView() {
       actions: `
         <button class="btn btn-secondary btn-sm" data-action="import-link">${icon('link')}<span>From link</span></button>
         <button class="btn btn-secondary btn-sm" data-action="load-demo">${icon('sparkles')}<span>Load batch</span></button>
-        <button class="btn btn-primary btn-sm" data-action="pick-files" data-context="converter">${icon('plus')}<span>Add media</span></button>`
+        <button class="btn btn-primary btn-sm" data-action="pick-files" data-context="converter">${icon('plus')}<span>Add media</span></button>
+        <button class="btn btn-secondary btn-sm" data-action="paste-clipboard" data-context="converter">${icon('clipboard')}<span>Paste</span></button>`
     })}
     <div class="tool-grid">
       <section class="area-drop">
@@ -8483,6 +8499,19 @@ function settingsBody() {
     </div>
 
     <div class="modal-section">
+      <div class="modal-section-title">${icon('activity')}Usage statistics</div>
+      <div class="settings-item">
+        <div class="settings-item-copy">
+          <strong>${getUsage().files || 0} files processed · ${formatBytes(getUsage().bytes || 0)}</strong>
+          <small>Tracked locally on this device. No data is sent anywhere.</small>
+        </div>
+      </div>
+      <div style="margin-top:8px">
+        <button class="btn btn-ghost btn-sm" data-action="usage-reset">${icon('rotate-ccw')}Reset statistics</button>
+      </div>
+    </div>
+
+    <div class="modal-section">
       <div class="modal-section-title">${icon('cpu')}AI model storage</div>
       <div class="modal-note" style="font-size:10.5px;line-height:1.65">Models download once and are cached by the browser. In the desktop app they are stored under the user data directory so they persist across updates. You can change the storage folder at any time; auto-fetch keeps working.</div>
       <div id="models-path" style="margin-top:6px;font-size:10.5px;color:var(--text-3)"></div>
@@ -9299,6 +9328,30 @@ async function handleExtraAction(action, el) {
     case 'import-link':
       openLinkImport(el.dataset.context || null);
       return true;
+    case 'paste-clipboard': {
+      try {
+        const items = await navigator.clipboard.read();
+        const files = [];
+        for (const item of items) {
+          for (const type of item.types) {
+            if (type.startsWith('image/') || type.startsWith('video/') || type.startsWith('audio/')) {
+              const blob = await item.getType(type);
+              files.push(new File([blob], 'pasted.' + type.split('/')[1], { type }));
+            }
+          }
+        }
+        if (files.length) {
+          if (state.tool === 'converter') addConverterFiles(files);
+          else if (ACCEPT_BY_CONTEXT[state.tool]) loadToolSource(state.tool, files[0]);
+          toast('Pasted', files.length + ' file(s) from clipboard.', 'success');
+        } else {
+          toast('Nothing to paste', 'No media found in clipboard.', 'info');
+        }
+      } catch (e) {
+        toast('Clipboard unavailable', 'Browser blocked clipboard access.', 'error');
+      }
+      return true;
+    }
     case 'link-fetch':
       await fetchLinkMedia();
       return true;
@@ -9553,6 +9606,7 @@ async function handleAction(action, el) {
      case 'reset-appearance': resetAppearance(); break;
     case 'pref-reset': resetPreferences(); break;
     case 'privacy-reset': privacyReset(); break;
+    case 'usage-reset': { try { localStorage.removeItem('NuVerter-usage'); } catch {} renderSettingsBody(); toast('Statistics reset', 'Usage counters cleared.', 'info'); break; }
     case 'settings-history': closeModal(); setTool('history'); break;
     case 'change-storage-dir': (async () => {
       var api = window.electronAPI;
