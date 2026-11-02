@@ -22,6 +22,7 @@ if (typeof window === 'undefined') {
     });
 
     self.addEventListener("fetch", function (event) {
+        console.log("SW fetch:", event.request.url);
         const r = event.request;
         if (r.cache === "only-if-cached" && r.mode !== "same-origin") {
             return;
