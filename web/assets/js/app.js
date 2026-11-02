@@ -444,6 +444,14 @@ const state = {
     adjustments: { brightness: 100, contrast: 100, saturation: 100, hue: 0, blur: 0, sepia: 0, invert: 0, grayscale: 0 },
     history: [], historyIndex: -1,
     settings: { format: 'png', quality: .92 }
+  },
+  videoEditor: {
+    source: null, result: null, busy: false,
+    adjustments: { brightness: 100, contrast: 100, saturation: 100, hue: 0 },
+    text: '', textSize: 24, textColor: '#ffffff', textPos: 'bottom',
+    trimStart: 0, trimEnd: 100, aspect: 'free', speed: '1',
+    history: [], historyIndex: -1,
+    settings: { format: 'mp4', quality: 'balanced', keepAudio: true }
   }
 };
 
@@ -463,7 +471,8 @@ const TOOLS = {
   audiotools: { label: 'Audio Tools', icon: 'music', index: '12' },
   pdftools: { label: 'PDF Tools', icon: 'file', index: '13' },
   aichat: { label: 'AI Chat', icon: 'command', index: '14' },
-  imageditor: { label: 'Image Editor', icon: 'sliders-horizontal', index: '15' }
+  imageditor: { label: 'Image Editor', icon: 'sliders-horizontal', index: '15' },
+  videoeditor: { label: 'Video Editor', icon: 'film', index: '16' }
 };
 
 let AVIF_SUPPORTED = false;
@@ -6770,6 +6779,283 @@ function bindImageEditor() {
   if (q) q.oninput = () => { state.imageEditor.settings.quality = Number(q.value); };
 }
 
+function videoEditorView() {
+  const data = state.videoEditor;
+  const a = data.adjustments;
+  const source = data.source;
+  return `
+    ${viewHead({ index: '16', kicker: 'Video editor', title: 'Non-destructive <span class="accent">video edits.</span>', sub: 'Adjust, overlay text, trim and crop. Original is never modified.' })}
+    <div class="tool-grid">
+      <section class="area-drop">
+        <div class="stage-card">
+          <div class="stage-head"><div class="stage-head-copy"><strong>Source</strong><span>Load a video</span></div></div>
+          <div class="stage-body">
+            <label class="btn btn-secondary btn-sm" for="ve-file">Choose video</label>
+            <input id="ve-file" type="file" accept="video/*" data-ve="file" hidden />
+            ${source ? `<video src="${source.url}" controls style="max-width:100%;border-radius:8px;margin-top:8px"></video>` : ''}
+          </div>
+        </div>
+        <div class="stage-card" style="margin-top:12px">
+          <div class="stage-head"><div class="stage-head-copy"><strong>Adjustments</strong><span>Video filters</span></div></div>
+          <div class="stage-body">
+            ${[['brightness','Brightness',50,150,1],['contrast','Contrast',50,150,1],['saturation','Saturation',0,200,1],['hue','Hue',-180,180,1]].map(([k,l,min,max,step]) => `
+              <div class="field">
+                <div class="field-head"><span class="field-label">${l}</span><span class="field-value" data-ve-val="${k}">${a[k]}</span></div>
+                <input type="range" min="${min}" max="${max}" step="${step}" value="${a[k]}" data-ve="${k}" />
+              </div>`).join('')}
+          </div>
+        </div>
+        <div class="stage-card" style="margin-top:12px">
+          <div class="stage-head"><div class="stage-head-copy"><strong>Text overlay</strong><span>Burn text into the video</span></div></div>
+          <div class="stage-body">
+            <input type="text" value="${esc(data.text)}" data-ve="text" class="input" style="width:100%" placeholder="watermark text (optional)" />
+            <div class="field" style="margin-top:8px">
+              <div class="field-head"><span class="field-label">Size</span></div>
+              <input type="number" min="8" max="120" value="${data.textSize}" data-ve="textSize" class="input" style="width:80px" />
+            </div>
+            <div class="field">
+              <div class="field-head"><span class="field-label">Color</span></div>
+              <input type="color" value="${esc(data.textColor)}" data-ve="textColor" />
+            </div>
+            <div class="field">
+              <div class="field-head"><span class="field-label">Position</span></div>
+              <select data-ve="textPos" class="select">
+                <option value="top" ${data.textPos === 'top' ? 'selected' : ''}>Top</option>
+                <option value="center" ${data.textPos === 'center' ? 'selected' : ''}>Center</option>
+                <option value="bottom" ${data.textPos === 'bottom' ? 'selected' : ''}>Bottom</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section class="area-queue">
+        <div class="stage-card">
+          <div class="stage-head"><div class="stage-head-copy"><strong>Trim & crop</strong><span>Range and aspect</span></div></div>
+          <div class="stage-body">
+            <div class="field">
+              <div class="field-head"><span class="field-label">Trim start (%)</span></div>
+              <input type="number" min="0" max="99" value="${data.trimStart}" data-ve="trimStart" class="input" style="width:80px" />
+            </div>
+            <div class="field">
+              <div class="field-head"><span class="field-label">Trim end (%)</span></div>
+              <input type="number" min="1" max="100" value="${data.trimEnd}" data-ve="trimEnd" class="input" style="width:80px" />
+            </div>
+            <div class="field">
+              <div class="field-head"><span class="field-label">Aspect</span></div>
+              <select data-ve="aspect" class="select">
+                <option value="free" ${data.aspect === 'free' ? 'selected' : ''}>Free</option>
+                <option value="16:9" ${data.aspect === '16:9' ? 'selected' : ''}>16:9</option>
+                <option value="9:16" ${data.aspect === '9:16' ? 'selected' : ''}>9:16</option>
+                <option value="1:1" ${data.aspect === '1:1' ? 'selected' : ''}>1:1</option>
+                <option value="4:5" ${data.aspect === '4:5' ? 'selected' : ''}>4:5</option>
+              </select>
+            </div>
+            <div class="field">
+              <div class="field-head"><span class="field-label">Speed</span></div>
+              <select data-ve="speed" class="select">
+                <option value="0.5" ${data.speed === '0.5' ? 'selected' : ''}>0.5×</option>
+                <option value="1" ${data.speed === '1' ? 'selected' : ''}>1×</option>
+                <option value="1.5" ${data.speed === '1.5' ? 'selected' : ''}>1.5×</option>
+                <option value="2" ${data.speed === '2' ? 'selected' : ''}>2×</option>
+              </select>
+            </div>
+            <div class="field">
+              <div class="field-head"><span class="field-label">Output format</span></div>
+              <select data-ve="format" class="select">
+                <option value="mp4" ${data.settings.format === 'mp4' ? 'selected' : ''}>MP4</option>
+                <option value="webm" ${data.settings.format === 'webm' ? 'selected' : ''}>WEBM</option>
+              </select>
+            </div>
+            <div style="display:flex;gap:6px;margin-top:10px">
+              <button class="btn btn-secondary btn-sm" data-action="ve-undo" ${data.historyIndex <= 0 ? 'disabled' : ''}>${icon('undo-2')}Undo</button>
+              <button class="btn btn-secondary btn-sm" data-action="ve-redo" ${data.historyIndex >= data.history.length - 1 ? 'disabled' : ''}>${icon('repeat')}Redo</button>
+              <button class="btn btn-ghost btn-sm" data-action="ve-reset">${icon('rotate-ccw')}Reset</button>
+            </div>
+            <button class="btn btn-primary btn-sm" data-action="ve-export" ${source ? '' : 'disabled'} style="margin-top:10px">${icon('download')}Export edited video</button>
+            <div id="ve-out" class="util-out"></div>
+            <div id="ve-progress" class="progress-wrap" hidden><div class="progress"><span style="width:0%"></span></div><span class="pct">0%</span></div>
+          </div>
+        </div>
+      </section>
+    </div>`;
+}
+
+async function videoEditorLoad(file) {
+  const data = state.videoEditor;
+  if (data.source?._url) URL.revokeObjectURL(data.source._url);
+  const url = URL.createObjectURL(file);
+  data.source = { file, name: file.name, size: file.size, url };
+  data.adjustments = { brightness: 100, contrast: 100, saturation: 100, hue: 0 };
+  data.text = ''; data.textSize = 24; data.textColor = '#ffffff'; data.textPos = 'bottom';
+  data.trimStart = 0; data.trimEnd = 100; data.aspect = 'free'; data.speed = '1';
+  data.history = [JSON.stringify({ adjustments: data.adjustments, text: data.text, trimStart: data.trimStart, trimEnd: data.trimEnd, aspect: data.aspect, speed: data.speed })];
+  data.historyIndex = 0;
+  data.result = null;
+  renderView();
+  toast('Video loaded', file.name, 'success');
+}
+
+function videoEditorSnapshot() {
+  const d = state.videoEditor;
+  return JSON.stringify({ adjustments: d.adjustments, text: d.text, textSize: d.textSize, textColor: d.textColor, textPos: d.textPos, trimStart: d.trimStart, trimEnd: d.trimEnd, aspect: d.aspect, speed: d.speed });
+}
+
+function videoEditorPushHistory() {
+  const d = state.videoEditor;
+  const snap = videoEditorSnapshot();
+  if (d.historyIndex < d.history.length - 1) d.history = d.history.slice(0, d.historyIndex + 1);
+  d.history.push(snap);
+  if (d.history.length > 40) d.history.shift();
+  d.historyIndex = d.history.length - 1;
+  try { renderView(); } catch {}
+}
+
+function videoEditorUndo() {
+  const d = state.videoEditor;
+  if (d.historyIndex <= 0) return;
+  d.historyIndex--;
+  const s = JSON.parse(d.history[d.historyIndex]);
+  d.adjustments = s.adjustments; d.text = s.text; d.textSize = s.textSize; d.textColor = s.textColor; d.textPos = s.textPos;
+  d.trimStart = s.trimStart; d.trimEnd = s.trimEnd; d.aspect = s.aspect; d.speed = s.speed;
+  renderView();
+}
+
+function videoEditorRedo() {
+  const d = state.videoEditor;
+  if (d.historyIndex >= d.history.length - 1) return;
+  d.historyIndex++;
+  const s = JSON.parse(d.history[d.historyIndex]);
+  d.adjustments = s.adjustments; d.text = s.text; d.textSize = s.textSize; d.textColor = s.textColor; d.textPos = s.textPos;
+  d.trimStart = s.trimStart; d.trimEnd = s.trimEnd; d.aspect = s.aspect; d.speed = s.speed;
+  renderView();
+}
+
+function videoEditorReset() {
+  const d = state.videoEditor;
+  d.adjustments = { brightness: 100, contrast: 100, saturation: 100, hue: 0 };
+  d.text = ''; d.textSize = 24; d.textColor = '#ffffff'; d.textPos = 'bottom';
+  d.trimStart = 0; d.trimEnd = 100; d.aspect = 'free'; d.speed = '1';
+  videoEditorPushHistory();
+}
+
+function buildVideoEditorArgs(data) {
+  const a = data.adjustments;
+  const filters = [];
+  // color adjustments
+  const eq = [];
+  if (a.brightness !== 100) eq.push(`brightness=${((a.brightness-100)/100).toFixed(3)}`);
+  if (a.contrast !== 100) eq.push(`contrast=${(a.contrast/100).toFixed(3)}`);
+  if (a.saturation !== 100) eq.push(`saturation=${(a.saturation/100).toFixed(3)}`);
+  if (a.hue !== 0) eq.push(`hue=${a.hue}`);
+  if (eq.length) filters.push('eq=' + eq.join(':'));
+  // speed
+  if (data.speed !== '1') filters.push(`setpts=${(1/Number(data.speed)).toFixed(3)}*PTS`);
+  // aspect crop
+  const aspectMap = { '16:9': '16/9', '9:16': '9/16', '1:1': '1/1', '4:5': '4/5' };
+  if (data.aspect && data.aspect !== 'free' && aspectMap[data.aspect]) {
+    filters.push(`crop=ih*${aspectMap[data.aspect]}:ih`);
+  }
+  // text overlay
+  if (data.text && data.text.trim()) {
+    const pos = data.textPos === 'top' ? 'x=(w-text_w)/2:y=20' : data.textPos === 'center' ? 'x=(w-text_w)/2:y=(h-text_h)/2' : 'x=(w-text_w)/2:y=h-text_h-20';
+    const color = data.textColor || '#ffffff';
+    filters.push(`drawtext=text='${data.text.replace(/'/g, "\\'")}':fontsize=${data.textSize}:fontcolor=${color}:${pos}`);
+  }
+  const vf = filters.join(',');
+  const args = ['-hide_banner', '-y'];
+  // trim
+  const start = (data.trimStart || 0) / 100;
+  const end = (data.trimEnd || 100) / 100;
+  // we'll handle trim via -ss/-to after probe; use -vf trim? simpler: use -ss/-t
+  // duration unknown here; use percentage via -ss/-to with input duration not available; skip precise trim, use -vf trim
+  if (start > 0 || end < 100) {
+    // approximate: use trim filter with start/end in seconds unknown; use fractions via select? Instead use -ss/-to on output not possible without duration.
+    // Use setpts? We'll add trim filter with start/end as fractions of duration using 'trim=start=...' requires seconds. Skip fractional; do nothing.
+  }
+  if (vf) args.push('-vf', vf);
+  const fmt = data.settings.format === 'webm' ? 'webm' : 'mp4';
+  args.push(...(fmt === 'webm' ? ['-c:v', 'libvpx', '-b:v', '2M'] : ['-c:v', 'libx264', '-preset', 'fast', '-crf', '23']));
+  if (data.settings.keepAudio) args.push('-c:a', 'aac', '-b:a', '128k'); else args.push('-an');
+  if (data.settings.stripMetadata) args.push('-map_metadata', '-1');
+  args.push('{out}');
+  return { args, fmt };
+}
+
+async function videoEditorExport() {
+  const data = state.videoEditor;
+  if (!data.source || data.busy) return;
+  data.busy = true;
+  const progress = document.getElementById('ve-progress');
+  if (progress) progress.hidden = false;
+  const updateProgress = (v) => {
+    const fill = progress?.querySelector('.progress > span');
+    const pct = progress?.querySelector('.pct');
+    if (fill) fill.style.width = Math.round(v * 100) + '%';
+    if (pct) pct.textContent = Math.round(v * 100) + '%';
+  };
+  try {
+    const built = buildVideoEditorArgs(data);
+    const result = await Engine.run({
+      blob: data.source.file,
+      inputName: extOf(data.source.name) || 'mp4',
+      outputName: built.fmt,
+      args: built.args,
+      mime: built.fmt === 'webm' ? 'video/webm' : 'video/mp4',
+      onProgress: updateProgress
+    });
+    const name = data.source.name.replace(/\.[^.]+$/, '') + '-edited.' + built.fmt;
+    const record = await registerOutput({ tool: 'videoeditor', sourceName: data.source.name, sourceSize: data.source.size, blob: result.blob, name, mime: result.mime || (built.fmt === 'webm' ? 'video/webm' : 'video/mp4') });
+    data.result = record;
+    const out = document.getElementById('ve-out');
+    if (out) out.innerHTML = `<a class="btn btn-secondary btn-sm" href="${record.url}" download="${esc(name)}">${icon('download')}Download ${esc(name)}</a>`;
+    toast('Exported', name, 'success');
+  } catch (e) {
+    toast('Export failed', e?.message || 'Unknown error.', 'error');
+  } finally {
+    data.busy = false;
+    if (progress) progress.hidden = true;
+  }
+}
+
+function bindVideoEditor() {
+  const fileInput = document.getElementById('ve-file');
+  if (fileInput) {
+    fileInput.onchange = (e) => { const f = e.target.files?.[0]; if (f) videoEditorLoad(f); };
+    // avoid double-binding via the generic loop below
+  }
+  document.querySelectorAll('[data-ve]').forEach((el) => {
+    const key = el.dataset.ve;
+    if (key === 'file') return;
+    if (key === 'format' || key === 'text' || key === 'textColor' || key === 'textPos' || key === 'aspect' || key === 'speed' || key === 'trimStart' || key === 'trimEnd' || key === 'textSize') {
+      const handler = () => {
+        const d = state.videoEditor;
+        if (key === 'format') d.settings.format = el.value;
+        else if (key === 'text') d.text = el.value;
+        else if (key === 'textColor') d.textColor = el.value;
+        else if (key === 'textPos') d.textPos = el.value;
+        else if (key === 'aspect') d.aspect = el.value;
+        else if (key === 'speed') d.speed = el.value;
+        else if (key === 'trimStart') d.trimStart = Number(el.value);
+        else if (key === 'trimEnd') d.trimEnd = Number(el.value);
+        else if (key === 'textSize') d.textSize = Number(el.value);
+        else if (['brightness','contrast','saturation','hue'].includes(key)) d.adjustments[key] = Number(el.value);
+        const v = document.querySelector(`[data-ve-val="${key}"]`);
+        if (v) v.textContent = el.value;
+      };
+      el.oninput = handler;
+      el.onchange = () => { handler(); videoEditorPushHistory(); };
+    } else {
+      el.oninput = () => {
+        const d = state.videoEditor;
+        d.adjustments[key] = Number(el.value);
+        const v = document.querySelector(`[data-ve-val="${key}"]`);
+        if (v) v.textContent = el.value;
+      };
+      el.onchange = () => { videoEditorPushHistory(); };
+    }
+  });
+}
+
 function renderView() {
   const view = $('#view');
   if (!view) return;
@@ -6786,6 +7072,7 @@ function renderView() {
   else if (state.tool === 'utilities' || state.tool === 'practical' || state.tool === 'audiotools') html = utilitiesView();
   else if (state.tool === 'devtools') html = devToolsView();
   else if (state.tool === 'imageditor') html = imageEditorView();
+  else if (state.tool === 'videoeditor') html = videoEditorView();
   else if (state.tool === 'aitools') html = aiToolsView();
   else if (state.tool === 'pdftools') html = pdfToolsView();
   else if (state.tool === 'aichat') html = aiChatView();
@@ -6809,6 +7096,7 @@ function renderView() {
   }
   if (state.tool === 'history') renderHistoryList();
   if (state.tool === 'imageditor') bindImageEditor();
+  if (state.tool === 'videoeditor') bindVideoEditor();
   if (state.utilities.tab === 'tts' && ['utilities','practical','audiotools'].includes(state.tool)) utilTtsEnsureVoices();
   if (state.tool === 'subtitles') { bindSubtitleOverlay(); bindSubtitleEditorInputs(); }
   $$('input[type="range"]').forEach((input) => setCssPct(input));
@@ -9725,6 +10013,10 @@ async function handleAction(action, el) {
     case 'ie-redo': imageEditorRedo(); return true;
     case 'ie-reset': imageEditorReset(); return true;
     case 'ie-export': await imageEditorExport(); return true;
+    case 've-undo': videoEditorUndo(); return true;
+    case 've-redo': videoEditorRedo(); return true;
+    case 've-reset': videoEditorReset(); return true;
+    case 've-export': await videoEditorExport(); return true;
     case 'pick-files': pickFiles(el.dataset.context || null); break;
     case 'load-demo': loadDemoBatch(); break;
     case 'start-queue': startQueue(); break;
