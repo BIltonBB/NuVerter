@@ -5909,10 +5909,69 @@ async function utilEmb() {
   }
 }
 
+function utilAiModelsBody() {
+  const hw = navigator.hardwareConcurrency || 'unknown';
+  const mem = navigator.deviceMemory ? navigator.deviceMemory + ' GB (approx)' : 'unknown';
+  const webgpu = (typeof navigator.gpu !== 'undefined') ? 'Available' : 'Not available';
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Hardware</strong><span>Detected capabilities</span></div></div>
+      <div class="stage-body">
+        <div class="settings-list">
+          <div class="settings-item"><div class="settings-item-copy"><strong>CPU threads</strong><small>hardwareConcurrency</small></div><span class="mono">${esc(String(hw))}</span></div>
+          <div class="settings-item"><div class="settings-item-copy"><strong>Device memory</strong><small>deviceMemory (approx)</small></div><span class="mono">${esc(String(mem))}</span></div>
+          <div class="settings-item"><div class="settings-item-copy"><strong>WebGPU</strong><small>GPU acceleration</small></div><span class="mono">${esc(webgpu)}</span></div>
+          <div class="settings-item"><div class="settings-item-copy"><strong>Storage used</strong><small>Browser-managed caches</small></div><span class="mono" id="ai-models-storage">checking…</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="stage-card" style="margin-top:12px">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Local models</strong><span>Known models and caches</span></div></div>
+      <div class="stage-body">
+        <div class="settings-list">
+          <div class="settings-item"><div class="settings-item-copy"><strong>AI image (sd-turbo)</strong><small>Folder: ${esc(state.aiImage.folderName || 'not selected')} · ~1-2 GB on disk</small></div>
+            <button class="btn btn-ghost btn-sm" data-action="ai-image-forget">Clear selection</button></div>
+          <div class="settings-item"><div class="settings-item-copy"><strong>Background removal</strong><small>Xenova/segformer-b0 (tiny) · cached by browser</small></div><span class="mono">auto</span></div>
+          <div class="settings-item"><div class="settings-item-copy"><strong>Upscaler</strong><small>Xenova/swin2SR (tiny) · cached by browser</small></div><span class="mono">auto</span></div>
+          <div class="settings-item"><div class="settings-item-copy"><strong>OCR</strong><small>tesseract.js · cached by browser</small></div><span class="mono">auto</span></div>
+          <div class="settings-item"><div class="settings-item-copy"><strong>Embeddings / TTS / Whisper</strong><small>Xenova transformers · cached by browser</small></div><span class="mono">auto</span></div>
+          <div class="settings-item"><div class="settings-item-copy"><strong>AI chat (WebLLM)</strong><small>Model: ${esc(state.aiChat.model || 'tiny')} · cached by browser</small></div><span class="mono">auto</span></div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn btn-danger btn-sm" data-action="ai-models-clear-cache">Clear all AI caches</button>
+        </div>
+        <div id="ai-models-out" class="util-out"></div>
+      </div>
+    </div>
+    <div class="stage-card" style="margin-top:12px">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Notes</strong><span>Honest limits</span></div></div>
+      <div class="stage-body">
+        <p class="field-help">Models are cached by the browser in Cache Storage / IndexedDB. Clearing caches removes them; they re-download on next use. Disk-size and RAM figures are estimates. Hardware acceleration depends on browser support.</p>
+      </div>
+    </div>`;
+}
+
+async function refreshAiModelsInfo() {
+  const el = document.getElementById('ai-models-storage');
+  if (!el) return;
+  try {
+    if (navigator.storage?.estimate) {
+      const est = await navigator.storage.estimate();
+      const used = est.usage ? (est.usage / (1024*1024)).toFixed(1) + ' MB' : 'unknown';
+      const quota = est.quota ? (est.quota / (1024*1024*1024)).toFixed(1) + ' GB' : 'unknown';
+      el.textContent = used + ' / ' + quota;
+    } else {
+      el.textContent = 'unavailable';
+    }
+  } catch {
+    el.textContent = 'unavailable';
+  }
+}
+
 function aiToolsView() {
   const tab = state.aiTools?.tab || 'aibg';
-  const tabs = ['aiimg','aibg','aiup','ocr','tts','emb'];
-  const labels = { aiimg:'AI Image', aibg:'AI BG', aiup:'AI Upscale', ocr:'OCR', tts:'TTS', emb:'Embeddings' };
+  const tabs = ['aiimg','aibg','aiup','ocr','tts','emb','models'];
+  const labels = { aiimg:'AI Image', aibg:'AI BG', aiup:'AI Upscale', ocr:'OCR', tts:'TTS', emb:'Embeddings', models:'Models' };
   return `
     ${viewHead({ index: '11', kicker: 'AI tools', title: 'AI <span class="accent">utilities.</span>', sub: 'Image generation, background removal, upscaling, OCR, TTS and embeddings — local where it counts.' })}
     <div class="util-tabs segmented" role="tablist">
@@ -5924,6 +5983,7 @@ function aiToolsView() {
         tab === 'aiup' ? utilAiUpscaleBody() :
         tab === 'ocr' ? utilOcrBody() :
         tab === 'tts' ? utilTtsBody() :
+        tab === 'models' ? utilAiModelsBody() :
         utilEmbBody()}
     </div>
     <div class="queue-progress tool-progress" id="ai-tools-progress" hidden style="margin-top:10px">
@@ -7369,6 +7429,7 @@ function renderView() {
   $$('input[type="range"]').forEach((input) => setCssPct(input));
   updateEngineUI();
   if (state.tool === 'aitools') {
+    if (state.aiTools.tab === 'models') refreshAiModelsInfo();
     const keyInput = document.getElementById('aiimg-api-key');
     if (keyInput && !keyInput.dataset.bound) {
       keyInput.dataset.bound = '1';
@@ -10266,6 +10327,20 @@ async function handleExtraAction(action, el) {
       return true;
     case 'ai-image-folder': await pickAiImageFolder(); return true;
     case 'ai-image-forget': await forgetAiImageFolder(); return true;
+    case 'ai-models-clear-cache': {
+      try {
+        if (window.caches) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map((k) => caches.delete(k)));
+        }
+        const out = document.getElementById('ai-models-out');
+        if (out) out.innerHTML = '<span style="color:var(--success)">AI caches cleared. Models will re-download on next use.</span>';
+        toast('Caches cleared', 'AI caches cleared.', 'success');
+      } catch (e) {
+        toast('Clear failed', e?.message || 'Unknown error.', 'error');
+      }
+      return true;
+    }
     case 'ai-image-download': await downloadAiImageModel(); return true;
     case 'ai-image-generate': await generateAiImage(); return true;
     case 'pdf-merge': await pdfMerge(); return true;
