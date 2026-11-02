@@ -6982,6 +6982,7 @@ function buildVideoEditorArgs(data) {
 }
 
 async function videoEditorExport() {
+  console.log('videoEditorExport start');
   const data = state.videoEditor;
   if (!data.source || data.busy) return;
   data.busy = true;
@@ -9828,6 +9829,7 @@ document.addEventListener('click', () => {
 });
 
 async function handleExtraAction(action, el) {
+  if (action.startsWith('ve-')) console.log('handleExtraAction', action);
   switch (action) {
     case 'util-tab':
       state.utilities.tab = el.dataset.tab || 'frames';
