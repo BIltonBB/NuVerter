@@ -93,6 +93,21 @@ function outputName(source, ext, suffix = '') {
   return safeName(`${baseName(source)}${suffix}.${ext}`);
 }
 
+function applyRenameTemplate(item, target, template) {
+  const tpl = (template || '').trim();
+  if (!tpl) return outputName(item.name, target.ext, extOf(item.name) === target.ext ? '-converted' : '');
+  const base = baseName(item.name);
+  const res = (state.converter.resolution === 'source' ? (item.width ? item.width + 'x' + item.height : '') : state.converter.resolution + 'p');
+  let name = tpl
+    .replace(/\{name\}/g, base)
+    .replace(/\{ext\}/g, target.ext)
+    .replace(/\{format\}/g, target.ext)
+    .replace(/\{index\}/g, String(state.queue.indexOf(item) + 1))
+    .replace(/\{resolution\}/g, res || 'source');
+  if (!name.includes('.')) name = name + '.' + target.ext;
+  return safeName(name);
+}
+
 function uniqueName(name, used) {
   let candidate = name;
   let i = 2;
@@ -274,7 +289,7 @@ function planFor(item, format = state.converter.format) {
     requested: format,
     target,
     reason: compatible ? '' : incompatibleReason(item.kind, formatKey),
-    outputName: outputName(item.name, target.ext, extOf(item.name) === target.ext ? '-converted' : '')
+    outputName: applyRenameTemplate(item, target, state.converter.renameTemplate)
   };
 }
 
@@ -304,6 +319,7 @@ const DEFAULT_CONVERTER = {
   imageHeight: '',
   imageQuality: .86,
   socialPreset: 'none',
+  renameTemplate: '',
   targetSizeMB: 0,
   watermarkText: ''
 };
@@ -2972,6 +2988,11 @@ function converterPanes() {
       <div class="field">
         <div class="field-head"><span class="field-label">Watermark text</span></div>
         <input type="text" value="${esc(conv.watermarkText || '')}" data-field="converter.watermarkText" class="input" style="width:100%" placeholder="optional" />
+      </div>
+      <div class="field">
+        <div class="field-head"><span class="field-label">Rename template</span></div>
+        <input type="text" value="${esc(conv.renameTemplate || '')}" data-field="converter.renameTemplate" class="input" style="width:100%" placeholder="{name}_NuVerter_{resolution}" />
+        <p class="field-help">Tokens: {name}, {ext}, {index}, {resolution}. Leave empty for default.</p>
       </div>
     </div>`;
 
