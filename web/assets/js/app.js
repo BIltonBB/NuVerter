@@ -395,6 +395,7 @@ const state = {
   devTools: { tab: 'json' },
   practical: { tab: 'diff' },
   aiTools: { tab: 'aibg' },
+  docSearch: { docs: [], query: '' },
   aiImage: { model: 'sd-turbo', folderName: '', status: '', busy: false, apiKey: (localStorage.getItem('NuVerter-pollinations-key') || '') },
   audioTools: { tab: 'audioclean' },
   compressor: {
@@ -5968,10 +5969,72 @@ async function refreshAiModelsInfo() {
   }
 }
 
+function utilDocSearchBody() {
+  const docs = state.docSearch?.docs || [];
+  const q = state.docSearch?.query || '';
+  const results = q
+    ? docs.filter((d) => (d.text || '').toLowerCase().includes(q.toLowerCase()))
+    : docs;
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Document collection</strong><span>OCR multiple images and search across them</span></div></div>
+      <div class="stage-body">
+        <input type="file" accept="image/*" multiple data-util="doc-files" hidden id="util-doc-files" />
+        <label class="btn btn-secondary btn-sm" for="util-doc-files">Choose images</label>
+        <button class="btn btn-primary btn-sm" data-action="doc-add" style="margin-left:6px">OCR & add</button>
+        <button class="btn btn-ghost btn-sm" data-action="doc-clear" style="margin-left:6px">Clear</button>
+        <div class="field" style="margin-top:10px">
+          <div class="field-head"><span class="field-label">Search</span></div>
+          <input class="input" data-util="doc-query" value="${esc(q)}" placeholder="Search extracted text…" style="width:100%" />
+        </div>
+        <button class="btn btn-secondary btn-sm" data-action="doc-search" style="margin-top:6px">Search</button>
+        <div id="util-doc-out" class="util-out" style="margin-top:10px">
+          ${docs.length ? `${docs.length} document(s) indexed. ${results.length} match${results.length === 1 ? '' : 'es'}.
+            <ul style="margin-top:8px;padding-left:18px">
+              ${results.map((d) => {
+                const idx = (d.text || '').toLowerCase().indexOf(q.toLowerCase());
+                const snippet = q && idx >= 0 ? (d.text || '').slice(Math.max(0, idx - 60), idx + 120).replace(/\n/g, ' ') : (d.text || '').slice(0, 120).replace(/\n/g, ' ');
+                return `<li><strong>${esc(d.name)}</strong><br><small>${esc(snippet)}</small></li>`;
+              }).join('')}
+            </ul>` : aiEmptyState('No documents yet', 'Choose images and run OCR to build a searchable collection.', 'file-search')}
+        </div>
+      </div>
+    </div>`;
+}
+
+async function utilDocAdd() {
+  const files = Array.from(document.querySelector('[data-util="doc-files"]')?.files || []);
+  if (!files.length) { toast('No images', 'Choose images first.', 'error'); return; }
+  const out = document.getElementById('util-doc-out');
+  if (out) out.innerHTML = 'OCR processing…';
+  try {
+    if (!window.__tesseract) window.__tesseract = await import('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js');
+    const Tesseract = window.__tesseract;
+    for (const file of files) {
+      const worker = await Tesseract.createWorker('eng');
+      const { data } = await worker.recognize(file);
+      await worker.terminate();
+      state.docSearch.docs.push({ name: file.name, text: data.text || '' });
+    }
+    state.docSearch.query = document.querySelector('[data-util="doc-query"]')?.value || state.docSearch.query;
+    renderView();
+    toast('Indexed', `${files.length} document(s) added.`, 'success');
+  } catch (e) {
+    if (out) out.innerHTML = '';
+    toast('OCR failed', e?.message || 'Failed.', 'error');
+  }
+}
+
+function utilDocClear() {
+  state.docSearch.docs = [];
+  state.docSearch.query = '';
+  renderView();
+}
+
 function aiToolsView() {
   const tab = state.aiTools?.tab || 'aibg';
-  const tabs = ['aiimg','aibg','aiup','ocr','tts','emb','models'];
-  const labels = { aiimg:'AI Image', aibg:'AI BG', aiup:'AI Upscale', ocr:'OCR', tts:'TTS', emb:'Embeddings', models:'Models' };
+  const tabs = ['aiimg','aibg','aiup','ocr','tts','emb','models','docs'];
+  const labels = { aiimg:'AI Image', aibg:'AI BG', aiup:'AI Upscale', ocr:'OCR', tts:'TTS', emb:'Embeddings', models:'Models', docs:'Doc Search' };
   return `
     ${viewHead({ index: '11', kicker: 'AI tools', title: 'AI <span class="accent">utilities.</span>', sub: 'Image generation, background removal, upscaling, OCR, TTS and embeddings — local where it counts.' })}
     <div class="util-tabs segmented" role="tablist">
@@ -5984,6 +6047,7 @@ function aiToolsView() {
         tab === 'ocr' ? utilOcrBody() :
         tab === 'tts' ? utilTtsBody() :
         tab === 'models' ? utilAiModelsBody() :
+        tab === 'docs' ? utilDocSearchBody() :
         utilEmbBody()}
     </div>
     <div class="queue-progress tool-progress" id="ai-tools-progress" hidden style="margin-top:10px">
@@ -10291,6 +10355,9 @@ async function handleExtraAction(action, el) {
     case 'util-vector-dl': { if (window.__lastSvg) { const blob = new Blob([window.__lastSvg], { type: 'image/svg+xml' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'vectorized.svg'; a.click(); URL.revokeObjectURL(a.href); } return true; }
     case 'util-palette-copy': { const h = el?.dataset?.hex || ''; if (h) { try { await navigator.clipboard.writeText(h); toast('Copied', h, 'success'); } catch {} } return true; }
     case 'util-ocr': await utilOcr(); return true;
+    case 'doc-add': await utilDocAdd(); return true;
+    case 'doc-clear': utilDocClear(); return true;
+    case 'doc-search': state.docSearch.query = document.querySelector('[data-util="doc-query"]')?.value || ''; renderView(); return true;
     case 'util-aibg': await utilAiBg(); return true;
     case 'util-aiup': await utilAiUpscale(); return true;
     case 'util-emb': await utilEmb(); return true;
