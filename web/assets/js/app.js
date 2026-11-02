@@ -6783,6 +6783,10 @@ function compressorView() {
     <div class="switch-row">
       <div class="switch-copy"><strong>Remove audio</strong><small>Shrink further for silent clips</small></div>
       <button class="switch" role="switch" aria-checked="${s.mute}" aria-label="Remove audio" data-toggle="compressor.settings.mute"></button>
+    </div>
+    <div class="field">
+      <div class="field-head"><span class="field-label">Estimated output size</span><span class="field-value">${source ? formatBytes(Math.round(source.size * (s.mode === 'size' ? (s.targetMB * 1024 * 1024 / Math.max(1, source.size)) : compressorFactor(s.quality)))) : '—'}</span></div>
+      <p class="field-help">Approximate. Actual size depends on content.</p>
     </div>`;
 
   return `
