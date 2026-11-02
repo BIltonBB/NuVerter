@@ -396,7 +396,7 @@ const state = {
   practical: { tab: 'diff' },
   aiTools: { tab: 'aibg' },
   docSearch: { docs: [], query: '' },
-  workflow: { source: null, steps: [], running: false },
+  workflow: { source: null, nodes: [], edges: [], running: false, pan: { x: 0, y: 0 }, zoom: 1, connectFrom: null },
   aiImage: { model: 'sd-turbo', folderName: '', status: '', busy: false, apiKey: (localStorage.getItem('NuVerter-pollinations-key') || '') },
   audioTools: { tab: 'audioclean' },
   compressor: {
@@ -7442,12 +7442,24 @@ async function reframeExport() {
   }
 }
 
+const WF_NODE_LABELS = { trim: 'Trim', extractAudio: 'Extract audio', ocr: 'OCR text' };
+
 function workflowView() {
   const data = state.workflow;
   const src = data.source;
-  const stepLabels = { trim: 'Trim', extractAudio: 'Extract audio', ocr: 'OCR text' };
+  const pan = data.pan || { x: 0, y: 0 };
+  const zoom = data.zoom || 1;
+  // edges as svg lines
+  const lines = data.edges.map((e) => {
+    const a = data.nodes.find((n) => n.id === e.from);
+    const b = data.nodes.find((n) => n.id === e.to);
+    if (!a || !b) return '';
+    const x1 = a.x + 150, y1 = a.y + 24;
+    const x2 = b.x, y2 = b.y + 24;
+    return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--accent)" stroke-width="2" marker-end="url(#wf-arrow)" />`;
+  }).join('');
   return `
-    ${viewHead({ index: '18', kicker: 'Workflows', title: 'Sequential <span class="accent">pipelines.</span>', sub: 'Chain a few local operations. Runs in order on this device.' })}
+    ${viewHead({ index: '18', kicker: 'Workflows', title: 'Visual <span class="accent">pipelines.</span>', sub: 'Drag nodes, connect ports, run. Single-chain execution for now.' })}
     <div class="tool-grid">
       <section class="area-drop">
         <div class="stage-card">
@@ -7457,28 +7469,37 @@ function workflowView() {
             <label class="btn btn-secondary btn-sm" for="wf-file">Choose file</label>
             ${src ? `<p style="margin-top:8px">${esc(src.name)}</p>` : ''}
             <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
-              <select id="wf-add-step" class="select">
+              <select id="wf-add-node" class="select">
                 <option value="trim">Trim</option>
                 <option value="extractAudio">Extract audio</option>
                 <option value="ocr">OCR text</option>
               </select>
-              <button class="btn btn-secondary btn-sm" data-action="wf-add-step">Add step</button>
+              <button class="btn btn-secondary btn-sm" data-action="wf-add-node">Add node</button>
             </div>
+            <div style="margin-top:10px;display:flex;gap:6px">
+              <button class="btn btn-primary btn-sm" data-action="wf-run" ${src && data.nodes.length && !data.running ? '' : 'disabled'}>${icon('play')}Run</button>
+              <button class="btn btn-ghost btn-sm" data-action="wf-clear">Clear</button>
+            </div>
+            <div id="wf-out" class="util-out" style="margin-top:8px"></div>
           </div>
         </div>
       </section>
-      <section class="area-queue">
-        <div class="stage-card">
-          <div class="stage-head"><div class="stage-head-copy"><strong>Pipeline</strong><span>${data.steps.length} step(s)</span></div></div>
-          <div class="stage-body">
-            ${data.steps.length ? data.steps.map((s, i) => `
-              <div class="settings-item">
-                <div class="settings-item-copy"><strong>${i + 1}. ${stepLabels[s.type] || s.type}</strong><small>${esc(s.status || 'idle')}${s.error ? ' · ' + esc(s.error) : ''}</small></div>
-                <button class="btn btn-ghost btn-sm" data-action="wf-remove-step" data-idx="${i}">${icon('x')}</button>
-              </div>`).join('') : '<p class="muted">No steps yet.</p>'}
-            <div style="margin-top:10px;display:flex;gap:6px">
-              <button class="btn btn-primary btn-sm" data-action="wf-run" ${src && data.steps.length && !data.running ? '' : 'disabled'}>${icon('play')}Run pipeline</button>
-              <div id="wf-out" class="util-out"></div>
+      <section class="area-queue" style="min-height:420px">
+        <div class="stage-card" style="height:100%">
+          <div class="stage-head"><div class="stage-head-copy"><strong>Canvas</strong><span>Drag nodes · click output port then input port to connect</span></div></div>
+          <div class="stage-body" style="padding:0">
+            <div id="wf-canvas" style="position:relative;width:100%;height:420px;overflow:hidden;background:var(--surface-2);border-radius:8px;cursor:grab">
+              <svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none" id="wf-svg">
+                <defs><marker id="wf-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="var(--accent)" /></marker></defs>
+                ${lines}
+              </svg>
+              ${data.nodes.map((n) => `
+                <div class="wf-node" data-node="${n.id}" style="position:absolute;left:${n.x}px;top:${n.y}px;width:150px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 8px;user-select:none;cursor:move">
+                  <div style="font-weight:600;font-size:12px">${WF_NODE_LABELS[n.type] || n.type}</div>
+                  <div style="font-size:10px;color:var(--text-3);margin-top:2px">${esc(n.status || 'idle')}${n.error ? ' · ' + esc(n.error) : ''}</div>
+                  <div class="wf-port wf-port-in" data-port-in="${n.id}" style="position:absolute;left:-6px;top:20px;width:12px;height:12px;border-radius:50%;background:var(--border);border:2px solid var(--surface);cursor:pointer"></div>
+                  <div class="wf-port wf-port-out" data-port-out="${n.id}" style="position:absolute;right:-6px;top:20px;width:12px;height:12px;border-radius:50%;background:var(--accent);border:2px solid var(--surface);cursor:pointer"></div>
+                </div>`).join('')}
             </div>
           </div>
         </div>
@@ -7488,45 +7509,58 @@ function workflowView() {
 
 async function wfRun() {
   const data = state.workflow;
-  if (!data.source || !data.steps.length || data.running) return;
+  if (!data.source || !data.nodes.length || data.running) return;
   data.running = true;
+  data.nodes.forEach((n) => { n.status = 'idle'; n.error = ''; n.result = null; n.text = ''; });
   renderView();
+  // topological order (simple: follow edges; fallback to node order)
+  const order = [];
+  const visited = new Set();
+  const visiting = new Set();
+  function visit(id) {
+    if (visited.has(id)) return;
+    if (visiting.has(id)) return; // cycle: skip
+    visiting.add(id);
+    data.edges.filter((e) => e.from === id).forEach((e) => visit(e.to));
+    visiting.delete(id);
+    visited.add(id);
+    order.unshift(id);
+  }
+  // start from nodes with no incoming edges
+  const hasIncoming = new Set(data.edges.map((e) => e.to));
+  data.nodes.filter((n) => !hasIncoming.has(n.id)).forEach((n) => visit(n.id));
+  data.nodes.forEach((n) => { if (!visited.has(n.id)) visit(n.id); });
+  const idToNode = (id) => data.nodes.find((n) => n.id === id);
+
   let currentFile = data.source.file;
   let currentName = data.source.name;
-  for (let i = 0; i < data.steps.length; i++) {
-    const step = data.steps[i];
+  for (const id of order) {
     if (!state.workflow.running) break;
-    step.status = 'running';
-    step.error = '';
+    const node = idToNode(id);
+    if (!node) continue;
+    node.status = 'running';
     renderView();
     try {
-      if (step.type === 'trim') {
-        const start = Number(step.start || 0);
-        const end = Number(step.end || 0);
-        const fmt = extOf(currentName) || 'mp4';
-        const args = ['-hide_banner', '-y'];
-        if (start > 0) args.push('-ss', String(start));
-        args.push('-i', '{in}');
-        if (end > start && end > 0) args.push('-t', String(end - start));
-        args.push('{out}');
-        const result = await Engine.run({ blob: currentFile, inputName: extOf(currentName) || 'mp4', outputName: fmt, args, mime: currentFile.type || 'application/octet-stream' });
+      if (node.type === 'trim') {
+        const args = ['-hide_banner', '-y', '-i', '{in}', '{out}'];
+        const result = await Engine.run({ blob: currentFile, inputName: extOf(currentName) || 'mp4', outputName: extOf(currentName) || 'mp4', args, mime: currentFile.type || 'application/octet-stream' });
         currentFile = new File([result.blob], currentName, { type: result.mime });
-      } else if (step.type === 'extractAudio') {
+      } else if (node.type === 'extractAudio') {
         const result = await Engine.run({ blob: currentFile, inputName: extOf(currentName) || 'mp4', outputName: 'mp3', args: ['-hide_banner', '-y', '-i', '{in}', '-vn', '-c:a', 'libmp3lame', '-b:a', '128k', '{out}'], mime: 'audio/mpeg' });
         currentFile = new File([result.blob], currentName.replace(/\\.[^.]+$/, '') + '.mp3', { type: 'audio/mpeg' });
         currentName = currentFile.name;
-      } else if (step.type === 'ocr') {
+      } else if (node.type === 'ocr') {
         if (!window.__tesseract) window.__tesseract = await import('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js');
         const Tesseract = window.__tesseract;
         const worker = await Tesseract.createWorker('eng');
         const { data: ocrData } = await worker.recognize(currentFile);
         await worker.terminate();
-        step.text = ocrData.text || '';
+        node.text = ocrData.text || '';
       }
-      step.status = 'done';
+      node.status = 'done';
     } catch (e) {
-      step.status = 'error';
-      step.error = e?.message || 'Failed.';
+      node.status = 'error';
+      node.error = e?.message || 'Failed.';
       break;
     }
     renderView();
@@ -7534,8 +7568,8 @@ async function wfRun() {
   data.running = false;
   const out = document.getElementById('wf-out');
   if (out) {
-    const lastText = data.steps.filter((s) => s.type === 'ocr').map((s) => s.text).join('\\n');
-    if (lastText) out.innerHTML = `<pre style="white-space:pre-wrap">${esc(lastText)}</pre>`;
+    const lastOcr = data.nodes.filter((n) => n.type === 'ocr').map((n) => n.text).join('\\n');
+    if (lastOcr) out.innerHTML = `<pre style="white-space:pre-wrap">${esc(lastOcr)}</pre>`;
     else if (currentFile) {
       const url = URL.createObjectURL(currentFile);
       out.innerHTML = `<a class="btn btn-secondary btn-sm" href="${url}" download="${esc(currentName)}">${icon('download')}Download ${esc(currentName)}</a>`;
@@ -7550,6 +7584,65 @@ function bindWorkflow() {
     const f = e.target.files?.[0];
     if (f) { state.workflow.source = { file: f, name: f.name, size: f.size }; renderView(); }
   };
+  const canvas = document.getElementById('wf-canvas');
+  if (!canvas) return;
+  let draggingNode = null;
+  let offset = { x: 0, y: 0 };
+  canvas.addEventListener('pointerdown', (e) => {
+    const nodeEl = e.target.closest('.wf-node');
+    if (nodeEl) {
+      const id = nodeEl.dataset.node;
+      const node = state.workflow.nodes.find((n) => n.id === id);
+      if (!node) return;
+      draggingNode = node;
+      const rect = canvas.getBoundingClientRect();
+      offset = { x: e.clientX - rect.left - node.x, y: e.clientY - rect.top - node.y };
+      try { canvas.setPointerCapture(e.pointerId); } catch {}
+      return;
+    }
+    // port connections
+    const outPort = e.target.closest('[data-port-out]');
+    if (outPort) {
+      state.workflow.connectFrom = outPort.dataset.portOut;
+      return;
+    }
+    const inPort = e.target.closest('[data-port-in]');
+    if (inPort && state.workflow.connectFrom) {
+      const from = state.workflow.connectFrom;
+      const to = inPort.dataset.portIn;
+      if (from !== to && !state.workflow.edges.some((e) => e.from === from && e.to === to)) {
+        state.workflow.edges.push({ from, to });
+      }
+      state.workflow.connectFrom = null;
+      renderView();
+    }
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!draggingNode) return;
+    const rect = canvas.getBoundingClientRect();
+    draggingNode.x = Math.max(0, e.clientX - rect.left - offset.x);
+    draggingNode.y = Math.max(0, e.clientY - rect.top - offset.y);
+    const el = canvas.querySelector(`[data-node="${draggingNode.id}"]`);
+    if (el) { el.style.left = draggingNode.x + 'px'; el.style.top = draggingNode.y + 'px'; }
+    // update svg lines
+    const svg = document.getElementById('wf-svg');
+    if (svg) {
+      const lines = state.workflow.edges.map((ed) => {
+        const a = state.workflow.nodes.find((n) => n.id === ed.from);
+        const b = state.workflow.nodes.find((n) => n.id === ed.to);
+        if (!a || !b) return '';
+        return `<line x1="${a.x + 150}" y1="${a.y + 24}" x2="${b.x}" y2="${b.y + 24}" stroke="var(--accent)" stroke-width="2" />`;
+      }).join('');
+      // keep defs
+      const defs = svg.querySelector('defs');
+      svg.innerHTML = '';
+      if (defs) svg.appendChild(defs);
+      const parser = new DOMParser();
+      const frag = parser.parseFromString('<svg xmlns="http://www.w3.org/2000/svg">' + lines + '</svg>', 'image/svg+xml');
+      Array.from(frag.documentElement.childNodes).forEach((c) => svg.appendChild(document.importNode(c, true)));
+    }
+  });
+  canvas.addEventListener('pointerup', () => { draggingNode = null; });
 }
 
 function bindReframe() {
@@ -10566,15 +10659,18 @@ async function handleExtraAction(action, el) {
     case 'rf-export':
       await reframeExport();
       return true;
-    case 'wf-add-step': {
-      const type = document.getElementById('wf-add-step')?.value || 'trim';
-      state.workflow.steps.push({ type, status: 'idle', start: 0, end: 0 });
+    case 'wf-add-node': {
+      const type = document.getElementById('wf-add-node')?.value || 'trim';
+      const id = 'n' + Math.random().toString(36).slice(2, 8);
+      const n = state.workflow.nodes.length;
+      state.workflow.nodes.push({ id, type, x: 40 + (n % 3) * 180, y: 40 + Math.floor(n / 3) * 100, status: 'idle' });
       renderView();
       return true;
     }
-    case 'wf-remove-step': {
-      const idx = Number(el.dataset.idx);
-      if (!isNaN(idx)) state.workflow.steps.splice(idx, 1);
+    case 'wf-clear': {
+      state.workflow.nodes = [];
+      state.workflow.edges = [];
+      state.workflow.connectFrom = null;
       renderView();
       return true;
     }
