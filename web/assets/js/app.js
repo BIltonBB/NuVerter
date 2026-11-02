@@ -9658,6 +9658,18 @@ function updateDropHighlights(event, active) {
   zone.classList.toggle('is-drag', active);
 }
 
+function suggestSmartDrop(files) {
+  const hasVideo = files.some((f) => (f.type || '').startsWith('video/'));
+  const hasAudio = files.some((f) => (f.type || '').startsWith('audio/'));
+  const hasImage = files.some((f) => (f.type || '').startsWith('image/'));
+  const suggestions = [];
+  if (hasVideo) suggestions.push('Universal Converter', 'Video Compressor', 'Video Cropper', 'Audio Extractor', 'GIF Maker', 'Subtitle Editor');
+  if (hasAudio) suggestions.push('Universal Converter', 'Audio Extractor');
+  if (hasImage) suggestions.push('Universal Converter', 'Video Cropper');
+  const unique = [...new Set(suggestions)];
+  if (unique.length) toast('Smart drop', 'Try: ' + unique.slice(0, 4).join(', ') + '.', 'info');
+}
+
 function fileListFromEvent(event) {
   const transfer = event.dataTransfer;
   if (!transfer) return [];
@@ -9715,6 +9727,8 @@ function bindEvents() {
     const files = fileListFromEvent(event);
     if (!files.length) return;
     const context = zone.dataset.drop || 'converter';
+    // Smart-drop routing: suggest the most relevant tools for the dropped files.
+    try { suggestSmartDrop(files); } catch {}
     if (context === 'converter') addConverterFiles(files);
     else loadToolSource(context, files[0]);
   });
