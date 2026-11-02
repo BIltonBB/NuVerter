@@ -368,6 +368,8 @@ const state = {
     panelOpacity: 100
   },
   queue: [],
+  queueUndo: [],
+  queueRedo: [],
   history: [],
   historyLoaded: false,
   historyQuery: '',
@@ -2025,6 +2027,7 @@ function estimateQueueSeconds() {
 async function addConverterFiles(fileList) {
   const files = Array.from(fileList || []).filter((file) => file && file.size > 0);
   if (!files.length) return;
+  pushQueueHistory();
   let unsupported = 0;
   const added = [];
   for (const file of files) {
@@ -2070,6 +2073,7 @@ async function addConverterFiles(fileList) {
 function removeQueueItem(id) {
   const item = state.queue.find((entry) => entry.id === id);
   if (!item) return;
+  pushQueueHistory();
   if (state.currentItemId === id) {
     state.cancelItemId = id;
     state.queueRunning = false;
@@ -2085,10 +2089,36 @@ function clearQueue({ keepDone = false } = {}) {
     state.queueRunning = false;
     Engine.cancel();
   }
+  pushQueueHistory();
   state.queue = keepDone ? state.queue.filter((item) => item.status === 'done') : [];
   renderQueue();
   syncConverterChrome();
   toast(keepDone ? 'Queue cleaned' : 'Queue cleared', keepDone ? 'Finished results were kept.' : 'Every queued file was removed.', 'info');
+}
+
+function pushQueueHistory() {
+  state.queueUndo = state.queueUndo || [];
+  state.queueRedo = [];
+  state.queueUndo.push(state.queue.slice());
+  if (state.queueUndo.length > 50) state.queueUndo.shift();
+}
+
+function undoQueue() {
+  if (!state.queueUndo?.length) return;
+  state.queueRedo = state.queueRedo || [];
+  state.queueRedo.push(state.queue.slice());
+  state.queue = state.queueUndo.pop();
+  renderQueue();
+  syncConverterChrome();
+}
+
+function redoQueue() {
+  if (!state.queueRedo?.length) return;
+  state.queueUndo = state.queueUndo || [];
+  state.queueUndo.push(state.queue.slice());
+  state.queue = state.queueRedo.pop();
+  renderQueue();
+  syncConverterChrome();
 }
 
 async function retryQueueItem(id) {
@@ -3298,6 +3328,10 @@ function converterView() {
               <span class="mono" id="conv-summary-right">${state.converter.format === 'auto' ? 'AUTO' : FORMATS[state.converter.format].label}</span>
             </div>
             <button class="btn btn-primary" id="conv-start" data-action="start-queue">${icon('play')}<span>${queued ? `Process ${queued} file${queued === 1 ? '' : 's'}` : 'Add files to begin'}</span></button>
+            <div style="display:flex;gap:6px;margin-top:6px">
+              <button class="btn btn-ghost btn-sm" data-action="queue-undo" ${state.queueUndo?.length ? '' : 'disabled'}>${icon('undo-2')}Undo</button>
+              <button class="btn btn-ghost btn-sm" data-action="queue-redo" ${state.queueRedo?.length ? '' : 'disabled'}>${icon('repeat')}Redo</button>
+            </div>
             <p class="process-hint" id="conv-hint">${icon('cpu')}${state.premium ? 'Premium · every slot active' : 'Free · slots 4+ continue after the first three'}</p>
           </div>
         </div>
@@ -11004,6 +11038,8 @@ async function handleAction(action, el) {
     case 'start-queue': startQueue(); break;
     case 'cancel-queue': cancelQueueProcessing(); break;
     case 'clear-queue': await requestClearQueue(); break;
+    case 'queue-undo': undoQueue(); break;
+    case 'queue-redo': redoQueue(); break;
     case 'clear-done': clearFinishedQueue(); break;
     case 'download-all': downloadAllQueue(); break;
     case 'remove-item': removeQueueItem(id); break;
