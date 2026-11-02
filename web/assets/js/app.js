@@ -8861,12 +8861,46 @@ function bindExtractorAudio() {
     audio.currentTime = 0;
     updateWavePlayhead();
   });
-  wrap?.addEventListener('click', (event) => {
+  let waveDrag = null;
+  wrap?.addEventListener('pointerdown', (event) => {
     if (!audio.duration) return;
     const rect = wrap.getBoundingClientRect();
     const pct = clamp((event.clientX - rect.left) / rect.width, 0, 1);
-    audio.currentTime = pct * audio.duration;
-    updateWavePlayhead();
+    waveDrag = { start: pct, moved: false };
+    try { wrap.setPointerCapture(event.pointerId); } catch {}
+  });
+  wrap?.addEventListener('pointermove', (event) => {
+    if (!waveDrag) return;
+    const rect = wrap.getBoundingClientRect();
+    const pct = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+    if (!waveDrag.moved && Math.abs(pct - waveDrag.start) > 0.02) waveDrag.moved = true;
+    if (!waveDrag.moved) return;
+    const lo = Math.min(waveDrag.start, pct);
+    const hi = Math.max(waveDrag.start, pct);
+    const data = state.extractor;
+    data.settings.trimStart = Math.round(lo * 100);
+    data.settings.trimEnd = Math.round(hi * 100);
+    const startInput = document.querySelector('[data-field="extractor.settings.trimStart"]');
+    const endInput = document.querySelector('[data-field="extractor.settings.trimEnd"]');
+    if (startInput) startInput.value = data.settings.trimStart;
+    if (endInput) endInput.value = data.settings.trimEnd;
+    const startVal = startInput?.closest('.field')?.querySelector('.field-value');
+    const endVal = endInput?.closest('.field')?.querySelector('.field-value');
+    if (startVal) startVal.textContent = data.settings.trimStart + '%';
+    if (endVal) endVal.textContent = data.settings.trimEnd + '%';
+    drawExtractorWave();
+  });
+  wrap?.addEventListener('pointerup', (event) => {
+    if (!waveDrag) return;
+    if (!waveDrag.moved) {
+      if (audio.duration) {
+        const rect = wrap.getBoundingClientRect();
+        const pct = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+        audio.currentTime = pct * audio.duration;
+        updateWavePlayhead();
+      }
+    }
+    waveDrag = null;
   });
   updateWavePlayhead();
 }
