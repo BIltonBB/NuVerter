@@ -320,6 +320,7 @@ const DEFAULT_CONVERTER = {
   imageQuality: .86,
   socialPreset: 'none',
   renameTemplate: '',
+  stripMetadata: false,
   targetSizeMB: 0,
   watermarkText: ''
 };
@@ -1817,6 +1818,7 @@ function buildConverterArgs(item, plan) {
       normalize: settings.normalize,
       duration: window?.duration || item.duration
     }));
+    if (settings.stripMetadata) args.push('-map_metadata', '-1');
     args.push('{out}');
     return args;
   }
@@ -1846,10 +1848,11 @@ function buildConverterArgs(item, plan) {
       duration: window?.duration || item.duration
     }));
   }
+  if (settings.stripMetadata) args.push('-map_metadata', '-1');
   args.push('{out}');
   return args;
 }
-
+ 
 function buildAudioExtractorArgs(item) {
   const settings = state.extractor.settings;
   const window = trimWindow(item, settings.trimStart, settings.trimEnd);
@@ -3015,6 +3018,10 @@ function converterPanes() {
         <div class="field-head"><span class="field-label">Rename template</span></div>
         <input type="text" value="${esc(conv.renameTemplate || '')}" data-field="converter.renameTemplate" class="input" style="width:100%" placeholder="{name}_NuVerter_{resolution}" />
         <p class="field-help">Tokens: {name}, {ext}, {index}, {resolution}. Leave empty for default.</p>
+      </div>
+      <div class="switch-row">
+        <div class="switch-copy"><strong>Strip metadata</strong><small>Remove EXIF/GPS/camera data from outputs</small></div>
+        <button class="switch" role="switch" aria-checked="${conv.stripMetadata}" aria-label="Strip metadata" data-toggle="converter.stripMetadata"></button>
       </div>
     </div>`;
 
