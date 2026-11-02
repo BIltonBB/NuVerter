@@ -338,6 +338,7 @@ const state = {
     autoDownload: false,
     reduceMotion: false,
     seenWelcome: false,
+    processingMode: 'eco',
     accentColor: '',
     gradientBg: false,
     appearancePreset: 'studio',
@@ -2094,6 +2095,110 @@ function updateQueueItemRow(item) {
   syncConverterChrome();
 }
 
+const ENGINE_LOCK = { locked: false, waiters: [] };
+function acquireEngineLock() {
+  if (!ENGINE_LOCK.locked) {
+    ENGINE_LOCK.locked = true;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => { ENGINE_LOCK.waiters.push(resolve); });
+}
+function releaseEngineLock() {
+  const next = ENGINE_LOCK.waiters.shift();
+  if (next) next();
+  else ENGINE_LOCK.locked = false;
+}
+
+async function processOneQueueItem(item, counters) {
+  if (!state.queueRunning) return;
+  if (!state.queue.includes(item)) return;
+  const plan = planFor(item, state.converter.format);
+  if (!plan.compatible) {
+    item.status = 'skipped';
+    item.error = plan.reason;
+    counters.skipped++;
+    renderQueue();
+    return;
+  }
+  item.status = 'processing';
+  item.progress = 0;
+  item.error = '';
+  item.startedAt = performance.now();
+  state.currentItemId = item.id;
+  renderQueue();
+  syncConverterChrome();
+  try {
+    let result;
+    if (item.kind === 'text') {
+      updateQueueProgress(item, .15);
+      const text = await item.file.text();
+      const blob = new Blob([text], { type: plan.target.mime || 'text/plain' });
+      updateQueueProgress(item, 1);
+      result = { blob, size: blob.size, mime: blob.type };
+    } else if (item.kind === 'image') {
+      updateQueueProgress(item, .18);
+      const converted = await convertImageBlob(item.file, plan.format, state.converter, { maxDim: state.converter.imageMax, targetWidth: state.converter.imageWidth, targetHeight: state.converter.imageHeight });
+      updateQueueProgress(item, 1);
+      result = {
+        blob: converted.blob,
+        size: converted.blob.size,
+        mime: converted.mime,
+        width: converted.width,
+        height: converted.height
+      };
+    } else {
+      await acquireEngineLock();
+      try {
+        const inputName = extOf(item.name) || (item.kind === 'video' ? 'mp4' : item.kind === 'audio' ? 'mp3' : 'png');
+        result = await Engine.run({
+          blob: item.file,
+          inputName,
+          outputName: plan.target.ext,
+          args: buildConverterArgs(item, plan),
+          mime: plan.target.mime,
+          extraFiles: state.converter.subtitleFile ? [{ name: state.converter.subtitleFile.name, blob: state.converter.subtitleFile }] : [],
+          onProgress: (value) => updateQueueProgress(item, .04 + value * .96)
+        });
+      } finally {
+        releaseEngineLock();
+      }
+    }
+    if (!state.queue.includes(item)) return;
+    if (!state.queueRunning) return;
+    item.elapsed = (performance.now() - item.startedAt) / 1000;
+    item.status = 'done';
+    item.progress = 1;
+    item.result = await registerOutput({
+      tool: 'converter',
+      sourceName: item.name,
+      sourceSize: item.size,
+      blob: result.blob,
+      name: plan.outputName,
+      mime: result.mime || plan.target.mime,
+      meta: { format: plan.target.label, kind: item.kind, width: result.width, height: result.height }
+    });
+    counters.done++;
+  } catch (error) {
+    if (state.cancelItemId === item.id || error?.name === 'AbortError') {
+      item.status = 'queued';
+      item.progress = 0;
+      item.error = '';
+    } else {
+      item.status = 'error';
+      item.error = error?.message || 'Conversion failed.';
+      item.progress = 0;
+      counters.fail++;
+      if (Engine.status === 'error') Engine.reset();
+    }
+  } finally {
+    state.currentItemId = null;
+    if (state.queue.includes(item)) {
+      renderQueue();
+      syncConverterChrome();
+    }
+  }
+}
+
 async function startQueue() {
   if (state.queueRunning) {
     toast('Batch already running', 'Wait for the current queue to finish or cancel it first.', 'info');
@@ -2110,93 +2215,26 @@ async function startQueue() {
   syncConverterChrome();
   toast('Local processing started', `${pending.length} file${pending.length === 1 ? '' : 's'} · engine runs on this device.`, 'info');
   Engine.preload();
-  let doneCount = 0;
-  let failCount = 0;
-  let skippedCount = 0;
-
-  for (const item of pending) {
-    if (!state.queueRunning) break;
-    if (!state.queue.includes(item)) continue;
-    const plan = planFor(item, state.converter.format);
-    if (!plan.compatible) {
-      item.status = 'skipped';
-      item.error = plan.reason;
-      skippedCount++;
-      renderQueue();
-      continue;
-    }
-    item.status = 'processing';
-    item.progress = 0;
-    item.error = '';
-    item.startedAt = performance.now();
-    state.currentItemId = item.id;
-    renderQueue();
-    syncConverterChrome();
-    try {
-      let result;
-      if (item.kind === 'text') {
-        updateQueueProgress(item, .15);
-        const text = await item.file.text();
-        const blob = new Blob([text], { type: plan.target.mime || 'text/plain' });
-        updateQueueProgress(item, 1);
-        result = { blob, size: blob.size, mime: blob.type };
-      } else if (item.kind === 'image') {
-        updateQueueProgress(item, .18);
-        const converted = await convertImageBlob(item.file, plan.format, state.converter, { maxDim: state.converter.imageMax, targetWidth: state.converter.imageWidth, targetHeight: state.converter.imageHeight });
-        updateQueueProgress(item, 1);
-        result = {
-          blob: converted.blob,
-          size: converted.blob.size,
-          mime: converted.mime,
-          width: converted.width,
-          height: converted.height
-        };
-      } else {
-        const inputName = extOf(item.name) || (item.kind === 'video' ? 'mp4' : item.kind === 'audio' ? 'mp3' : 'png');
-        result = await Engine.run({
-          blob: item.file,
-          inputName,
-          outputName: plan.target.ext,
-          args: buildConverterArgs(item, plan),
-          mime: plan.target.mime,
-          extraFiles: state.converter.subtitleFile ? [{ name: state.converter.subtitleFile.name, blob: state.converter.subtitleFile }] : [],
-          onProgress: (value) => updateQueueProgress(item, .04 + value * .96)
-        });
-      }
+  const counters = { done: 0, fail: 0, skipped: 0 };
+  const turbo = state.prefs.processingMode === 'turbo';
+  const cap = turbo ? Math.max(2, Math.min(4, (navigator.hardwareConcurrency || 4))) : 1;
+  const items = pending.slice();
+  let cursor = 0;
+  async function worker() {
+    while (state.queueRunning) {
+      const idx = cursor++;
+      if (idx >= items.length) return;
+      const item = items[idx];
       if (!state.queue.includes(item)) continue;
-      item.elapsed = (performance.now() - item.startedAt) / 1000;
-      item.status = 'done';
-      item.progress = 1;
-      item.result = await registerOutput({
-        tool: 'converter',
-        sourceName: item.name,
-        sourceSize: item.size,
-        blob: result.blob,
-        name: plan.outputName,
-        mime: result.mime || plan.target.mime,
-        meta: { format: plan.target.label, kind: item.kind, width: result.width, height: result.height }
-      });
-      doneCount++;
-    } catch (error) {
-      if (state.cancelItemId === item.id || error?.name === 'AbortError') {
-        item.status = 'queued';
-        item.progress = 0;
-        item.error = '';
-        if (!state.queue.includes(item)) continue;
-      } else {
-        item.status = 'error';
-        item.error = error?.message || 'Conversion failed.';
-        item.progress = 0;
-        failCount++;
-        if (Engine.status === 'error') Engine.reset();
-      }
-    } finally {
-      state.currentItemId = null;
-      if (state.queue.includes(item)) {
-        renderQueue();
-        syncConverterChrome();
-      }
+      if (item.status !== 'queued') continue;
+      await processOneQueueItem(item, counters);
     }
+  }
+  const workers = Array.from({ length: Math.min(cap, items.length) }, () => worker());
+  try {
+    await Promise.all(workers);
+  } catch (e) {
+    console.error('startQueue worker error', e);
   }
 
   const wasStopped = !state.queueRunning;
@@ -2205,13 +2243,13 @@ async function startQueue() {
   state.cancelItemId = null;
   renderQueue();
   syncConverterChrome();
-  if (doneCount) {
-    toast('Batch complete', `${doneCount} file${doneCount === 1 ? '' : 's'} finished locally${skippedCount ? ` · ${skippedCount} skipped` : ''}${failCount ? ` · ${failCount} failed` : ''}.`, 'success');
-  } else if (failCount) {
+  if (counters.done) {
+    toast('Batch complete', `${counters.done} file${counters.done === 1 ? '' : 's'} finished locally${counters.skipped ? ` · ${counters.skipped} skipped` : ''}${counters.fail ? ` · ${counters.fail} failed` : ''}.`, 'success');
+  } else if (counters.fail) {
     toast('Conversion failed', 'Open the failed row for the engine message, then try again.', 'error');
   } else if (wasStopped) {
     toast('Batch stopped', 'Your files are still in the queue.', 'info');
-  } else if (skippedCount) {
+  } else if (counters.skipped) {
     toast('Files skipped', 'Choose a format that matches the queued media.', 'info');
   }
 }
@@ -9228,6 +9266,12 @@ function settingsBody() {
           <div class="settings-item-copy"><strong>Reduce motion</strong><small>Disable ambient and progress animations</small></div>
           <button class="switch" role="switch" aria-checked="${state.prefs.reduceMotion}" aria-label="Reduce motion" data-toggle="prefs.reduceMotion"></button>
         </div>
+        <div class="settings-item">
+          <div class="settings-item-copy"><strong>Processing mode</strong><small>Eco = responsive, one file at a time · Turbo = higher throughput</small></div>
+          <div class="segmented" role="group">
+            ${['eco','turbo'].map((m) => `<button data-action="set-processing-mode" data-mode="${m}" class="${(state.prefs.processingMode || 'eco') === m ? 'is-active' : ''}">${m === 'eco' ? 'Eco' : 'Turbo'}</button>`).join('')}
+          </div>
+        </div>
       </div>
     </div>
 
@@ -9371,7 +9415,7 @@ function openSettings() {
 }
 
 function resetPreferences() {
-  state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false };
+  state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco' };
   savePrefs();
   applyTheme();
   renderSettingsBody();
@@ -9384,7 +9428,7 @@ async function privacyReset() {
   try { await clearHistory(); } catch {}
   try { if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.map((k) => caches.delete(k))); } } catch {}
   try { localStorage.removeItem('NuVerter-converter'); localStorage.removeItem('NuVerter-prefs'); localStorage.removeItem('NuVerter-ai-chat'); } catch {}
-  try { state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false }; savePrefs(); applyTheme(); } catch {}
+  try { state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco' }; savePrefs(); applyTheme(); } catch {}
   try { renderView(); } catch {}
   toast('Privacy reset', 'Queue, results, caches and preferences cleared. Note: browser/OS may retain other copies.', 'success');
 }
@@ -10390,6 +10434,12 @@ async function handleAction(action, el) {
      case 'reset-appearance': resetAppearance(); break;
     case 'pref-reset': resetPreferences(); break;
     case 'privacy-reset': privacyReset(); break;
+    case 'set-processing-mode':
+      state.prefs.processingMode = el.dataset.mode === 'turbo' ? 'turbo' : 'eco';
+      savePrefs();
+      renderSettingsBody();
+      toast('Processing mode', state.prefs.processingMode === 'turbo' ? 'Turbo: higher throughput where supported.' : 'Eco: responsive, one file at a time.', 'info');
+      break;
     case 'usage-reset': { try { localStorage.removeItem('NuVerter-usage'); } catch {} renderSettingsBody(); toast('Statistics reset', 'Usage counters cleared.', 'info'); break; }
     case 'settings-history': closeModal(); setTool('history'); break;
     case 'change-storage-dir': (async () => {
