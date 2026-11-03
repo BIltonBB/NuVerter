@@ -454,7 +454,8 @@ const state = {
     history: [], historyIndex: -1,
     settings: { format: 'png', quality: .92 },
     heal: { active: false, size: 20 },
-    inpaint: { active: false, size: 20, mask: null }
+    inpaint: { active: false, size: 20, mask: null },
+    onnxModelUrl: ''
   },
   videoEditor: {
     source: null, result: null, busy: false,
@@ -7405,6 +7406,15 @@ function imageEditorView() {
                <button class="btn btn-danger btn-sm" data-action="ie-redact-apply" ${source && data.inpaint.active ? '' : 'disabled'} title="Permanently black out masked regions">Apply redaction</button>
                <button class="btn btn-ghost btn-sm" data-action="ie-inpaint-clear" ${source ? '' : 'disabled'}>Clear mask</button>
              </div>
+             <details style="margin-top:8px">
+               <summary style="cursor:pointer;font-size:12px">AI inpaint (ONNX) — optional model</summary>
+               <div class="field" style="margin-top:6px">
+                 <div class="field-head"><span class="field-label">Model URL (.onnx)</span></div>
+                 <input type="text" class="input" style="width:100%" placeholder="https://.../lama.onnx" value="${esc(data.onnxModelUrl || '')}" data-ie-onnx="url" />
+               </div>
+               <button class="btn btn-primary btn-sm" data-action="ie-onnx-inpaint-apply" ${source && data.inpaint.active ? '' : 'disabled'} style="margin-top:6px">Apply AI inpaint</button>
+               <p class="field-help" style="margin-top:6px">Runs a local ONNX inpainting model (e.g. LaMa) on the masked region. Requires a model URL; falls back to patch-based fill on failure. Model is fetched and cached by the browser.</p>
+             </details>
              <div class="field">
                <div class="field-head"><span class="field-label">Brush size</span><span class="field-value">${data.heal.size}px</span></div>
                <input type="range" min="5" max="60" step="1" value="${data.heal.size}" data-ie-heal="size" />
@@ -7696,6 +7706,124 @@ async function imageEditorRedactApply() {
   newImg.src = c.toDataURL();
 }
 
+async function imageEditorOnnxInpaintApply() {
+  const data = state.imageEditor;
+  if (!data.source) return;
+  const urlInput = document.querySelector('[data-ie-onnx="url"]');
+  const modelUrl = (urlInput?.value || data.onnxModelUrl || '').trim();
+  data.onnxModelUrl = modelUrl;
+  if (!modelUrl) { toast('No model URL', 'Enter an ONNX model URL first.', 'error'); return; }
+  const canvas = document.getElementById('ie-canvas');
+  const mask = document.getElementById('ie-mask');
+  if (!canvas || !mask) return;
+  // ensure canvas rendered
+  imageEditorRender();
+  const w = canvas.width, h = canvas.height;
+  // collect masked pixels
+  const maskData = mask.getContext('2d').getImageData(0, 0, w, h);
+  const masked = [];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (maskData.data[(y * w + x) * 4 + 3] > 50) masked.push([x, y]);
+  if (!masked.length) { toast('No mask', 'Paint a mask first.', 'error'); return; }
+  toast('Loading model', 'Fetching ONNX runtime and model…', 'info');
+  try {
+    if (!window.ort) {
+      window.ort = await import('https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.0/dist/ort.min.mjs').catch(async () => {
+        // fallback to global script
+        await new Promise((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.0/dist/ort.min.js';
+          s.onload = resolve; s.onerror = reject; document.head.appendChild(s);
+        });
+        return window.ort;
+      });
+    }
+    const ort = window.ort;
+    if (!ort?.InferenceSession) throw new Error('ONNX Runtime failed to load.');
+    const session = await ort.InferenceSession.create(modelUrl, { executionProviders: ['wasm'] });
+    // Prepare a 512x512 patch is complex; instead run on full image resized to model input if possible.
+    // We'll attempt a generic single-input inference using the canvas image data.
+    const SIZE = 256;
+    const off = document.createElement('canvas');
+    off.width = SIZE; off.height = SIZE;
+    const octx = off.getContext('2d');
+    octx.drawImage(canvas, 0, 0, SIZE, SIZE);
+    const imgData = octx.getImageData(0, 0, SIZE, SIZE);
+    // build mask at SIZE
+    const mcanvas = document.createElement('canvas');
+    mcanvas.width = SIZE; mcanvas.height = SIZE;
+    const mctx = mcanvas.getContext('2d');
+    mctx.drawImage(mask, 0, 0, SIZE, SIZE);
+    const mData = mctx.getImageData(0, 0, SIZE, SIZE);
+    const inputTensor = new ort.Tensor('float32', new Float32Array(SIZE * SIZE * 3), [1, 3, SIZE, SIZE]);
+    const maskTensor = new ort.Tensor('float32', new Float32Array(SIZE * SIZE), [1, 1, SIZE, SIZE]);
+    // fill tensors
+    for (let i = 0; i < SIZE * SIZE; i++) {
+      inputTensor.data[i * 3] = imgData.data[i * 4] / 255;
+      inputTensor.data[i * 3 + 1] = imgData.data[i * 4 + 1] / 255;
+      inputTensor.data[i * 3 + 2] = imgData.data[i * 4 + 2] / 255;
+      maskTensor.data[i] = mData.data[i * 4 + 3] > 50 ? 1 : 0;
+    }
+    // try common input names
+    const feeds = {};
+    const inputNames = session.inputNames || [];
+    if (inputNames.includes('image')) feeds.image = inputTensor;
+    else if (inputNames.length) feeds[inputNames[0]] = inputTensor;
+    if (inputNames.includes('mask')) feeds.mask = maskTensor;
+    else if (inputNames.length > 1) feeds[inputNames[1]] = maskTensor;
+    const results = await session.run(feeds);
+    const outName = session.outputNames?.[0] || Object.keys(results)[0];
+    const outTensor = results[outName];
+    if (!outTensor) throw new Error('No output from model.');
+    // write back to canvas (resize result to original)
+    const outData = octx.createImageData(SIZE, SIZE);
+    for (let i = 0; i < SIZE * SIZE; i++) {
+      outData.data[i * 4] = Math.round((outTensor.data[i * 3] || 0) * 255);
+      outData.data[i * 4 + 1] = Math.round((outTensor.data[i * 3 + 1] || 0) * 255);
+      outData.data[i * 4 + 2] = Math.round((outTensor.data[i * 3 + 2] || 0) * 255);
+      outData.data[i * 4 + 3] = 255;
+    }
+    octx.putImageData(outData, 0, 0);
+    // scale back to original canvas size
+    const full = document.createElement('canvas');
+    full.width = w; full.height = h;
+    const fctx = full.getContext('2d');
+    fctx.drawImage(off, 0, 0, w, h);
+    // only apply to masked region
+    const fullData = fctx.getImageData(0, 0, w, h);
+    const origData = canvas.getContext('2d').getImageData(0, 0, w, h);
+    const outFull = canvas.getContext('2d').createImageData(w, h);
+    for (let i = 0; i < w * h; i++) {
+      if (maskData.data[i * 4 + 3] > 50) {
+        outFull.data[i * 4] = fullData.data[i * 4];
+        outFull.data[i * 4 + 1] = fullData.data[i * 4 + 1];
+        outFull.data[i * 4 + 2] = fullData.data[i * 4 + 2];
+        outFull.data[i * 4 + 3] = 255;
+      } else {
+        outFull.data[i * 4] = origData.data[i * 4];
+        outFull.data[i * 4 + 1] = origData.data[i * 4 + 1];
+        outFull.data[i * 4 + 2] = origData.data[i * 4 + 2];
+        outFull.data[i * 4 + 3] = origData.data[i * 4 + 3];
+      }
+    }
+    canvas.getContext('2d').putImageData(outFull, 0, 0);
+    // update source
+    const newImg = new Image();
+    newImg.onload = () => {
+      data.source.img = newImg;
+      data.source.url = canvas.toDataURL();
+      imageEditorInpaintClear();
+      imageEditorPushHistory();
+      renderView();
+      imageEditorRender();
+      toast('AI inpainted', 'ONNX model applied.', 'success');
+    };
+    newImg.src = canvas.toDataURL();
+  } catch (e) {
+    toast('AI inpaint failed', (e?.message || 'Failed.') + ' Falling back to patch-based.', 'error');
+    try { await imageEditorInpaintApply(); } catch {}
+  }
+}
+
 function bindImageEditor() {
   const fileInput = document.getElementById('ie-file');
   if (fileInput) fileInput.onchange = (e) => { const f = e.target.files?.[0]; if (f) imageEditorLoad(f); };
@@ -7713,6 +7841,8 @@ function bindImageEditor() {
   });
   const fmt = document.querySelector('[data-ie="format"]');
   if (fmt) fmt.onchange = () => { state.imageEditor.settings.format = fmt.value; };
+  const onnxInput = document.querySelector('[data-ie-onnx="url"]');
+  if (onnxInput) onnxInput.onchange = () => { state.imageEditor.onnxModelUrl = onnxInput.value.trim(); };
   const sizeInput = document.querySelector('[data-ie-heal="size"]');
   if (sizeInput) sizeInput.oninput = () => { state.imageEditor.heal.size = Number(sizeInput.value); const v = sizeInput.closest('.field')?.querySelector('.field-value'); if (v) v.textContent = sizeInput.value + 'px'; };
   const canvas = document.getElementById('ie-canvas');
@@ -11829,6 +11959,7 @@ async function handleAction(action, el) {
     case 'ie-inpaint-apply': await imageEditorInpaintApply(); return true;
     case 'ie-inpaint-clear': imageEditorInpaintClear(); return true;
     case 'ie-redact-apply': await imageEditorRedactApply(); return true;
+    case 'ie-onnx-inpaint-apply': await imageEditorOnnxInpaintApply(); return true;
     case 've-undo': videoEditorUndo(); return true;
     case 've-redo': videoEditorRedo(); return true;
     case 've-reset': videoEditorReset(); return true;
