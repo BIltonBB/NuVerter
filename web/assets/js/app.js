@@ -5229,10 +5229,10 @@ function devToolsView() {
   return `
     ${viewHead({ index: '10', kicker: 'Developer tools', title: 'Dev <span class="accent">utilities.</span>', sub: 'JSON, base64, regex and hashing — all local.' })}
     <div class="util-tabs segmented" role="tablist">
-      ${['json','base64','regex','pii','mock'].map((t) => `<button data-action="dev-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${t === 'json' ? 'JSON' : t === 'base64' ? 'Base64' : t === 'regex' ? 'Regex' : t === 'pii' ? 'PII scrub' : 'Mock data'}</button>`).join('')}
+      ${['json','base64','regex','pii','mock','wc'].map((t) => `<button data-action="dev-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${t === 'json' ? 'JSON' : t === 'base64' ? 'Base64' : t === 'regex' ? 'Regex' : t === 'pii' ? 'PII scrub' : t === 'mock' ? 'Mock data' : 'WebCodecs'}</button>`).join('')}
     </div>
     <div class="util-body">
-      ${tab === 'json' ? devJsonBody() : tab === 'base64' ? devBase64Body() : tab === 'regex' ? devRegexBody() : tab === 'pii' ? devPiiBody() : devMockBody()}
+      ${tab === 'json' ? devJsonBody() : tab === 'base64' ? devBase64Body() : tab === 'regex' ? devRegexBody() : tab === 'pii' ? devPiiBody() : tab === 'mock' ? devMockBody() : devWebCodecsBody()}
     </div>`;
 }
 
@@ -5305,6 +5305,52 @@ function devPiiBody() {
         <pre id="dev-pii-out" class="util-out" style="white-space:pre-wrap;word-break:break-word;margin-top:6px;max-height:320px;overflow:auto"></pre>
       </div>
     </div>`;
+}
+function devWebCodecsBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>WebCodecs diagnostic</strong><span>Feature detection + mp4box demux (Phase A)</span></div></div>
+      <div class="stage-body">
+        <button class="btn btn-primary btn-sm" data-action="dev-wc-run">Run diagnostic</button>
+        <pre id="dev-wc-out" class="util-out" style="white-space:pre-wrap;word-break:break-word;margin-top:10px">Click to run.</pre>
+        <p class="field-help" style="margin-top:8px">Vendors mp4box.js and checks VideoDecoder/Encoder support. Demuxes samples/demo-gradient.mp4. No conversion path is changed yet.</p>
+      </div>
+    </div>`;
+}
+async function runWebCodecsDiag() {
+  const out = document.getElementById('dev-wc-out');
+  const lines = [];
+  lines.push('VideoDecoder: ' + (typeof VideoDecoder !== 'undefined'));
+  lines.push('VideoEncoder: ' + (typeof VideoEncoder !== 'undefined'));
+  lines.push('EncodedVideoChunk: ' + (typeof EncodedVideoChunk !== 'undefined'));
+  lines.push('WebGPU: ' + (typeof navigator?.gpu !== 'undefined'));
+  if (!window.MP4Box) {
+    try {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'vendor/mp4box/mp4box.all.min.js';
+        s.onload = resolve; s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    } catch (e) { lines.push('MP4Box load error: ' + e.message); }
+  }
+  lines.push('MP4Box loaded: ' + !!window.MP4Box);
+  if (window.MP4Box) {
+    try {
+      const resp = await fetch('samples/demo-gradient.mp4');
+      const buf = await resp.arrayBuffer();
+      buf.fileStart = 0;
+      const mp4box = window.MP4Box.createFile();
+      const info = await new Promise((resolve, reject) => {
+        mp4box.onReady = (i) => resolve(i);
+        mp4box.onError = (e) => reject(e);
+        mp4box.appendBuffer(buf);
+        mp4box.flush();
+      });
+      lines.push('Tracks: ' + (info.tracks || []).map(t => `${t.name || t.id} ${t.codec} ${t.video ? t.video.width + 'x' + t.video.height : ''}`).join(', '));
+    } catch (e) { lines.push('Demux error: ' + (e?.message || e)); }
+  }
+  if (out) out.textContent = lines.join('\n');
 }
 function luhn(digits) {
   let sum = 0;
@@ -12118,6 +12164,7 @@ async function handleExtraAction(action, el) {
     case 'dev-pii-scan': piiScan(); return true;
     case 'dev-pii-copy': { const t = window.__piiRedacted; if (t) { try { await navigator.clipboard.writeText(t); toast('Copied', 'Redacted text copied.', 'success'); } catch {} } return true; }
     case 'dev-pii-dl': { const t = window.__piiRedacted; if (t) { const blob = new Blob([t], { type: 'text/plain' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'redacted.txt'; a.click(); URL.revokeObjectURL(a.href); toast('Downloaded', 'redacted.txt', 'success'); } return true; }
+    case 'dev-wc-run': { await runWebCodecsDiag(); return true; }
     case 'dev-mock-gen': devMockGenerate(); return true;
     case 'dev-mock-copy': { const d = window.__mockData; if (d) { try { await navigator.clipboard.writeText(JSON.stringify(d, null, 2)); toast('Copied', 'Mock data copied.', 'success'); } catch {} } return true; }
     case 'dev-mock-dl': { const d = window.__mockData; if (d) { const blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'mock-data.json'; a.click(); URL.revokeObjectURL(a.href); } return true; }
