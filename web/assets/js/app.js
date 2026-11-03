@@ -8150,7 +8150,7 @@ async function videoEditorLoad(file) {
   data.text = ''; data.textSize = 24; data.textColor = '#ffffff'; data.textPos = 'bottom';
   data.overlays = [];
   data.trimStart = 0; data.trimEnd = 100; data.aspect = 'free'; data.speed = '1';
-  data.history = [JSON.stringify({ adjustments: data.adjustments, text: data.text, trimStart: data.trimStart, trimEnd: data.trimEnd, aspect: data.aspect, speed: data.speed })];
+  data.history = [JSON.stringify({ adjustments: data.adjustments, text: data.text, textSize: data.textSize, textColor: data.textColor, textPos: data.textPos, trimStart: data.trimStart, trimEnd: data.trimEnd, aspect: data.aspect, speed: data.speed, overlays: data.overlays })];
   data.historyIndex = 0;
   data.result = null;
   renderView();
@@ -8159,7 +8159,7 @@ async function videoEditorLoad(file) {
 
 function videoEditorSnapshot() {
   const d = state.videoEditor;
-  return JSON.stringify({ adjustments: d.adjustments, text: d.text, textSize: d.textSize, textColor: d.textColor, textPos: d.textPos, trimStart: d.trimStart, trimEnd: d.trimEnd, aspect: d.aspect, speed: d.speed });
+  return JSON.stringify({ adjustments: d.adjustments, text: d.text, textSize: d.textSize, textColor: d.textColor, textPos: d.textPos, trimStart: d.trimStart, trimEnd: d.trimEnd, aspect: d.aspect, speed: d.speed, overlays: JSON.parse(JSON.stringify(d.overlays || [])) });
 }
 
 function videoEditorPushHistory() {
@@ -8179,6 +8179,7 @@ function videoEditorUndo() {
   const s = JSON.parse(d.history[d.historyIndex]);
   d.adjustments = s.adjustments; d.text = s.text; d.textSize = s.textSize; d.textColor = s.textColor; d.textPos = s.textPos;
   d.trimStart = s.trimStart; d.trimEnd = s.trimEnd; d.aspect = s.aspect; d.speed = s.speed;
+  if (s.overlays) d.overlays = JSON.parse(JSON.stringify(s.overlays));
   renderView();
 }
 
@@ -8189,6 +8190,7 @@ function videoEditorRedo() {
   const s = JSON.parse(d.history[d.historyIndex]);
   d.adjustments = s.adjustments; d.text = s.text; d.textSize = s.textSize; d.textColor = s.textColor; d.textPos = s.textPos;
   d.trimStart = s.trimStart; d.trimEnd = s.trimEnd; d.aspect = s.aspect; d.speed = s.speed;
+  if (s.overlays) d.overlays = JSON.parse(JSON.stringify(s.overlays));
   renderView();
 }
 
@@ -8200,6 +8202,21 @@ function videoEditorReset() {
   videoEditorPushHistory();
 }
 
+function buildVeKfExpr(kf, prop, dur) {
+  if (!Array.isArray(kf) || kf.length < 2) return null;
+  const pts = kf.slice().sort((a, b) => a.t - b.t).filter((k, i, arr) => i === 0 || k.t > arr[i - 1].t);
+  if (pts.length < 2) return null;
+  const sp = pts.map(k => ({ t: (Number(k.t) / 100) * dur, v: Number(k[prop]) }));
+  let expr = String(sp[sp.length - 1].v);
+  for (let i = sp.length - 2; i >= 0; i--) {
+    const t0 = sp[i].t, t1 = sp[i + 1].t;
+    const v0 = sp[i].v, v1 = sp[i + 1].v;
+    const seg = (t1 - t0) > 0 ? `${v0}+(${v1}-${v0})*(t-${t0.toFixed(3)})/${(t1 - t0).toFixed(6)}` : String(v0);
+    expr = `if(lt(t,${t1.toFixed(3)}),${seg},${expr})`;
+  }
+  expr = `if(lt(t,${sp[0].t.toFixed(3)}),${sp[0].v},${expr})`;
+  return expr;
+}
 function buildVideoEditorArgs(data) {
   const a = data.adjustments;
   const filters = [];
@@ -8237,7 +8254,16 @@ function buildVideoEditorArgs(data) {
       const e = (dur * endPct).toFixed(3);
       enable = `:enable='between(t,${s},${e})'`;
     }
-    filters.push(`drawtext=text='${o.text.replace(/'/g, "\\'")}':fontsize=${o.size}:fontcolor=${color}:${pos}${enable}`);
+    const opacityNum = Number(o.opacity ?? 100);
+    const sizeExpr = buildVeKfExpr(o.kf, 'size', dur);
+    const opacityExprRaw = buildVeKfExpr(o.kf, 'opacity', dur);
+    const opacityExpr = opacityExprRaw ? `(${opacityExprRaw})/100` : null;
+    const fontsizePart = sizeExpr ? `fontsize='${sizeExpr}'` : `fontsize=${Number(o.size) || 24}`;
+    const parts = [`text='${o.text.replace(/'/g, "\\'")}'`, fontsizePart, `fontcolor=${color}`];
+    if (opacityExpr) parts.push(`alpha='${opacityExpr}'`);
+    else if (opacityNum !== 100) parts.push(`alpha=${(opacityNum / 100).toFixed(3)}`);
+    parts.push(pos);
+    filters.push(`drawtext=${parts.join(':')}${enable}`);
   });
   const vf = filters.join(',');
   const args = ['-hide_banner', '-y', '-i', '{in}'];
@@ -8301,6 +8327,7 @@ function renderVideoOverlays() {
       <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
         <input type="number" min="8" max="120" value="${o.size}" data-ve-overlay="${i}" data-field="size" class="input" style="width:60px" title="size" />
         <input type="color" value="${esc(o.color)}" data-ve-overlay="${i}" data-field="color" title="color" />
+        <input type="number" min="0" max="100" value="${o.opacity ?? 100}" data-ve-overlay="${i}" data-field="opacity" class="input" style="width:55px" title="opacity %" />
         <select data-ve-overlay="${i}" data-field="pos" class="select">
           <option value="top" ${o.pos === 'top' ? 'selected' : ''}>Top</option>
           <option value="center" ${o.pos === 'center' ? 'selected' : ''}>Center</option>
@@ -8309,6 +8336,18 @@ function renderVideoOverlays() {
         <input type="number" min="0" max="100" value="${o.start}" data-ve-overlay="${i}" data-field="start" class="input" style="width:50px" title="start %" />
         <input type="number" min="0" max="100" value="${o.end}" data-ve-overlay="${i}" data-field="end" class="input" style="width:50px" title="end %" />
       </div>
+      <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-ghost btn-sm" data-action="ve-add-kf" data-idx="${i}">+ Keyframe @ playhead</button>
+        <span style="font-size:11px;color:var(--text-3)">${(o.kf||[]).length} kf</span>
+      </div>
+      ${(o.kf||[]).length ? `<div style="margin-top:4px;font-size:11px;display:flex;flex-direction:column;gap:2px">
+        ${(o.kf||[]).map((k,ki) => `<div style="display:flex;gap:6px;align-items:center">
+          <span class="mono">${((k.t/100)*(data.source?.duration||0)).toFixed(2)}s</span>
+          <span>size ${k.size}</span>
+          <span>opacity ${k.opacity}%</span>
+          <button class="btn btn-ghost btn-sm" data-action="ve-del-kf" data-idx="${i}" data-kf="${ki}" style="margin-left:auto">✕</button>
+        </div>`).join('')}
+      </div>` : ''}
     </div>`).join('');
   // render timeline
   const tl = document.getElementById('ve-timeline');
@@ -8334,7 +8373,8 @@ function bindVideoEditor() {
       if (field === 'text') d.overlays[idx].text = el.value;
       else if (field === 'size') d.overlays[idx].size = Number(el.value);
       else if (field === 'color') d.overlays[idx].color = el.value;
-      else if (field === 'pos') d.overlays[idx].pos = el.value;
+      else if (field === 'opacity') d.overlays[idx].opacity = Number(el.value);
+        else if (field === 'pos') d.overlays[idx].pos = el.value;
       else if (field === 'start') d.overlays[idx].start = Number(el.value);
       else if (field === 'end') d.overlays[idx].end = Number(el.value);
       videoEditorPushHistory();
@@ -11973,13 +12013,36 @@ async function handleAction(action, el) {
     case 've-redo': videoEditorRedo(); return true;
     case 've-reset': videoEditorReset(); return true;
     case 've-add-overlay': {
-      state.videoEditor.overlays.push({ text: 'Text', size: 24, color: '#ffffff', pos: 'bottom', start: 0, end: 100 });
+      state.videoEditor.overlays.push({ text: 'Text', size: 24, color: '#ffffff', pos: 'bottom', start: 0, end: 100, opacity: 100, kf: [] });
       videoEditorPushHistory();
       return true;
     }
     case 've-remove-overlay': {
       const idx = Number(el?.dataset?.idx);
       if (!isNaN(idx)) { state.videoEditor.overlays.splice(idx, 1); videoEditorPushHistory(); }
+      return true;
+    }
+    case 've-add-kf': {
+      const idx = Number(el?.dataset?.idx);
+      const d = state.videoEditor;
+      const o = d.overlays[idx];
+      if (!o) return true;
+      if (!Array.isArray(o.kf)) o.kf = [];
+      const dur = Number(d.source?.duration) || 0;
+      const tPct = dur > 0 ? Math.max(0, Math.min(100, (d.playhead || 0) / dur * 100)) : 0;
+      o.kf = (o.kf || []).filter(k => Math.abs(k.t - tPct) > 0.5);
+      o.kf.push({ t: Math.round(tPct * 10) / 10, size: Number(o.size) || 24, opacity: Number(o.opacity ?? 100) });
+      o.kf.sort((a, b) => a.t - b.t);
+      videoEditorPushHistory();
+      renderVideoOverlays();
+      return true;
+    }
+    case 've-del-kf': {
+      const idx = Number(el?.dataset?.idx);
+      const ki = Number(el?.dataset?.kf);
+      const d = state.videoEditor;
+      const o = d.overlays[idx];
+      if (o && Array.isArray(o.kf) && !isNaN(ki)) { o.kf.splice(ki, 1); videoEditorPushHistory(); renderVideoOverlays(); }
       return true;
     }
     case 've-export': await videoEditorExport(); return true;
