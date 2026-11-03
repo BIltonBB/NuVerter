@@ -9211,6 +9211,40 @@ async function reframeLoad(file) {
   toast('Video loaded', file.name, 'success');
 }
 
+async function loadMediaPipeFaceDetector() {
+  if (window.__mpFaceDetector) return window.__mpFaceDetector;
+  try {
+    const mod = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14');
+    const { FaceDetector, FilesetResolver } = mod;
+    const vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+    const detector = await FaceDetector.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite',
+        delegate: 'GPU'
+      },
+      runningMode: 'IMAGE'
+    });
+    window.__mpFaceDetector = detector;
+    return detector;
+  } catch (e) {
+    try {
+      // CPU fallback
+      const mod = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14');
+      const { FaceDetector, FilesetResolver } = mod;
+      const vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+      const detector = await FaceDetector.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite',
+          delegate: 'CPU'
+        },
+        runningMode: 'IMAGE'
+      });
+      window.__mpFaceDetector = detector;
+      return detector;
+    } catch { return null; }
+  }
+}
+
 async function reframeAnalyze() {
   const data = state.reframe;
   if (!data.source) return;
@@ -9225,74 +9259,102 @@ async function reframeAnalyze() {
   canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext('2d');
   const samples = 12;
-  // Temporal saliency tracking: weighted centroid using saturation + center bias,
-  // smoothed across frames. Falls back to luminance bbox if no salient region found.
+  const times = [];
   const centroids = [];
-  const boxes = [];
   let found = false;
+  let useFace = false;
+  let faceDetector = null;
+  if (data.smart) {
+    try { faceDetector = await loadMediaPipeFaceDetector(); useFace = !!faceDetector; } catch {}
+  }
   for (let i = 0; i < samples; i++) {
-    video.currentTime = samples > 1 ? (video.duration * i) / (samples - 1) : 0;
+    const t = samples > 1 ? (video.duration * i) / (samples - 1) : 0;
+    times.push(t);
+    video.currentTime = t;
     await new Promise((resolve) => { const done = () => resolve(); video.onseeked = done; setTimeout(done, 1000); });
     ctx.drawImage(video, 0, 0, w, h);
-    const img = ctx.getImageData(0, 0, w, h);
-    let wx = 0, wy = 0, wsum = 0;
-    let minX = w, maxX = 0, minY = h, maxY = 0, pixFound = false;
-    const cx0 = w / 2, cy0 = h / 2;
-    for (let y = 0; y < h; y += 3) {
-      for (let x = 0; x < w; x += 3) {
-        const idx = (y * w + x) * 4;
-        const r = img.data[idx], g = img.data[idx + 1], b = img.data[idx + 2];
-        const maxc = Math.max(r, g, b), minc = Math.min(r, g, b);
-        const sat = maxc === 0 ? 0 : (maxc - minc) / maxc;
-        const lum = (r + g + b) / 3;
-        // skip near-black / near-white background
-        if (lum < 20 || lum > 235) continue;
-        // center bias
-        const centerWeight = 1 - (Math.hypot(x - cx0, y - cy0) / Math.hypot(cx0, cy0));
-        const score = sat * 0.6 + (lum / 255) * 0.2 + centerWeight * 0.2;
-        if (score < 0.15) continue;
-        wx += x * score; wy += y * score; wsum += score;
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-        pixFound = true;
-        found = true;
+    let cx = w / 2, cy = h / 2, pixFound = false;
+    if (useFace && faceDetector) {
+      try {
+        const res = faceDetector.detect(canvas);
+        const det = (res.detections || [])[0];
+        if (det && det.boundingBox) {
+          const bb = det.boundingBox;
+          cx = bb.originX + bb.width / 2;
+          cy = bb.originY + bb.height / 2;
+          pixFound = true;
+          found = true;
+        }
+      } catch {}
+    }
+    if (!pixFound) {
+      // saliency fallback
+      const img = ctx.getImageData(0, 0, w, h);
+      let wx = 0, wy = 0, wsum = 0;
+      let minX = w, maxX = 0, minY = h, maxY = 0, pf = false;
+      const cx0 = w / 2, cy0 = h / 2;
+      for (let y = 0; y < h; y += 3) {
+        for (let x = 0; x < w; x += 3) {
+          const idx = (y * w + x) * 4;
+          const r = img.data[idx], g = img.data[idx + 1], b = img.data[idx + 2];
+          const maxc = Math.max(r, g, b), minc = Math.min(r, g, b);
+          const sat = maxc === 0 ? 0 : (maxc - minc) / maxc;
+          const lum = (r + g + b) / 3;
+          if (lum < 20 || lum > 235) continue;
+          const centerWeight = 1 - (Math.hypot(x - cx0, y - cy0) / Math.hypot(cx0, cy0));
+          const score = sat * 0.6 + (lum / 255) * 0.2 + centerWeight * 0.2;
+          if (score < 0.15) continue;
+          wx += x * score; wy += y * score; wsum += score;
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+          pf = true;
+          found = true;
+        }
       }
+      if (pf && wsum > 0) { cx = wx / wsum; cy = wy / wsum; pixFound = true; }
     }
-    if (pixFound && wsum > 0) {
-      centroids.push({ x: wx / wsum, y: wy / wsum });
-      boxes.push({ minX, maxX, minY, maxY });
-    }
+    centroids.push({ x: cx, y: cy, found: pixFound });
   }
-  // smooth centroids (moving average)
-  let subjCx = w / 2, subjCy = h / 2;
-  if (centroids.length) {
-    // temporal smoothing
-    const smooth = centroids.reduce((acc, c, i, arr) => {
-      const prev = i > 0 ? arr[i - 1] : c;
-      return { x: acc.x + (prev.x * 0.3 + c.x * 0.7), y: acc.y + (prev.y * 0.3 + c.y * 0.7) };
-    }, { x: 0, y: 0 });
-    subjCx = smooth.x / centroids.length;
-    subjCy = smooth.y / centroids.length;
+  // per-frame smoothing (exponential moving average)
+  const smoothX = [];
+  let prev = centroids.length ? centroids[0].x : w / 2;
+  for (let i = 0; i < centroids.length; i++) {
+    const c = centroids[i].found ? centroids[i].x : prev;
+    prev = prev * 0.4 + c * 0.6;
+    smoothX.push(prev);
   }
-  if (!found && boxes.length === 0) { subjCx = w / 2; }
   const cropH = h;
-  const cropW = Math.round(cropH * targetAspect);
-  let cropX = Math.round(subjCx - cropW / 2);
-  cropX = Math.max(0, Math.min(Math.max(0, w - cropW), cropX));
-  if (cropW > w) { data.cropW = w; data.cropH = Math.round(w / targetAspect); data.cropX = 0; }
-  else { data.cropW = cropW; data.cropH = cropH; data.cropX = cropX; }
-  // store tracking info for display
-  data._tracking = { centroid: { x: Math.round(subjCx), y: Math.round(subjCy) }, frames: centroids.length, method: 'saliency+center-bias' };
+  const cropW = Math.max(2, Math.round(cropH * targetAspect / 2) * 2);
+  const maxCropX = Math.max(0, w - cropW);
+  const cropXs = smoothX.map((cx) => Math.max(0, Math.min(maxCropX, Math.round(cx - cropW / 2))));
+  // store path for animated export
+  data.cropPath = centroids.map((c, i) => ({ t: times[i], x: cropXs[i] }));
+  const mid = Math.floor(cropXs.length / 2);
+  const cropX = cropXs[mid] ?? cropXs[0] ?? 0;
+  if (cropW > w) { data.cropW = Math.max(2, Math.floor(w / 2) * 2); data.cropH = Math.max(2, Math.round(data.cropW / targetAspect / 2) * 2); data.cropX = 0; data.cropPath = null; }
+  else { data.cropW = cropW; data.cropH = Math.max(2, Math.round(cropH / 2) * 2); data.cropX = cropX; }
+  data._tracking = { centroid: { x: Math.round(smoothX[mid] ?? w/2), y: Math.round(centroids[mid]?.y ?? h/2) }, frames: centroids.filter(c=>c.found).length, method: useFace ? 'mediapipe-face' : 'saliency+center-bias' };
   renderView();
-  toast('Analyzed', `Subject tracked over ${centroids.length} frames (saliency). Adjust if needed.`, 'success');
+  toast('Analyzed', `Subject tracked over ${centroids.filter(c=>c.found).length} frames (${useFace ? 'MediaPipe face' : 'saliency'}). Adjust if needed.`, 'success');
 }
 
 function parseAspect(a) {
   const [x, y] = String(a).split(':').map(Number);
   if (!x || !y) return 16 / 9;
   return x / y;
+}
+
+function reframeBuildCropExpr(data, fallbackX) {
+  const path = Array.isArray(data?.cropPath) ? data.cropPath : null;
+  if (!path || path.length < 2) return String(fallbackX);
+  // stepped crop path: use nearest keyframe value
+  let expr = String(path[path.length - 1].x);
+  for (let i = path.length - 2; i >= 0; i--) {
+    expr = 'if(lt(t,' + path[i + 1].t.toFixed(3) + '),' + path[i].x + ',' + expr + ')';
+  }
+  return expr;
 }
 
 async function reframeExport() {
@@ -9312,7 +9374,8 @@ async function reframeExport() {
     const w = data.cropW || 0, h = data.cropH || 0, x = data.cropX || 0;
     const args = ['-hide_banner', '-y', '-i', '{in}'];
     if (w > 0 && h > 0 && w <= (data.source.width || 9999)) {
-      args.push('-vf', `crop=${w}:${h}:${x}:0,scale=${w}:${h}`);
+      const xExpr = reframeBuildCropExpr(data, x);
+      args.push('-vf', `crop=${w}:${h}:'${xExpr}':0,scale=${w}:${h}`);
     }
     if (fmt === 'webm') args.push('-c:v', 'libvpx', '-b:v', '2M'); else args.push('-c:v', 'libx264', '-preset', 'fast', '-crf', '23');
     if (data.settings.keepAudio) args.push('-c:a', 'aac', '-b:a', '128k'); else args.push('-an');
