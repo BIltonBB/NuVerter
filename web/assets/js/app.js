@@ -7816,6 +7816,10 @@ function videoEditorView() {
           <div class="stage-body">
             <button class="btn btn-secondary btn-sm" data-action="ve-add-overlay">+ Add text layer</button>
             <div id="ve-overlays" style="margin-top:10px"></div>
+            <div style="margin-top:10px">
+              <strong style="font-size:12px">Timeline</strong>
+              <div id="ve-timeline" style="position:relative;height:28px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;margin-top:4px;overflow:hidden"></div>
+            </div>
           </div>
         </div>
       </section>
@@ -7875,7 +7879,8 @@ async function videoEditorLoad(file) {
   const data = state.videoEditor;
   if (data.source?._url) URL.revokeObjectURL(data.source._url);
   const url = URL.createObjectURL(file);
-  data.source = { file, name: file.name, size: file.size, url };
+  const info = await probeFile(file, 'video');
+  data.source = { file, name: file.name, size: file.size, url, duration: info.duration || 0, width: info.width || 0, height: info.height || 0 };
   data.adjustments = { brightness: 100, contrast: 100, saturation: 100, hue: 0 };
   data.text = ''; data.textSize = 24; data.textColor = '#ffffff'; data.textPos = 'bottom';
   data.overlays = [];
@@ -7954,14 +7959,20 @@ function buildVideoEditorArgs(data) {
     filters.push(`drawtext=text='${data.text.replace(/'/g, "\\'")}':fontsize=${data.textSize}:fontcolor=${color}:${pos}`);
   }
   // overlay layers
+  const dur = Number(data.source?.duration) || 0;
   (data.overlays || []).forEach((o) => {
     if (!o.text || !o.text.trim()) return;
     const pos = o.pos === 'top' ? 'x=(w-text_w)/2:y=20' : o.pos === 'center' ? 'x=(w-text_w)/2:y=(h-text_h)/2' : 'x=(w-text_w)/2:y=h-text_h-20';
     const color = o.color || '#ffffff';
-    const start = (o.start || 0) / 100;
-    const end = (o.end || 100) / 100;
-    // enable between (approximate using seconds unknown; use t-based enable with ratio of duration not available -> use always-on for now)
-    filters.push(`drawtext=text='${o.text.replace(/'/g, "\\'")}':fontsize=${o.size}:fontcolor=${color}:${pos}`);
+    const startPct = Math.max(0, Math.min(100, Number(o.start) || 0)) / 100;
+    const endPct = Math.max(0, Math.min(100, Number(o.end) || 100)) / 100;
+    let enable = '';
+    if (dur > 0) {
+      const s = (dur * startPct).toFixed(3);
+      const e = (dur * endPct).toFixed(3);
+      enable = `:enable='between(t,${s},${e})'`;
+    }
+    filters.push(`drawtext=text='${o.text.replace(/'/g, "\\'")}':fontsize=${o.size}:fontcolor=${color}:${pos}${enable}`);
   });
   const vf = filters.join(',');
   const args = ['-hide_banner', '-y', '-i', '{in}'];
@@ -8034,8 +8045,17 @@ function renderVideoOverlays() {
         <input type="number" min="0" max="100" value="${o.end}" data-ve-overlay="${i}" data-field="end" class="input" style="width:50px" title="end %" />
       </div>
     </div>`).join('');
+  // render timeline
+  const tl = document.getElementById('ve-timeline');
+  if (tl) {
+    const colors = ['#7c3aed','#10b981','#f59e0b','#ef4444','#3b82f6'];
+    tl.innerHTML = data.overlays.map((o, i) => {
+      const left = Math.max(0, Math.min(100, o.start || 0));
+      const width = Math.max(1, (o.end || 100) - left);
+      return `<div title="Layer ${i+1}: ${esc(o.text)}" style="position:absolute;left:${left}%;width:${width}%;top:4px;height:20px;background:${colors[i % colors.length]};opacity:0.85;border-radius:3px;font-size:10px;color:#fff;padding:2px 4px;overflow:hidden;white-space:nowrap">${esc(o.text)}</div>`;
+    }).join('');
+  }
 }
-
 function bindVideoEditor() {
   renderVideoOverlays();
   // overlay field changes
@@ -8052,6 +8072,7 @@ function bindVideoEditor() {
       else if (field === 'start') d.overlays[idx].start = Number(el.value);
       else if (field === 'end') d.overlays[idx].end = Number(el.value);
       videoEditorPushHistory();
+      renderVideoOverlays();
     };
   });
   const fileInput = document.getElementById('ve-file');
