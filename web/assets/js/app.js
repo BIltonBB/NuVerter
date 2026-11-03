@@ -393,6 +393,7 @@ const state = {
     history: [], historyIndex: -1
   },
   utilities: { tab: 'frames', busy: false, result: null },
+  utilWaveform: {},
   pdfTools: { tab: 'merge', busy: false },
   pdfRedact: { file: null, pdf: null, numPages: 0, page: 1, rects: {}, rendering: false },
   aiChat: { model: 'uncensored-tiny', messages: [], busy: false, webSearch: false, pendingImage: null, debug: false, lastDebug: null },
@@ -3910,7 +3911,7 @@ function utilitiesView() {
       <div class="util-tab-group">
         <span class="util-tab-group-label">Audio</span>
         <div class="util-tabs segmented" role="tablist">
-          ${['audioclean','silencetrim','tts'].map((t) => `<button data-action="util-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${t === 'audioclean' ? 'Audio clean' : t === 'silencetrim' ? 'Silence trim' : 'TTS'}</button>`).join('')}
+          ${['audioclean','silencetrim','waveform','tts'].map((t) => `<button data-action="util-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${t === 'audioclean' ? 'Audio clean' : t === 'silencetrim' ? 'Silence trim' : t === 'waveform' ? 'Waveform' : 'TTS'}</button>`).join('')}
         </div>
       </div>
       <div class="util-tab-group">
@@ -3943,6 +3944,7 @@ function utilitiesView() {
         tab === 'vector' ? utilVectorBody() :
         tab === 'audioclean' ? utilAudioCleanBody() :
         tab === 'silencetrim' ? utilSilenceTrimBody() :
+         tab === 'waveform' ? utilWaveformBody() :
         tab === 'tts' ? utilTtsBody() :
         tab === 'ocr' ? utilOcrBody() :
         tab === 'aibg' ? utilAiBgBody() :
@@ -4615,6 +4617,177 @@ function utilSilenceTrimBody() {
         <div id="util-st-out" class="util-out"></div>
       </div>
     </div>`;
+}
+
+function utilWaveformBody() {
+  const w = state.utilWaveform || {};
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Waveform editor</strong><span>Visual trim &amp; export of audio segments</span></div></div>
+      <div class="stage-body">
+        <input type="file" accept="audio/*,video/*" data-util="wf-audio-file" hidden id="util-wf-audio-file" />
+        <label class="btn btn-secondary btn-sm" for="util-wf-audio-file">Choose media</label>
+        ${w.url ? `<audio id="wf-audio-player" src="${w.url}" controls style="width:100%;margin-top:8px"></audio>` : ''}
+        <div style="margin-top:10px">
+          <canvas id="util-wf-canvas" width="800" height="160" style="width:100%;height:160px;border:1px solid var(--border);border-radius:8px;background:var(--surface-2)"></canvas>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center">
+          <span>Start: <strong id="wf-start-val">${(w.start||0).toFixed(2)}s</strong></span>
+          <span>End: <strong id="wf-end-val">${(w.end||0).toFixed(2)}s</strong></span>
+          <button class="btn btn-ghost btn-sm" data-action="util-wf-reset">Reset selection</button>
+          <button class="btn btn-primary btn-sm" data-action="util-wf-export">Export selection (WAV)</button>
+        </div>
+        <div id="util-wf-out" class="util-out" style="margin-top:8px"></div>
+      </div>
+    </div>`;
+}
+
+async function utilWaveformLoad(file) {
+  if (!state.utilWaveform) state.utilWaveform = {};
+  const w = state.utilWaveform;
+  if (w.url) URL.revokeObjectURL(w.url);
+  const url = URL.createObjectURL(file);
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const buf = await file.arrayBuffer();
+  const audioBuf = await audioCtx.decodeAudioData(buf.slice(0));
+  w.url = url;
+  w.audioBuf = audioBuf;
+  w.start = 0;
+  w.end = audioBuf.duration;
+  w.file = file;
+  renderView();
+  drawUtilWaveform();
+  toast('Loaded', file.name + ' · ' + audioBuf.duration.toFixed(2) + 's', 'success');
+}
+
+function drawUtilWaveform() {
+  const w = state.utilWaveform || {};
+  const canvas = document.getElementById('util-wf-canvas');
+  if (!canvas || !w.audioBuf) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = Math.round(rect.width * dpr);
+  canvas.height = Math.round(rect.height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const width = rect.width;
+  const height = rect.height;
+  ctx.clearRect(0, 0, width, height);
+  const data = w.audioBuf.getChannelData(0);
+  const step = Math.ceil(data.length / width);
+  const amp = height / 2;
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#7c3aed';
+  for (let i = 0; i < width; i++) {
+    let min = 1.0, max = -1.0;
+    for (let j = 0; j < step; j++) {
+      const v = data[i * step + j] || 0;
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    ctx.fillRect(i, (1 + min) * amp, 1, Math.max(1, (max - min) * amp));
+  }
+  // selection overlay
+  const start = w.start || 0;
+  const end = w.end || w.audioBuf.duration;
+  const dur = w.audioBuf.duration;
+  const sx = (start / dur) * width;
+  const ex = (end / dur) * width;
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  if (sx > 0) ctx.fillRect(0, 0, sx, height);
+  if (ex < width) ctx.fillRect(ex, 0, width - ex, height);
+  ctx.strokeStyle = '#ef4444';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, height); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(ex, 0); ctx.lineTo(ex, height); ctx.stroke();
+}
+
+function encodeWav(audioBuf, startSec, endSec) {
+  const sr = audioBuf.sampleRate;
+  const ch = audioBuf.numberOfChannels;
+  const start = Math.floor(startSec * sr);
+  const end = Math.floor(endSec * sr);
+  const frames = end - start;
+  const bytesPerSample = 2;
+  const blockAlign = ch * bytesPerSample;
+  const dataSize = frames * blockAlign;
+  const buf = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buf);
+  const writeStr = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + dataSize, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, ch, true);
+  view.setUint32(24, sr, true);
+  view.setUint32(28, sr * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, 'data');
+  view.setUint32(40, dataSize, true);
+  let off = 44;
+  for (let i = 0; i < frames; i++) {
+    for (let c = 0; c < ch; c++) {
+      const sample = audioBuf.getChannelData(c)[start + i] || 0;
+      const v = Math.max(-1, Math.min(1, sample));
+      view.setInt16(off, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+      off += 2;
+    }
+  }
+  return new Blob([buf], { type: 'audio/wav' });
+}
+
+async function utilWaveformExport() {
+  const w = state.utilWaveform || {};
+  if (!w.audioBuf) { toast('No audio', 'Load a file first.', 'error'); return; }
+  const blob = encodeWav(w.audioBuf, w.start || 0, w.end || w.audioBuf.duration);
+  const url = URL.createObjectURL(blob);
+  const out = document.getElementById('util-wf-out');
+  if (out) out.innerHTML = `<a class="btn btn-secondary btn-sm" href="${url}" download="segment.wav">Download segment.wav</a>`;
+  toast('Exported', 'Segment ready.', 'success');
+}
+
+function utilWaveformReset() {
+  const w = state.utilWaveform || {};
+  if (w.audioBuf) { w.start = 0; w.end = w.audioBuf.duration; drawUtilWaveform(); updateWfLabels(); }
+}
+
+function updateWfLabels() {
+  const w = state.utilWaveform || {};
+  const s = document.getElementById('wf-start-val');
+  const e = document.getElementById('wf-end-val');
+  if (s) s.textContent = (w.start || 0).toFixed(2) + 's';
+  if (e) e.textContent = (w.end || 0).toFixed(2) + 's';
+}
+
+function bindUtilWaveform() {
+  const input = document.getElementById('util-wf-audio-file');
+  if (input) input.onchange = (e) => { const f = e.target.files?.[0]; if (f) utilWaveformLoad(f); };
+  const canvas = document.getElementById('util-wf-canvas');
+  if (!canvas) return;
+  let dragStart = null;
+  canvas.onpointerdown = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const dur = state.utilWaveform?.audioBuf?.duration || 1;
+    const t = (e.clientX - rect.left) / rect.width * dur;
+    dragStart = t;
+    state.utilWaveform.start = t;
+    state.utilWaveform.end = t;
+    drawUtilWaveform();
+    updateWfLabels();
+  };
+  canvas.onpointermove = (e) => {
+    if (dragStart === null) return;
+    const rect = canvas.getBoundingClientRect();
+    const dur = state.utilWaveform?.audioBuf?.duration || 1;
+    const t = Math.max(0, Math.min(dur, (e.clientX - rect.left) / rect.width * dur));
+    state.utilWaveform.start = Math.min(dragStart, t);
+    state.utilWaveform.end = Math.max(dragStart, t);
+    drawUtilWaveform();
+    updateWfLabels();
+  };
+  canvas.onpointerup = () => { dragStart = null; };
 }
 
 async function utilAudioClean() {
@@ -8362,6 +8535,7 @@ function renderView() {
   }
   if (state.tool === 'history') renderHistoryList();
   if (state.tool === 'imageditor') bindImageEditor();
+  if (state.utilities?.tab === 'waveform') { bindUtilWaveform(); if (state.utilWaveform?.audioBuf) setTimeout(drawUtilWaveform, 0); }
   if (state.tool === 'videoeditor') bindVideoEditor();
   if (state.tool === 'reframe') bindReframe();
   if (state.tool === 'workflow') bindWorkflow();
@@ -11253,6 +11427,8 @@ async function handleExtraAction(action, el) {
     case 'util-hash-copy': { const h = el?.dataset?.hash || ''; if (h) { try { await navigator.clipboard.writeText(h); toast('Copied', 'Hash copied.', 'success'); } catch {} } return true; }
     case 'util-audio-clean': await utilAudioClean(); return true;
     case 'util-silence-trim': await utilSilenceTrim(); return true;
+    case 'util-wf-reset': utilWaveformReset(); return true;
+    case 'util-wf-export': await utilWaveformExport(); return true;
     case 'util-watermark': await utilWatermark(); return true;
     case 'util-upscale': await utilUpscale(); return true;
     case 'util-pdf': await utilPdf(); return true;
