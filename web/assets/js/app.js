@@ -5070,6 +5070,123 @@ function devRegexBody() {
     </div>`;
 }
 
+function devPiiBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>PII scrubber</strong><span>Detect and redact personal data in text — 100% local</span></div></div>
+      <div class="stage-body">
+        <textarea data-dev="pii-in" class="input" rows="8" placeholder="Paste text containing emails, phones, SSNs, credit cards, IPs…" style="width:100%"></textarea>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <label><input type="checkbox" data-dev="pii-email" checked /> Email</label>
+          <label><input type="checkbox" data-dev="pii-phone" checked /> Phone</label>
+          <label><input type="checkbox" data-dev="pii-ssn" checked /> SSN</label>
+          <label><input type="checkbox" data-dev="pii-cc" checked /> Credit card</label>
+          <label><input type="checkbox" data-dev="pii-ip" checked /> IP address</label>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" data-action="dev-pii-scan">Scan &amp; redact</button>
+          <button class="btn btn-secondary btn-sm" data-action="dev-pii-copy">Copy redacted</button>
+          <button class="btn btn-secondary btn-sm" data-action="dev-pii-dl">Download redacted</button>
+        </div>
+        <p class="field-help" style="margin-top:8px">Detection is regex-based and may produce false positives. Review before sharing. Credit cards are validated with Luhn. Redaction replaces matches with placeholders; the original text is not transmitted.</p>
+        <strong style="display:block;margin-top:12px">Matches</strong>
+        <pre id="dev-pii-matches" class="util-out" style="white-space:pre-wrap;word-break:break-word;margin-top:6px;max-height:160px;overflow:auto">Run a scan to see detected items.</pre>
+        <strong style="display:block;margin-top:12px">Redacted text</strong>
+        <pre id="dev-pii-out" class="util-out" style="white-space:pre-wrap;word-break:break-word;margin-top:6px;max-height:320px;overflow:auto"></pre>
+      </div>
+    </div>`;
+}
+function luhn(digits) {
+  let sum = 0;
+  let parity = digits.length % 2;
+  for (let i = 0; i < digits.length; i++) {
+    let d = Number(digits[i]);
+    if (i % 2 === parity) { d *= 2; if (d > 9) d -= 9; }
+    sum += d;
+  }
+  return sum % 10 === 0;
+}
+
+function validIp(ip) {
+  return ip.split('.').every((p) => Number(p) >= 0 && Number(p) <= 255);
+}
+
+function piiEnabledTypes() {
+  return {
+    email: !!document.querySelector('[data-dev="pii-email"]')?.checked,
+    phone: !!document.querySelector('[data-dev="pii-phone"]')?.checked,
+    ssn: !!document.querySelector('[data-dev="pii-ssn"]')?.checked,
+    cc: !!document.querySelector('[data-dev="pii-cc"]')?.checked,
+    ip: !!document.querySelector('[data-dev="pii-ip"]')?.checked,
+  };
+}
+
+function piiCombinedRegex(enabled) {
+  const parts = [];
+  if (enabled.ssn) parts.push('(?<ssn>\\d{3}-\\d{2}-\\d{4})');
+  if (enabled.cc) parts.push('(?<cc>(?:\\d[ -]*?){13,16})');
+  if (enabled.email) parts.push('(?<email>[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,})');
+  if (enabled.ip) parts.push('(?<ip>(?:\\d{1,3}\\.){3}\\d{1,3})');
+  if (enabled.phone) parts.push('(?<phone>(?:\\+?\\d{1,3}[-.\\s]?)?(?:\\(?\\d{3}\\)?[-.\\s]?)?\\d{3}[-.\\s]?\\d{4})');
+  if (!parts.length) return null;
+  return new RegExp(parts.join('|'), 'g');
+}
+
+function piiScan() {
+  const input = document.querySelector('[data-dev="pii-in"]');
+  const text = input?.value || '';
+  const enabled = piiEnabledTypes();
+  const re = piiCombinedRegex(enabled);
+  const matches = [];
+  if (re) {
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const ng = m.groups || {};
+      const type = Object.keys(ng).find((k) => ng[k] === m[0]) || 'pii';
+      if (type === 'cc') {
+        const digits = m[0].replace(/\D/g, '');
+        if (digits.length < 13 || digits.length > 16 || !luhn(digits)) continue;
+      }
+      if (type === 'ip' && !validIp(m[0])) continue;
+      if (type === 'phone') {
+        const digits = m[0].replace(/\D/g, '');
+        if (digits.length < 10) continue;
+      }
+      matches.push({ type, value: m[0] });
+    }
+  }
+  const counts = {};
+  matches.forEach((m) => { counts[m.type] = (counts[m.type] || 0) + 1; });
+  const matchesEl = document.getElementById('dev-pii-matches');
+  if (matchesEl) {
+    if (!matches.length) matchesEl.textContent = 'No matches found.';
+    else {
+      const summary = Object.entries(counts).map(([t, c]) => `${t}: ${c}`).join(', ');
+      matchesEl.textContent = `${matches.length} match(es) — ${summary}\\n\\n` + matches.map((m) => `${m.type}: ${m.value}`).join('\\n');
+    }
+  }
+  // redact
+  const redacted = re
+    ? text.replace(re, (match, ...args) => {
+        const ng = args[args.length - 1] || {};
+        const type = Object.keys(ng).find((k) => ng[k] === match) || 'pii';
+        if (type === 'cc') {
+          const digits = match.replace(/\D/g, '');
+          if (digits.length < 13 || digits.length > 16 || !luhn(digits)) return match;
+        }
+        if (type === 'ip' && !validIp(match)) return match;
+        if (type === 'phone' && match.replace(/\D/g, '').length < 10) return match;
+        return `[${type.toUpperCase()}]`;
+      })
+    : text;
+  const outEl = document.getElementById('dev-pii-out');
+  if (outEl) outEl.textContent = redacted;
+  window.__piiRedacted = redacted;
+  toast('Scan complete', `${matches.length} potential PII item(s) found.`, matches.length ? 'info' : 'success');
+}
+
+function devPii() { piiScan(); }
+
 function devMockBody() {
   return `
     <div class="stage-card">
@@ -6880,6 +6997,7 @@ function imageEditorView() {
              </div>
              <div style="display:flex;gap:6px;margin-top:6px">
                <button class="btn btn-secondary btn-sm" data-action="ie-inpaint-apply" ${source && data.inpaint.active ? '' : 'disabled'}>Apply inpaint</button>
+               <button class="btn btn-danger btn-sm" data-action="ie-redact-apply" ${source && data.inpaint.active ? '' : 'disabled'} title="Permanently black out masked regions">Apply redaction</button>
                <button class="btn btn-ghost btn-sm" data-action="ie-inpaint-clear" ${source ? '' : 'disabled'}>Clear mask</button>
              </div>
              <div class="field">
@@ -7133,6 +7251,44 @@ async function imageEditorInpaintApply() {
     toast('Inpainted', 'Masked region filled.', 'success');
   };
   newImg.src = canvas.toDataURL();
+}
+
+async function imageEditorRedactApply() {
+  const data = state.imageEditor;
+  if (!data.source) return;
+  const canvas = document.getElementById('ie-canvas');
+  const mask = document.getElementById('ie-mask');
+  if (!canvas || !mask) return;
+  // work on a copy of the source image so adjustments are preserved separately
+  const w = data.source.width;
+  const h = data.source.height;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(data.source.img, 0, 0);
+  const imgData = ctx.getImageData(0, 0, w, h);
+  const maskData = mask.getContext('2d').getImageData(0, 0, w, h);
+  // permanently black out masked pixels
+  for (let i = 0; i < imgData.data.length; i += 4) {
+    if (maskData.data[i + 3] > 50) {
+      imgData.data[i] = 0;
+      imgData.data[i + 1] = 0;
+      imgData.data[i + 2] = 0;
+      imgData.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+  const newImg = new Image();
+  newImg.onload = () => {
+    data.source.img = newImg;
+    data.source.url = c.toDataURL();
+    imageEditorInpaintClear();
+    imageEditorPushHistory();
+    renderView();
+    imageEditorRender();
+    toast('Redacted', 'Masked regions permanently blacked out.', 'success');
+  };
+  newImg.src = c.toDataURL();
 }
 
 function bindImageEditor() {
@@ -10913,6 +11069,9 @@ async function handleExtraAction(action, el) {
     case 'dev-b64-enc': await devB64Enc(); return true;
     case 'dev-b64-dec': await devB64Dec(); return true;
     case 'dev-regex': await devRegex(); return true;
+    case 'dev-pii-scan': piiScan(); return true;
+    case 'dev-pii-copy': { const t = window.__piiRedacted; if (t) { try { await navigator.clipboard.writeText(t); toast('Copied', 'Redacted text copied.', 'success'); } catch {} } return true; }
+    case 'dev-pii-dl': { const t = window.__piiRedacted; if (t) { const blob = new Blob([t], { type: 'text/plain' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'redacted.txt'; a.click(); URL.revokeObjectURL(a.href); toast('Downloaded', 'redacted.txt', 'success'); } return true; }
     case 'dev-mock-gen': devMockGenerate(); return true;
     case 'dev-mock-copy': { const d = window.__mockData; if (d) { try { await navigator.clipboard.writeText(JSON.stringify(d, null, 2)); toast('Copied', 'Mock data copied.', 'success'); } catch {} } return true; }
     case 'dev-mock-dl': { const d = window.__mockData; if (d) { const blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'mock-data.json'; a.click(); URL.revokeObjectURL(a.href); } return true; }
@@ -11041,6 +11200,7 @@ async function handleAction(action, el) {
     case 'ie-export': await imageEditorExport(); return true;
     case 'ie-inpaint-apply': await imageEditorInpaintApply(); return true;
     case 'ie-inpaint-clear': imageEditorInpaintClear(); return true;
+    case 'ie-redact-apply': await imageEditorRedactApply(); return true;
     case 've-undo': videoEditorUndo(); return true;
     case 've-redo': videoEditorRedo(); return true;
     case 've-reset': videoEditorReset(); return true;
