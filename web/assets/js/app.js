@@ -394,6 +394,7 @@ const state = {
   },
   utilities: { tab: 'frames', busy: false, result: null },
   pdfTools: { tab: 'merge', busy: false },
+  pdfRedact: { file: null, pdf: null, numPages: 0, page: 1, rects: {}, rendering: false },
   aiChat: { model: 'uncensored-tiny', messages: [], busy: false, webSearch: false, pendingImage: null, debug: false, lastDebug: null },
   devTools: { tab: 'json' },
   practical: { tab: 'diff' },
@@ -6233,8 +6234,8 @@ function aiToolsView() {
 
 function pdfToolsView() {
   const tab = state.pdfTools?.tab || 'merge';
-  const tabs = ['merge','split','img2pdf','pdf2img'];
-  const labels = { merge:'Merge', split:'Split', img2pdf:'Images→PDF', pdf2img:'PDF→Images' };
+  const tabs = ['merge','split','img2pdf','pdf2img','redact'];
+  const labels = { merge:'Merge', split:'Split', img2pdf:'Images→PDF', pdf2img:'PDF→Images', redact:'Redact' };
   return `
     ${viewHead({ index: '13', kicker: 'PDF tools', title: 'PDF <span class="accent">utilities.</span>', sub: 'Merge, split and convert PDFs — 100% local.' })}
     <div class="util-tabs segmented" role="tablist">
@@ -6244,7 +6245,8 @@ function pdfToolsView() {
       ${tab === 'merge' ? pdfMergeBody() :
         tab === 'split' ? pdfSplitBody() :
         tab === 'img2pdf' ? pdfImg2PdfBody() :
-        pdfPdf2ImgBody()}
+        tab === 'redact' ? pdfRedactBody() :
+         pdfPdf2ImgBody()}
     </div>`;
 }
 
@@ -6282,8 +6284,155 @@ function pdfPdf2ImgBody() {
   </div></div>`;
 }
 
+function pdfRedactBody() {
+  const rd = state.pdfRedact;
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Redact PDF</strong><span>Permanently black out selected regions (pages become images)</span></div></div>
+      <div class="stage-body">
+        <input type="file" accept="application/pdf" data-util="pdf-redact-file" hidden id="pdf-redact-file" />
+        <label class="btn btn-secondary btn-sm" for="pdf-redact-file">Choose PDF</label>
+        ${rd.file ? `<p style="margin-top:8px">${esc(rd.file.name)} · ${rd.numPages} page(s)</p>` : ''}
+        <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-secondary btn-sm" data-action="pdf-redact-prev" ${rd.page > 1 ? '' : 'disabled'}>Prev</button>
+          <span>Page ${rd.page} / ${rd.numPages || 1}</span>
+          <button class="btn btn-secondary btn-sm" data-action="pdf-redact-next" ${rd.page < rd.numPages ? '' : 'disabled'}>Next</button>
+          <button class="btn btn-ghost btn-sm" data-action="pdf-redact-clear-page">Clear page redactions</button>
+        </div>
+        <div style="margin-top:10px;position:relative;display:inline-block">
+          <canvas id="pdf-redact-canvas" style="max-width:100%;border:1px solid var(--border);border-radius:8px"></canvas>
+        </div>
+        <p class="field-help" style="margin-top:8px">Drag on the page to draw a redaction rectangle. Redactions are permanent: the exported PDF contains raster images with blacked-out regions (text layer is removed).</p>
+        <button class="btn btn-primary btn-sm" data-action="pdf-redact-export" ${rd.file ? '' : 'disabled'} style="margin-top:10px">Export redacted PDF</button>
+        <div id="pdf-redact-out" class="util-out" style="margin-top:8px"></div>
+      </div>
+    </div>`;
+}
+
+async function pdfRedactLoad(file) {
+  const rd = state.pdfRedact;
+  if (rd.file && rd.file._url) URL.revokeObjectURL(rd.file._url);
+  const url = URL.createObjectURL(file);
+  rd.file = { name: file.name, size: file.size, url };
+  rd.rects = {};
+  rd.page = 1;
+  try {
+    const pdfjsLib = await getPdfJs();
+    rd.pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+    rd.numPages = rd.pdf.numPages;
+    renderView();
+    await pdfRedactRenderPage();
+  } catch (e) {
+    toast('PDF load failed', e?.message || 'Failed.', 'error');
+  }
+}
+
+async function pdfRedactRenderPage() {
+  const rd = state.pdfRedact;
+  if (!rd.pdf) return;
+  const page = await rd.pdf.getPage(rd.page);
+  const viewport = page.getViewport({ scale: 1.5 });
+  const canvas = document.getElementById('pdf-redact-canvas');
+  if (!canvas) return;
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  const ctx = canvas.getContext('2d');
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  // draw existing redactions
+  const rects = rd.rects[rd.page] || [];
+  ctx.fillStyle = 'rgba(0,0,0,0.85)';
+  rects.forEach((r) => ctx.fillRect(r.x, r.y, r.w, r.h));
+}
+
+function pdfRedactClearPage() {
+  const rd = state.pdfRedact;
+  rd.rects[rd.page] = [];
+  pdfRedactRenderPage();
+}
+
+async function pdfRedactExport() {
+  const rd = state.pdfRedact;
+  if (!rd.pdf) return;
+  const out = document.getElementById('pdf-redact-out');
+  if (out) out.innerHTML = 'Exporting…';
+  try {
+    const { PDFDocument } = await getPdfLib();
+    const doc = await PDFDocument.create();
+    for (let p = 1; p <= rd.numPages; p++) {
+      const page = await rd.pdf.getPage(p);
+      const viewport = page.getViewport({ scale: 1.5 });
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext('2d');
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      const rects = rd.rects[p] || [];
+      ctx.fillStyle = 'rgb(0,0,0)';
+      rects.forEach((r) => ctx.fillRect(r.x, r.y, r.w, r.h));
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+      const bytes = await blob.arrayBuffer();
+      const img = await doc.embedPng(bytes);
+      const newPage = doc.addPage([viewport.width, viewport.height]);
+      newPage.drawImage(img, { x: 0, y: 0, width: viewport.width, height: viewport.height });
+    }
+    const pdfBytes = await doc.save();
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    if (out) out.innerHTML = `<a class="btn btn-secondary btn-sm" href="${url}" download="redacted.pdf">Download redacted.pdf</a>`;
+    toast('Exported', 'Redacted PDF ready.', 'success');
+  } catch (e) {
+    if (out) out.innerHTML = '';
+    toast('Export failed', e?.message || 'Failed.', 'error');
+  }
+}
+
+function bindPdfRedact() {
+  const fileInput = document.getElementById('pdf-redact-file');
+  if (fileInput) fileInput.onchange = (e) => { const f = e.target.files?.[0]; if (f) pdfRedactLoad(f); };
+  const canvas = document.getElementById('pdf-redact-canvas');
+  if (!canvas) return;
+  let start = null;
+  canvas.onpointerdown = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    start = { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+  };
+  canvas.onpointermove = (e) => {
+    if (!start) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+    // preview: redraw page + rects + current drag
+    pdfRedactRenderPage().then(() => {
+      const ctx = canvas.getContext('2d');
+      ctx.strokeStyle = 'rgba(239,68,68,0.9)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(Math.min(start.x, x), Math.min(start.y, y), Math.abs(x - start.x), Math.abs(y - start.y));
+    });
+  };
+  canvas.onpointerup = (e) => {
+    if (!start) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+    const r = { x: Math.min(start.x, x), y: Math.min(start.y, y), w: Math.abs(x - start.x), h: Math.abs(y - start.y) };
+    if (r.w > 4 && r.h > 4) {
+      const rd = state.pdfRedact;
+      rd.rects[rd.page] = rd.rects[rd.page] || [];
+      rd.rects[rd.page].push(r);
+    }
+    start = null;
+    pdfRedactRenderPage();
+  };
+}
+
 async function getPdfLib() {
-  if (!window.PDFLib) window.PDFLib = await import('https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js');
+  if (!window.PDFLib) window.PDFLib = await import('https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.esm.min.js');
   return window.PDFLib;
 }
 async function getPdfJs() {
@@ -8107,6 +8256,7 @@ function renderView() {
   if (state.tool === 'videoeditor') bindVideoEditor();
   if (state.tool === 'reframe') bindReframe();
   if (state.tool === 'workflow') bindWorkflow();
+  if (state.tool === 'pdftools' && state.pdfTools?.tab === 'redact') bindPdfRedact();
   if (state.utilities.tab === 'tts' && ['utilities','practical','audiotools'].includes(state.tool)) utilTtsEnsureVoices();
   if (state.tool === 'subtitles') { bindSubtitleOverlay(); bindSubtitleEditorInputs(); }
   $$('input[type="range"]').forEach((input) => setCssPct(input));
@@ -11064,6 +11214,10 @@ async function handleExtraAction(action, el) {
     case 'pdf-split': await pdfSplit(); return true;
     case 'pdf-img2pdf': await pdfImg2Pdf(); return true;
     case 'pdf-pdf2img': await pdfPdf2Img(); return true;
+    case 'pdf-redact-prev': { state.pdfRedact.page = Math.max(1, state.pdfRedact.page - 1); renderView(); await pdfRedactRenderPage(); return true; }
+    case 'pdf-redact-next': { state.pdfRedact.page = Math.min(state.pdfRedact.numPages, state.pdfRedact.page + 1); renderView(); await pdfRedactRenderPage(); return true; }
+    case 'pdf-redact-clear-page': pdfRedactClearPage(); return true;
+    case 'pdf-redact-export': await pdfRedactExport(); return true;
     case 'dev-json-format': await devJsonFormat(); return true;
     case 'dev-json-minify': await devJsonMinify(); return true;
     case 'dev-b64-enc': await devB64Enc(); return true;
