@@ -10,7 +10,7 @@
 - Main app: single file `web/assets/js/app.js` (~11k lines). Patch pattern: TOOLS entry in `web/assets/js/app.js` → nav button in `index.html` → `state.<tool>` → `xyzView()` in `renderView` chain → `bindXyz()` call → `case 'xyz-*'` in `handleExtraAction`/`handleAction` → record output with `registerOutput`.
 
 ## Recently completed (this session)
-Auto Reframe · Eco/Turbo concurrency toggle · audio waveform drag-select · Local AI Model Manager tab · OCR document search · Workflows Phases 1–3 (sequential runner + visual canvas + save/load + IndexedDB + DAG execution + compress adapter) · spot-heal + patch-based inpaint in Image Editor · queue undo/redo (deep-clone) · optional audio-reactive theme · PII text scrub (Dev Tools) · permanent image redaction (Image Editor) · PDF redaction (PDF Tools) · fixed pdf-lib UMD→ESM import · local LLM document Q&A (AI Tools) · audio waveform editor (visual trim + WAV export) · video editor timed overlays + timeline.
+Auto Reframe · Eco/Turbo concurrency toggle · audio waveform drag-select · Local AI Model Manager tab · OCR document search · Workflows Phases 1–3 (sequential runner + visual canvas + save/load + IndexedDB + DAG execution + compress adapter) · spot-heal + patch-based inpaint in Image Editor · queue undo/redo (deep-clone) · optional audio-reactive theme · PII text scrub (Dev Tools) · permanent image redaction (Image Editor) · PDF redaction (PDF Tools) · fixed pdf-lib UMD→ESM import · local LLM document Q&A (AI Tools) · audio waveform editor (visual trim + WAV export) · video editor timed overlays + multi-track timeline (playhead scrubbing + draggable clips).
 
 ## Remaining roadmap (large / partial)
 - Full multi-track video timeline with keyframes
