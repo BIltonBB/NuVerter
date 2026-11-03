@@ -7825,6 +7825,21 @@ function videoEditorView() {
       </section>
       <section class="area-queue">
         <div class="stage-card">
+          <div class="stage-head"><div class="stage-head-copy"><strong>Timeline</strong><span>Multi-track · drag clips · click to scrub</span></div></div>
+          <div class="stage-body" style="padding:8px">
+            <div id="ve-timeline" style="position:relative;height:90px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer">
+              <div id="ve-timeline-ruler" style="position:absolute;top:0;left:0;right:0;height:18px;background:var(--surface-3);border-bottom:1px solid var(--border);font-size:10px;color:var(--text-3)"></div>
+              <div id="ve-track-video" style="position:absolute;top:18px;left:0;right:0;height:24px;background:rgba(124,58,237,0.12)"></div>
+              <div id="ve-track-overlays" style="position:absolute;top:42px;left:0;right:0;height:24px"></div>
+              <div id="ve-playhead" style="position:absolute;top:0;bottom:0;width:2px;background:#ef4444;pointer-events:none"></div>
+            </div>
+            <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
+              <button class="btn btn-ghost btn-sm" data-action="ve-play">${icon('play')}Play/Pause</button>
+              <span class="mono" id="ve-timecode">0.00s</span>
+            </div>
+          </div>
+        </div>
+        <div class="stage-card">
           <div class="stage-head"><div class="stage-head-copy"><strong>Trim & crop</strong><span>Range and aspect</span></div></div>
           <div class="stage-body">
             <div class="field">
@@ -7873,6 +7888,125 @@ function videoEditorView() {
         </div>
       </section>
     </div>`;
+}
+
+function renderVideoTimeline() {
+  const data = state.videoEditor;
+  const source = data.source;
+  if (!source) return;
+  const tl = document.getElementById('ve-timeline');
+  if (!tl) return;
+  const dur = source.duration || 10;
+  const overlayTrack = document.getElementById('ve-track-overlays');
+  if (overlayTrack) {
+    overlayTrack.innerHTML = data.overlays.map((o, i) => {
+      const left = ((o.start || 0) / 100) * 100;
+      const width = Math.max(1, ((o.end || 100) - (o.start || 0)));
+      const colors = ['#7c3aed','#10b981','#f59e0b','#ef4444','#3b82f6'];
+      return `<div data-ve-clip="${i}" style="position:absolute;left:${left}%;width:${width}%;top:2px;height:20px;background:${colors[i % colors.length]};opacity:0.85;border-radius:3px;font-size:10px;color:#fff;padding:2px 4px;overflow:hidden;white-space:nowrap;cursor:grab">${esc(o.text)}</div>`;
+    }).join('');
+  }
+  // video track clip
+  const videoTrack = document.getElementById('ve-track-video');
+  if (videoTrack) {
+    videoTrack.innerHTML = `<div style="position:absolute;left:0;width:100%;top:2px;height:20px;background:rgba(124,58,237,0.5);border-radius:3px;font-size:10px;color:#fff;padding:2px 4px">Video</div>`;
+  }
+  // ruler ticks
+  const ruler = document.getElementById('ve-timeline-ruler');
+  if (ruler) {
+    let ticks = '';
+    const steps = Math.min(10, Math.ceil(dur));
+    for (let i = 0; i <= steps; i++) {
+      const t = (dur * i) / steps;
+      const left = (i / steps) * 100;
+      ticks += `<span style="position:absolute;left:${left}%;top:2px">${t.toFixed(1)}s</span>`;
+    }
+    ruler.innerHTML = ticks;
+  }
+  updatePlayheadUI();
+}
+
+function updatePlayheadUI() {
+  const data = state.videoEditor;
+  const source = data.source;
+  if (!source) return;
+  const tl = document.getElementById('ve-timeline');
+  const ph = document.getElementById('ve-playhead');
+  const tc = document.getElementById('ve-timecode');
+  if (!tl || !ph) return;
+  const dur = source.duration || 10;
+  const playhead = data.playhead || 0;
+  const pct = Math.max(0, Math.min(1, playhead / dur)) * 100;
+  ph.style.left = pct + '%';
+  if (tc) tc.textContent = playhead.toFixed(2) + 's';
+}
+
+function bindVideoTimeline() {
+  const tl = document.getElementById('ve-timeline');
+  if (!tl) return;
+  const data = state.videoEditor;
+  const source = data.source;
+  if (!source) return;
+  const dur = source.duration || 10;
+  // click to scrub
+  tl.onclick = (e) => {
+    const rect = tl.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    data.playhead = pct * dur;
+    // sync video element
+    const video = document.querySelector('#view video');
+    if (video) video.currentTime = data.playhead;
+    updatePlayheadUI();
+  };
+  // drag overlay clips
+  tl.querySelectorAll('[data-ve-clip]').forEach((clip) => {
+    let dragging = false;
+    let startX = 0;
+    let origStart = 0;
+    let origEnd = 0;
+    clip.onpointerdown = (e) => {
+      e.stopPropagation();
+      dragging = true;
+      const rect = tl.getBoundingClientRect();
+      startX = e.clientX;
+      const idx = Number(clip.dataset.veClip);
+      origStart = data.overlays[idx].start || 0;
+      origEnd = data.overlays[idx].end || 100;
+      try { tl.setPointerCapture(e.pointerId); } catch {}
+    };
+    clip.onpointermove = (e) => {
+      if (!dragging) return;
+      const rect = tl.getBoundingClientRect();
+      const dxPct = ((e.clientX - startX) / rect.width) * 100;
+      const idx = Number(clip.dataset.veClip);
+      const o = data.overlays[idx];
+      if (!o) return;
+      const newStart = Math.max(0, Math.min(90, origStart + dxPct));
+      const width = origEnd - origStart;
+      o.start = Math.round(newStart);
+      o.end = Math.round(Math.min(100, newStart + width));
+      renderVideoTimeline();
+      renderVideoOverlays();
+    };
+    clip.onpointerup = () => { dragging = false; };
+  });
+  // play/pause button
+  const playBtn = document.querySelector('[data-action="ve-play"]');
+  if (playBtn) playBtn.onclick = () => {
+    const video = document.querySelector('#view video');
+    if (!video) return;
+    if (video.paused) { video.play(); playBtn.innerHTML = icon('pause') + 'Play/Pause'; }
+    else { video.pause(); playBtn.innerHTML = icon('play') + 'Play/Pause'; }
+  };
+  // timecode update
+  const video = document.querySelector('#view video');
+  if (video) {
+    video.ontimeupdate = () => {
+      data.playhead = video.currentTime;
+      updatePlayheadUI();
+    };
+  }
+  renderVideoTimeline();
 }
 
 async function videoEditorLoad(file) {
@@ -8058,6 +8192,7 @@ function renderVideoOverlays() {
 }
 function bindVideoEditor() {
   renderVideoOverlays();
+  bindVideoTimeline();
   // overlay field changes
   document.querySelectorAll('[data-ve-overlay]').forEach((el) => {
     el.onchange = () => {
@@ -11678,6 +11813,7 @@ async function handleAction(action, el) {
       return true;
     }
     case 've-export': await videoEditorExport(); return true;
+    case 've-play': { const v = document.querySelector('#view video'); if (v) { if (v.paused) v.play(); else v.pause(); } return true; }
     case 'pick-files': pickFiles(el.dataset.context || null); break;
     case 'load-demo': loadDemoBatch(); break;
     case 'start-queue': startQueue(); break;
