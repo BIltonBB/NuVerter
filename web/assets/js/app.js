@@ -7421,7 +7421,7 @@ function imageEditorView() {
                   <input type="text" class="input" style="width:100%" placeholder="https://.../lama.onnx" value="${esc(data.onnxModelUrl || '')}" data-ie-onnx="url" />
                </div>
                <button class="btn btn-primary btn-sm" data-action="ie-onnx-inpaint-apply" ${source && data.inpaint.active ? '' : 'disabled'} style="margin-top:6px">Apply AI inpaint</button>
-               <p class="field-help" style="margin-top:6px">Runs a local ONNX inpainting model (e.g. LaMa) on the masked region. Choose a preset matching your model's input size/normalization. Requires a model URL; falls back to patch-based fill on failure. Model is fetched and cached by the browser. Phase A: single-pass resize (no tiling yet).</p>
+               <p class="field-help" style="margin-top:6px">Runs a local ONNX inpainting model (e.g. LaMa) on the masked region. Choose a preset matching your model's input size/normalization. Requires a model URL; falls back to patch-based fill on failure. Model is fetched and cached by the browser. Phase B: tiled inference with overlap blending.</p>
              </details>
              <div class="field">
                <div class="field-head"><span class="field-label">Brush size</span><span class="field-value">${data.heal.size}px</span></div>
@@ -7750,76 +7750,142 @@ async function imageEditorOnnxInpaintApply() {
     const ort = window.ort;
     if (!ort?.InferenceSession) throw new Error('ONNX Runtime failed to load.');
     const session = await ort.InferenceSession.create(modelUrl, { executionProviders: ['wasm'] });
-    // Prepare resized image + mask
-    const off = document.createElement('canvas');
-    off.width = SIZE; off.height = SIZE;
-    const octx = off.getContext('2d');
-    octx.drawImage(canvas, 0, 0, SIZE, SIZE);
-    const imgData = octx.getImageData(0, 0, SIZE, SIZE);
-    const mcanvas = document.createElement('canvas');
-    mcanvas.width = SIZE; mcanvas.height = SIZE;
-    const mctx = mcanvas.getContext('2d');
-    mctx.drawImage(mask, 0, 0, SIZE, SIZE);
-    const mData = mctx.getImageData(0, 0, SIZE, SIZE);
-    const inputTensor = new ort.Tensor('float32', new Float32Array(SIZE * SIZE * 3), [1, 3, SIZE, SIZE]);
-    const maskTensor = new ort.Tensor('float32', new Float32Array(SIZE * SIZE), [1, 1, SIZE, SIZE]);
-    for (let i = 0; i < SIZE * SIZE; i++) {
-      inputTensor.data[i * 3] = imgData.data[i * 4] / 255;
-      inputTensor.data[i * 3 + 1] = imgData.data[i * 4 + 1] / 255;
-      inputTensor.data[i * 3 + 2] = imgData.data[i * 4 + 2] / 255;
-      maskTensor.data[i] = mData.data[i * 4 + 3] > 50 ? 1 : 0;
-    }
-    // Auto-detect input names
-    const feeds = {};
-    const inputNames = session.inputNames || [];
-    const imgName = inputNames.includes('image') ? 'image' : (inputNames.includes('input') ? 'input' : inputNames[0]);
-    const maskName = inputNames.includes('mask') ? 'mask' : (inputNames.length > 1 ? inputNames[1] : null);
-    if (imgName) feeds[imgName] = inputTensor;
-    if (maskName) feeds[maskName] = maskTensor;
-    if (!Object.keys(feeds).length) throw new Error('Model has no usable inputs.');
-    const results = await session.run(feeds);
-    const outName = session.outputNames?.[0] || Object.keys(results)[0];
-    const outTensor = results[outName];
-    if (!outTensor) throw new Error('No output from model.');
-    // Determine output layout size
-    let outSize = SIZE;
-    if (outTensor.dims && outTensor.dims.length >= 2) {
-      const hdim = outTensor.dims[outTensor.dims.length - 2];
-      const wdim = outTensor.dims[outTensor.dims.length - 1];
-      if (hdim && wdim && hdim === wdim) outSize = hdim;
-    }
-    const outData = octx.createImageData(outSize, outSize);
-    const n = outSize * outSize;
-    for (let i = 0; i < n; i++) {
-      if (outTensor.data.length >= n * 3) {
-        outData.data[i * 4] = Math.round(Math.min(1, Math.max(0, outTensor.data[i * 3])) * 255);
-        outData.data[i * 4 + 1] = Math.round(Math.min(1, Math.max(0, outTensor.data[i * 3 + 1])) * 255);
-        outData.data[i * 4 + 2] = Math.round(Math.min(1, Math.max(0, outTensor.data[i * 3 + 2])) * 255);
-      } else {
-        const v = Math.round(Math.min(1, Math.max(0, outTensor.data[i])) * 255);
-        outData.data[i * 4] = v; outData.data[i * 4 + 1] = v; outData.data[i * 4 + 2] = v;
+    // Tiled inference (Phase B): split image into overlapping tiles, run model per tile, blend.
+    const tileSize = SIZE;
+    const overlap = Math.max(16, Math.floor(tileSize * 0.25));
+    const step = tileSize - overlap;
+    const accumOut = new Float32Array(w * h * 3);
+    const accumW = new Float32Array(w * h);
+    const weightMap = new Float32Array(tileSize * tileSize);
+    const feather = overlap / 2;
+    for (let yy = 0; yy < tileSize; yy++) {
+      const wy = Math.min(yy + 1, tileSize - yy, feather) / feather;
+      for (let xx = 0; xx < tileSize; xx++) {
+        const wx = Math.min(xx + 1, tileSize - xx, feather) / feather;
+        weightMap[yy * tileSize + xx] = Math.max(0.0001, wx * wy);
       }
-      outData.data[i * 4 + 3] = 255;
     }
-    // resize output to SIZE if needed
-    const tmp = document.createElement('canvas');
-    tmp.width = outSize; tmp.height = outSize;
-    tmp.getContext('2d').putImageData(outData, 0, 0);
-    octx.clearRect(0, 0, SIZE, SIZE);
-    octx.drawImage(tmp, 0, 0, SIZE, SIZE);
-    // scale back to original
-    const full = document.createElement('canvas');
-    full.width = w; full.height = h;
-    const fctx = full.getContext('2d');
-    fctx.drawImage(off, 0, 0, w, h);
-    const fullData = fctx.getImageData(0, 0, w, h);
+    const runTile = async (tileImg, tileMask) => {
+      const tImg = tileImg.getContext('2d').getImageData(0, 0, tileSize, tileSize);
+      const tMask = tileMask.getContext('2d').getImageData(0, 0, tileSize, tileSize);
+      const inputTensor = new ort.Tensor('float32', new Float32Array(tileSize * tileSize * 3), [1, 3, tileSize, tileSize]);
+      const maskTensor = new ort.Tensor('float32', new Float32Array(tileSize * tileSize), [1, 1, tileSize, tileSize]);
+      for (let i = 0; i < tileSize * tileSize; i++) {
+        inputTensor.data[i * 3] = tImg.data[i * 4] / 255;
+        inputTensor.data[i * 3 + 1] = tImg.data[i * 4 + 1] / 255;
+        inputTensor.data[i * 3 + 2] = tImg.data[i * 4 + 2] / 255;
+        maskTensor.data[i] = tMask.data[i * 4 + 3] > 50 ? 1 : 0;
+      }
+      const feeds = {};
+      const inputNames = session.inputNames || [];
+      const imgName = inputNames.includes('image') ? 'image' : (inputNames.includes('input') ? 'input' : inputNames[0]);
+      const maskName = inputNames.includes('mask') ? 'mask' : (inputNames.length > 1 ? inputNames[1] : null);
+      if (imgName) feeds[imgName] = inputTensor;
+      if (maskName) feeds[maskName] = maskTensor;
+      if (!Object.keys(feeds).length) throw new Error('Model has no usable inputs.');
+      const results = await session.run(feeds);
+      const outName = session.outputNames?.[0] || Object.keys(results)[0];
+      const outTensor = results[outName];
+      if (!outTensor) throw new Error('No output from model.');
+      let outSize = tileSize;
+      if (outTensor.dims && outTensor.dims.length >= 2) {
+        const hdim = outTensor.dims[outTensor.dims.length - 2];
+        const wdim = outTensor.dims[outTensor.dims.length - 1];
+        if (hdim && wdim && hdim === wdim) outSize = hdim;
+      }
+      const tmp = document.createElement('canvas');
+      tmp.width = outSize; tmp.height = outSize;
+      const tmpData = tmp.getContext('2d').createImageData(outSize, outSize);
+      const n = outSize * outSize;
+      for (let i = 0; i < n; i++) {
+        if (outTensor.data.length >= n * 3) {
+          tmpData.data[i * 4] = Math.round(Math.min(1, Math.max(0, outTensor.data[i * 3])) * 255);
+          tmpData.data[i * 4 + 1] = Math.round(Math.min(1, Math.max(0, outTensor.data[i * 3 + 1])) * 255);
+          tmpData.data[i * 4 + 2] = Math.round(Math.min(1, Math.max(0, outTensor.data[i * 3 + 2])) * 255);
+        } else {
+          const v = Math.round(Math.min(1, Math.max(0, outTensor.data[i])) * 255);
+          tmpData.data[i * 4] = v; tmpData.data[i * 4 + 1] = v; tmpData.data[i * 4 + 2] = v;
+        }
+        tmpData.data[i * 4 + 3] = 255;
+      }
+      tmp.getContext('2d').putImageData(tmpData, 0, 0);
+      const tileOut = document.createElement('canvas');
+      tileOut.width = tileSize; tileOut.height = tileSize;
+      const toctx = tileOut.getContext('2d');
+      toctx.drawImage(tmp, 0, 0, tileSize, tileSize);
+      const outImg = toctx.getImageData(0, 0, tileSize, tileSize);
+      const arr = new Float32Array(tileSize * tileSize * 3);
+      for (let i = 0; i < tileSize * tileSize; i++) {
+        arr[i * 3] = outImg.data[i * 4] / 255;
+        arr[i * 3 + 1] = outImg.data[i * 4 + 1] / 255;
+        arr[i * 3 + 2] = outImg.data[i * 4 + 2] / 255;
+      }
+      return arr;
+    };
+    const drawTile = (dst, src, tx, ty, sw, sh) => {
+      if (sw > 0 && sh > 0) dst.drawImage(src, tx, ty, sw, sh, 0, 0, sw, sh);
+      if (sw < tileSize && sh > 0) dst.drawImage(src, tx + sw - 1, ty, 1, sh, sw, 0, tileSize - sw, sh);
+      if (sh < tileSize && sw > 0) dst.drawImage(src, tx, ty + sh - 1, sw, 1, 0, sh, sw, tileSize - sh);
+      if (sw < tileSize && sh < tileSize) dst.drawImage(src, tx + sw - 1, ty + sh - 1, 1, 1, sw, sh, tileSize - sw, tileSize - sh);
+    };
+    let tileCount = 0;
+    const totalTiles = Math.ceil(h / step) * Math.ceil(w / step);
+    for (let ty = 0; ty < h; ty += step) {
+      for (let tx = 0; tx < w; tx += step) {
+        tileCount++;
+        toast('AI inpaint', `Processing tile ${tileCount}/${totalTiles}…`, 'info');
+        const sw = Math.min(tileSize, w - tx);
+        const sh = Math.min(tileSize, h - ty);
+        const tileImg = document.createElement('canvas');
+        tileImg.width = tileSize; tileImg.height = tileSize;
+        const tic = tileImg.getContext('2d');
+        tic.fillStyle = '#000'; tic.fillRect(0, 0, tileSize, tileSize);
+        drawTile(tic, canvas, tx, ty, sw, sh);
+        const tileMask = document.createElement('canvas');
+        tileMask.width = tileSize; tileMask.height = tileSize;
+        const tmc = tileMask.getContext('2d');
+        tmc.fillStyle = 'rgba(0,0,0,0)'; tmc.fillRect(0, 0, tileSize, tileSize);
+        drawTile(tmc, mask, tx, ty, sw, sh);
+        const outArr = await runTile(tileImg, tileMask);
+        for (let yy = 0; yy < tileSize; yy++) {
+          const gy = ty + yy;
+          if (gy >= h) break;
+          for (let xx = 0; xx < tileSize; xx++) {
+            const gx = tx + xx;
+            if (gx >= w) break;
+            const weight = weightMap[yy * tileSize + xx];
+            if (weight <= 0) continue;
+            const srcIdx = (yy * tileSize + xx) * 3;
+            const dstIdx = (gy * w + gx) * 3;
+            accumOut[dstIdx] += outArr[srcIdx] * weight;
+            accumOut[dstIdx + 1] += outArr[srcIdx + 1] * weight;
+            accumOut[dstIdx + 2] += outArr[srcIdx + 2] * weight;
+            accumW[gy * w + gx] += weight;
+          }
+        }
+      }
+    }
+    const blendedData = canvas.getContext('2d').createImageData(w, h);
     const origData = canvas.getContext('2d').getImageData(0, 0, w, h);
+    for (let i = 0; i < w * h; i++) {
+      const aw = accumW[i];
+      if (aw > 0) {
+        blendedData.data[i * 4] = Math.round(Math.min(1, Math.max(0, accumOut[i * 3] / aw)) * 255);
+        blendedData.data[i * 4 + 1] = Math.round(Math.min(1, Math.max(0, accumOut[i * 3 + 1] / aw)) * 255);
+        blendedData.data[i * 4 + 2] = Math.round(Math.min(1, Math.max(0, accumOut[i * 3 + 2] / aw)) * 255);
+      } else {
+        blendedData.data[i * 4] = origData.data[i * 4];
+        blendedData.data[i * 4 + 1] = origData.data[i * 4 + 1];
+        blendedData.data[i * 4 + 2] = origData.data[i * 4 + 2];
+      }
+      blendedData.data[i * 4 + 3] = 255;
+    }
     const outFull = canvas.getContext('2d').createImageData(w, h);
     for (let i = 0; i < w * h; i++) {
       if (maskData.data[i * 4 + 3] > 50) {
-        outFull.data[i * 4] = fullData.data[i * 4];
-        outFull.data[i * 4 + 1] = fullData.data[i * 4 + 1];
-        outFull.data[i * 4 + 2] = fullData.data[i * 4 + 2];
+        outFull.data[i * 4] = blendedData.data[i * 4];
+        outFull.data[i * 4 + 1] = blendedData.data[i * 4 + 1];
+        outFull.data[i * 4 + 2] = blendedData.data[i * 4 + 2];
         outFull.data[i * 4 + 3] = 255;
       } else {
         outFull.data[i * 4] = origData.data[i * 4];
