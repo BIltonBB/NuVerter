@@ -7895,6 +7895,59 @@ function bindImageEditor() {
   if (q) q.oninput = () => { state.imageEditor.settings.quality = Number(q.value); };
 }
 
+function interpVeKf(kf, prop, tSec, dur) {
+  if (!Array.isArray(kf) || kf.length === 0) return null;
+  const pts = kf.slice().sort((a, b) => a.t - b.t);
+  if (pts.length === 1) return Number(pts[0][prop] ?? 0);
+  const tPct = dur > 0 ? (tSec / dur) * 100 : 0;
+  if (tPct <= pts[0].t) return Number(pts[0][prop] ?? 0);
+  if (tPct >= pts[pts.length - 1].t) return Number(pts[pts.length - 1][prop] ?? 0);
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    if (tPct >= a.t && tPct <= b.t) {
+      const t0 = (a.t / 100) * dur;
+      const t1 = (b.t / 100) * dur;
+      const v0 = Number(a[prop] ?? 0);
+      const v1 = Number(b[prop] ?? 0);
+      if (t1 - t0 <= 0) return v0;
+      const p = (tSec - t0) / (t1 - t0);
+      const easing = a.easing || 'linear';
+      let ep = p;
+      if (easing === 'ease-in') ep = p * p;
+      else if (easing === 'ease-out') ep = 1 - Math.pow(1 - p, 2);
+      else if (easing === 'ease-in-out') ep = p * p * (3 - 2 * p);
+      return v0 + (v1 - v0) * ep;
+    }
+  }
+  return Number(pts[pts.length - 1][prop] ?? 0);
+}
+function videoEditorUpdatePreview() {
+  const container = document.getElementById('ve-preview-overlay');
+  if (!container) return;
+  const video = document.querySelector('#view video');
+  const data = state.videoEditor;
+  if (!data || !data.source || !video) { container.innerHTML = ''; return; }
+  const dur = Number(data.source.duration) || 0;
+  const t = video.currentTime || 0;
+  container.innerHTML = (data.overlays || []).map((o) => {
+    const size = interpVeKf(o.kf, 'size', t, dur);
+    const opacityKf = interpVeKf(o.kf, 'opacity', t, dur);
+    const xKf = interpVeKf(o.kf, 'x', t, dur);
+    const yKf = interpVeKf(o.kf, 'y', t, dur);
+    const sizeV = size === null ? (Number(o.size) || 24) : size;
+    const opacityV = (opacityKf === null ? (Number(o.opacity ?? 100)) : opacityKf) / 100;
+    const ox = xKf === null ? (Number(o.offsetX) || 0) : xKf;
+    const oy = yKf === null ? (Number(o.offsetY) || 0) : yKf;
+    const transform = o.pos === 'top'
+      ? `translate(-50%,0) translate(${ox}px,${oy}px)`
+      : o.pos === 'center'
+      ? `translate(-50%,-50%) translate(${ox}px,${oy}px)`
+      : `translate(-50%,0) translate(${ox}px,${oy}px)`;
+    const anchor = o.pos === 'top' ? 'top:20px;' : o.pos === 'center' ? 'top:50%;' : 'bottom:20px;';
+    const style = `position:absolute;${anchor}left:50%;transform:${transform};font-size:${sizeV}px;color:${esc(o.color || '#ffffff')};opacity:${opacityV};white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.6);pointer-events:none;`;
+    return `<span style="${style}">${esc(o.text || '')}</span>`;
+  }).join('');
+}
 function videoEditorView() {
   const data = state.videoEditor;
   const a = data.adjustments;
@@ -7908,7 +7961,10 @@ function videoEditorView() {
           <div class="stage-body">
             <label class="btn btn-secondary btn-sm" for="ve-file">Choose video</label>
             <input id="ve-file" type="file" accept="video/*" data-ve="file" hidden />
-            ${source ? `<video src="${source.url}" controls style="max-width:100%;border-radius:8px;margin-top:8px"></video>` : ''}
+            ${source ? `<div style="position:relative;display:inline-block;max-width:100%;margin-top:8px">
+  <video src="${source.url}" controls style="max-width:100%;border-radius:8px;display:block"></video>
+  <div id="ve-preview-overlay" style="position:absolute;inset:0;pointer-events:none;overflow:hidden"></div>
+</div>` : ''}
           </div>
         </div>
         <div class="stage-card" style="margin-top:12px">
@@ -8153,6 +8209,7 @@ function bindVideoTimeline() {
     video.ontimeupdate = () => {
       data.playhead = video.currentTime;
       updatePlayheadUI();
+      videoEditorUpdatePreview();
     };
   }
   renderVideoTimeline();
@@ -8232,7 +8289,16 @@ function buildVeKfExpr(kf, prop, dur) {
   for (let i = sp.length - 2; i >= 0; i--) {
     const t0 = sp[i].t, t1 = sp[i + 1].t;
     const v0 = sp[i].v, v1 = sp[i + 1].v;
-    const seg = (t1 - t0) > 0 ? `${v0}+(${v1}-${v0})*(t-${t0.toFixed(3)})/${(t1 - t0).toFixed(6)}` : String(v0);
+    const easing = pts[i].easing || 'linear';
+    let seg = String(v0);
+    if ((t1 - t0) > 0) {
+      const p = `((t-${t0.toFixed(3)})/${(t1 - t0).toFixed(6)})`;
+      let ep = p;
+      if (easing === 'ease-in') ep = `pow(${p},2)`;
+      else if (easing === 'ease-out') ep = `1-pow(1-${p},2)`;
+      else if (easing === 'ease-in-out') ep = `pow(${p},2)*(3-2*${p})`;
+      seg = `${v0}+(${v1}-${v0})*(${ep})`;
+    }
     expr = `if(lt(t,${t1.toFixed(3)}),${seg},${expr})`;
   }
   expr = `if(lt(t,${sp[0].t.toFixed(3)}),${sp[0].v},${expr})`;
@@ -8355,7 +8421,10 @@ function renderVideoOverlays() {
     <div class="stage-card" style="margin-bottom:8px;padding:8px">
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
         <strong style="font-size:12px">Layer ${i + 1}</strong>
-        <button class="btn btn-ghost btn-sm" data-action="ve-remove-overlay" data-idx="${i}" style="margin-left:auto">${icon('trash-2')}</button>
+        <button class="btn btn-ghost btn-sm" data-action="ve-move-overlay" data-idx="${i}" data-dir="up" title="Move up">↑</button>
+         <button class="btn btn-ghost btn-sm" data-action="ve-move-overlay" data-idx="${i}" data-dir="down" title="Move down">↓</button>
+         <button class="btn btn-ghost btn-sm" data-action="ve-split-overlay" data-idx="${i}" title="Split at playhead">Split</button>
+         <button class="btn btn-ghost btn-sm" data-action="ve-remove-overlay" data-idx="${i}" style="margin-left:auto">${icon('trash-2')}</button>
       </div>
       <input type="text" value="${esc(o.text)}" data-ve-overlay="${i}" data-field="text" class="input" style="width:100%" placeholder="overlay text" />
       <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
@@ -8383,6 +8452,12 @@ function renderVideoOverlays() {
           <span>op ${k.opacity}%</span>
           <span>x ${k.x ?? 0}</span>
           <span>y ${k.y ?? 0}</span>
+          <select data-ve-kf-ease="${i}" data-kf="${ki}" class="select" style="width:80px;font-size:10px">
+            <option value="linear" ${(k.easing||'linear')==='linear'?'selected':''}>Linear</option>
+            <option value="ease-in" ${k.easing==='ease-in'?'selected':''}>Ease in</option>
+            <option value="ease-out" ${k.easing==='ease-out'?'selected':''}>Ease out</option>
+            <option value="ease-in-out" ${k.easing==='ease-in-out'?'selected':''}>Ease in/out</option>
+          </select>
           <button class="btn btn-ghost btn-sm" data-action="ve-del-kf" data-idx="${i}" data-kf="${ki}" style="margin-left:auto">✕</button>
         </div>`).join('')}
       </div>` : ''}
@@ -8397,6 +8472,7 @@ function renderVideoOverlays() {
       return `<div title="Layer ${i+1}: ${esc(o.text)}" style="position:absolute;left:${left}%;width:${width}%;top:4px;height:20px;background:${colors[i % colors.length]};opacity:0.85;border-radius:3px;font-size:10px;color:#fff;padding:2px 4px;overflow:hidden;white-space:nowrap">${esc(o.text)}</div>`;
     }).join('');
   }
+  try { videoEditorUpdatePreview(); } catch {}
 }
 function bindVideoEditor() {
   renderVideoOverlays();
@@ -8419,6 +8495,15 @@ function bindVideoEditor() {
       else if (field === 'end') d.overlays[idx].end = Number(el.value);
       videoEditorPushHistory();
       renderVideoOverlays();
+    };
+  });
+  document.querySelectorAll('[data-ve-kf-ease]').forEach((el) => {
+    el.onchange = () => {
+      const idx = Number(el.dataset.veKfEase);
+      const ki = Number(el.dataset.kf);
+      const d = state.videoEditor;
+      const o = d.overlays[idx];
+      if (o && o.kf && o.kf[ki]) { o.kf[ki].easing = el.value; videoEditorPushHistory(); }
     };
   });
   const fileInput = document.getElementById('ve-file');
@@ -12071,7 +12156,7 @@ async function handleAction(action, el) {
       const dur = Number(d.source?.duration) || 0;
       const tPct = dur > 0 ? Math.max(0, Math.min(100, (d.playhead || 0) / dur * 100)) : 0;
       o.kf = (o.kf || []).filter(k => Math.abs(k.t - tPct) > 0.5);
-      o.kf.push({ t: Math.round(tPct * 10) / 10, size: Number(o.size) || 24, opacity: Number(o.opacity ?? 100), x: Number(o.offsetX) || 0, y: Number(o.offsetY) || 0 });
+      o.kf.push({ t: Math.round(tPct * 10) / 10, size: Number(o.size) || 24, opacity: Number(o.opacity ?? 100), x: Number(o.offsetX) || 0, y: Number(o.offsetY) || 0, easing: 'linear' });
       o.kf.sort((a, b) => a.t - b.t);
       videoEditorPushHistory();
       renderVideoOverlays();
@@ -12103,6 +12188,40 @@ async function handleAction(action, el) {
       const ki = Number(el?.dataset?.kf);
       const d = state.videoEditor;
       if (Array.isArray(d.audioKf) && !isNaN(ki)) { d.audioKf.splice(ki, 1); videoEditorPushHistory(); renderView(); }
+      return true;
+    }
+    case 've-move-overlay': {
+      const idx = Number(el?.dataset?.idx);
+      const dir = el?.dataset?.dir;
+      const d = state.videoEditor;
+      if (!d.overlays[idx]) return true;
+      const newIdx = dir === 'up' ? idx - 1 : idx + 1;
+      if (newIdx < 0 || newIdx >= d.overlays.length) return true;
+      const [item] = d.overlays.splice(idx, 1);
+      d.overlays.splice(newIdx, 0, item);
+      videoEditorPushHistory();
+      renderVideoOverlays();
+      return true;
+    }
+    case 've-split-overlay': {
+      const idx = Number(el?.dataset?.idx);
+      const d = state.videoEditor;
+      const o = d.overlays[idx];
+      if (!o) return true;
+      const dur = Number(d.source?.duration) || 0;
+      const playPct = dur > 0 ? Math.max(0, Math.min(100, (d.playhead || 0) / dur * 100)) : 50;
+      const start = Number(o.start) || 0;
+      const end = Number(o.end) || 100;
+      if (playPct <= start || playPct >= end) { toast('Split', 'Move playhead inside the clip to split.', 'info'); return true; }
+      const first = JSON.parse(JSON.stringify(o));
+      const second = JSON.parse(JSON.stringify(o));
+      first.end = Math.round(playPct);
+      second.start = Math.round(playPct);
+      first.kf = (o.kf || []).filter(k => k.t <= playPct);
+      second.kf = (o.kf || []).filter(k => k.t >= playPct).map(k => ({ ...k }));
+      d.overlays.splice(idx, 1, first, second);
+      videoEditorPushHistory();
+      renderVideoOverlays();
       return true;
     }
     case 've-export': await videoEditorExport(); return true;
