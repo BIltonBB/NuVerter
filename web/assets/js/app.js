@@ -418,6 +418,7 @@ const state = {
     aspect: 'free',
     crop: { x: .1, y: .1, w: .8, h: .8 },
     showGrid: false,
+    dimOutside: true,
     settings: { format: 'mp4', quality: 'balanced', keepAudio: true, rotate: '0', flipH: false, flipV: false }
   },
   extractor: {
@@ -2056,6 +2057,111 @@ function estimateQueueSeconds() {
     }, 0);
 }
 
+async function updateConverterSizeEstimate() {
+  const el = document.getElementById('conv-est-size');
+  if (!el) return;
+  const item = (state.queue || []).find((q) => q.status === 'queued' && q.kind === 'image');
+  if (!item) { el.textContent = '-'; return; }
+  const targetKey = state.converter.format === 'auto' ? 'webp' : state.converter.format;
+  const target = FORMATS[targetKey];
+  if (!target || target.kind !== 'image') { el.textContent = '-'; return; }
+  let source = null;
+  try { source = await loadBitmap(item.file); } catch { el.textContent = '-'; return; }
+  const width = source.width || source.naturalWidth || 0;
+  const height = source.height || source.naturalHeight || 0;
+  if (!width || !height) { source.close?.(); el.textContent = '-'; return; }
+  let scale = 1;
+  const maxDim = state.converter.imageMax ?? 'original';
+  const twTarget = state.converter.imageWidth;
+  const thTarget = state.converter.imageHeight;
+  if (twTarget && Number(twTarget) > 0 && thTarget && Number(thTarget) > 0) {
+    scale = Math.min(Number(twTarget) / width, Number(thTarget) / height);
+  } else if (twTarget && Number(twTarget) > 0) {
+    scale = Number(twTarget) / width;
+  } else if (thTarget && Number(thTarget) > 0) {
+    scale = Number(thTarget) / height;
+  } else if (maxDim !== 'original' && Number(maxDim) > 0) {
+    const largest = Math.max(width, height);
+    if (largest > Number(maxDim)) scale = Number(maxDim) / largest;
+  }
+  const tw = Math.max(2, Math.round(width * scale));
+  const th = Math.max(2, Math.round(height * scale));
+  const sampleScale = Math.min(1, 256 / Math.max(tw, th));
+  const swS = Math.max(2, Math.round(tw * sampleScale));
+  const shS = Math.max(2, Math.round(th * sampleScale));
+  const canvas = document.createElement('canvas');
+  canvas.width = swS; canvas.height = shS;
+  const ctx = canvas.getContext('2d', { alpha: targetKey !== 'jpg' });
+  if (!ctx) { source.close?.(); el.textContent = '-'; return; }
+  if (targetKey === 'jpg') { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, swS, shS); }
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(source, 0, 0, width, height, 0, 0, swS, shS);
+  source.close?.();
+  const quality = clamp(Number(state.converter.imageQuality ?? .86), .2, 1);
+  let blob;
+  try { blob = await canvasToBlob(canvas, target.mime, quality); } catch { el.textContent = '-'; return; }
+  if (!blob || !blob.size) { el.textContent = '-'; return; }
+  const samplePixels = swS * shS;
+  const targetPixels = tw * th;
+  const est = Math.round(blob.size * (targetPixels / samplePixels));
+  el.textContent = '~' + formatBytes(est) + ' (approx.)';
+}
+
+function scanImageMetadata(blob) {
+  const found = [];
+  return blob.arrayBuffer().then((ab) => {
+    const bytes = new Uint8Array(ab);
+    const mime = (blob.type || '').toLowerCase();
+    if (mime.includes('jpeg') || mime.includes('jpg')) {
+      // JPEG: scan markers
+      let i = 0;
+      while (i < bytes.length - 1) {
+        if (bytes[i] === 0xFF) {
+          const marker = bytes[i + 1];
+          if (marker === 0xD9) break; // EOI
+          if (marker === 0xDA) break; // SOS, rest is entropy
+          if (marker === 0xE1) found.push('EXIF/XMP (APP1)');
+          if (marker === 0xED) found.push('Photoshop (APP13)');
+          // segment length
+          if (i + 3 < bytes.length) {
+            const len = (bytes[i + 2] << 8) | bytes[i + 3];
+            if (len >= 2) { i += 2 + len; continue; }
+          }
+          i++;
+        } else {
+          i++;
+        }
+      }
+    } else if (mime.includes('png')) {
+      // PNG: parse chunks
+      // signature 8 bytes
+      let i = 8;
+      while (i + 12 <= bytes.length) {
+        const len = (bytes[i] << 24) | (bytes[i+1] << 16) | (bytes[i+2] << 8) | bytes[i+3];
+        const type = String.fromCharCode(bytes[i+4], bytes[i+5], bytes[i+6], bytes[i+7]);
+        if (type === 'tEXt' || type === 'iTXt' || type === 'zTXt' || type === 'eXIf' || type === 'caBX') {
+          found.push(type);
+        }
+        if (type === 'IEND') break;
+        i += 12 + len;
+      }
+    } else if (mime.includes('webp')) {
+      // RIFF WebP: check chunks
+      // RIFF header 12 bytes, then chunks
+      let i = 12;
+      while (i + 8 <= bytes.length) {
+        const type = String.fromCharCode(bytes[i], bytes[i+1], bytes[i+2], bytes[i+3]);
+        const size = (bytes[i+4] | (bytes[i+5] << 8) | (bytes[i+6] << 16) | (bytes[i+7] << 24)) >>> 0;
+        if (type === 'EXIF' || type === 'XMP ') found.push(type.trim());
+        if (size === 0) break;
+        i += 8 + size + (size % 2);
+      }
+    }
+    return { ok: found.length === 0, found };
+  });
+}
+
 async function addConverterFiles(fileList) {
   const files = Array.from(fileList || []).filter((file) => file && file.size > 0);
   if (!files.length) return;
@@ -2231,6 +2337,12 @@ async function processOneQueueItem(item, counters) {
       updateQueueProgress(item, .18);
       const converted = await convertImageBlob(item.file, plan.format, state.converter, { maxDim: state.converter.imageMax, targetWidth: state.converter.imageWidth, targetHeight: state.converter.imageHeight });
       updateQueueProgress(item, 1);
+      if (state.converter.stripMetadata) {
+        try {
+          const v = await scanImageMetadata(converted.blob);
+          if (!v.ok) toast('Metadata may remain', `Could not fully strip metadata (${v.found.join(', ')}) from ${item.name}.`, 'warning');
+        } catch {}
+      }
       result = {
         blob: converted.blob,
         size: converted.blob.size,
@@ -3143,6 +3255,10 @@ function converterPanes() {
         <p class="field-help">JPG and WEBP use this quality. PNG is always lossless.</p>
       </div>
       <div class="field">
+        <div class="field-head"><span class="field-label">Estimated output size</span><span class="field-value" id="conv-est-size">-</span></div>
+        <p class="field-help">Approximate. Based on the first queued image and current settings. Actual size varies by content.</p>
+      </div>
+      <div class="field">
         <div class="field-head"><span class="field-label">Social preset</span></div>
         <select class="select" data-field="converter.socialPreset" aria-label="Social preset">
           <option value="none" ${conv.socialPreset === 'none' ? 'selected' : ''}>None</option>
@@ -3167,7 +3283,7 @@ function converterPanes() {
         <p class="field-help">Tokens: {name}, {ext}, {index}, {resolution}. Leave empty for default.</p>
       </div>
       <div class="switch-row">
-        <div class="switch-copy"><strong>Strip metadata</strong><small>Remove EXIF/GPS/camera data from outputs</small></div>
+        <div class="switch-copy"><strong>Strip metadata</strong><small>Remove EXIF/GPS/camera data from outputs. Images are verified after export; video uses FFmpeg -map_metadata -1.</small></div>
         <button class="switch" role="switch" aria-checked="${conv.stripMetadata}" aria-label="Strip metadata" data-toggle="converter.stripMetadata"></button>
       </div>
     </div>`;
@@ -3522,6 +3638,7 @@ function syncConverterChrome() {
     endFill.style.display = 'none';
     // (single fill bar represents the selected region)
   }
+  updateConverterSizeEstimate();
 }
 
 function refreshQueueUI() {
@@ -9809,6 +9926,12 @@ function cropperView() {
         ${isImage
           ? `<img src="${mediaUrl(source)}" alt="${esc(source.name)}" />`
           : `<video src="${mediaUrl(source)}" muted loop autoplay playsinline></video>`}
+          ${state.cropper.dimOutside ? `<div class="crop-dim" style="position:absolute;inset:0;pointer-events:none;z-index:1">
+            <div style="position:absolute;left:0;top:0;width:100%;height:${crop.y * 100}%;background:rgba(0,0,0,0.45)"></div>
+            <div style="position:absolute;left:0;top:${(crop.y + crop.h) * 100}%;width:100%;height:${(1 - crop.y - crop.h) * 100}%;background:rgba(0,0,0,0.45)"></div>
+            <div style="position:absolute;left:0;top:${crop.y * 100}%;width:${crop.x * 100}%;height:${crop.h * 100}%;background:rgba(0,0,0,0.45)"></div>
+            <div style="position:absolute;left:${(crop.x + crop.w) * 100}%;top:${crop.y * 100}%;width:${(1 - crop.x - crop.w) * 100}%;height:${crop.h * 100}%;background:rgba(0,0,0,0.45)"></div>
+          </div>` : ''}
         <div class="crop-box" id="crop-box" style="left:${crop.x * 100}%;top:${crop.y * 100}%;width:${crop.w * 100}%;height:${crop.h * 100}%">
           ${cropHandles()}
           <span class="crop-size-tag" id="crop-size-tag">${pixelW}Ã—${pixelH}</span>
@@ -9829,6 +9952,7 @@ function cropperView() {
       <span class="toolbar-spacer"></span>
       ${!isImage ? `<button class="btn btn-ghost btn-sm" data-action="crop-play">${icon('pause')}<span>Play / pause</span></button>` : ''}
       <button class="btn btn-ghost btn-sm" data-action="toggle-crop-grid">${icon('layout-grid')}<span>Grid</span></button>
+      <button class="btn btn-ghost btn-sm" data-action="toggle-crop-dim">${icon('eye-off')}<span>Dim</span></button>
       <button class="btn btn-ghost btn-sm" data-action="reset-crop">${icon('rotate-ccw')}<span>Reset</span></button>
     </div>` : sourceDrop({ tool: 'cropper', accept: ['MP4', 'WEBM', 'MOV', 'PNG', 'JPG', 'WEBP'], title: 'Drop a video or image to crop', hint: 'Drag the box after loading Â· original stays untouched', iconName: 'crop' });
 
@@ -12776,6 +12900,7 @@ async function handleAction(action, el) {
     case 'crop-play': toggleCropPlay(); break;
     case 'reset-crop': resetCrop(); break;
     case 'toggle-crop-grid': state.cropper.showGrid = !state.cropper.showGrid; renderView(); return true;
+    case 'toggle-crop-dim': state.cropper.dimOutside = !state.cropper.dimOutside; renderView(); return true;
     case 'reset-tool': resetTool(el.dataset.tool || state.tool); break;
     case 'run-compressor': runCompressor(); break;
     case 'run-cropper': runCropper(); break;
@@ -13766,6 +13891,7 @@ function autoGrowAiChatInput() {
   input.style.height = 'auto';
   input.style.height = Math.min(160, input.scrollHeight) + 'px';
 }
+
 
 
 
