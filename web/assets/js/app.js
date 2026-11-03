@@ -513,7 +513,7 @@ function loadLocalState() {
     applyAppearance();
     applyAudioReactiveTheme();
     state.aiImage.folderName = localStorage.getItem('NuVerter-ai-folder') || '';
-    try { state.workflows = JSON.parse(localStorage.getItem('NuVerter-workflows') || '[]'); } catch { state.workflows = []; }
+    state.workflows = [];
     try {
       const savedChat = JSON.parse(localStorage.getItem('NuVerter-ai-chat') || '{}');
       if (savedChat && typeof savedChat === 'object') {
@@ -1465,6 +1465,7 @@ async function probeFile(file, kind) {
 const DB_NAME = 'NuVerter-local-v1';
 const DB_STORE = 'outputs';
 const DB_FILES_STORE = 'files';
+const DB_WORKFLOWS_STORE = 'workflows';
 const MAX_HISTORY_ITEMS = 24;
 const MAX_HISTORY_BYTES = 320 * 1024 * 1024;
 let dbPromise = null;
@@ -1473,11 +1474,12 @@ function openDB() {
   if (!('indexedDB' in window)) return Promise.reject(new Error('IndexedDB unavailable'));
   if (dbPromise) return dbPromise;
   dbPromise = new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 2);
+    const request = indexedDB.open(DB_NAME, 3);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE, { keyPath: 'id' });
       if (!db.objectStoreNames.contains(DB_FILES_STORE)) db.createObjectStore(DB_FILES_STORE, { keyPath: 'key' });
+      if (!db.objectStoreNames.contains(DB_WORKFLOWS_STORE)) db.createObjectStore(DB_WORKFLOWS_STORE, { keyPath: 'key' });
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error || new Error('Could not open local storage'));
@@ -1550,6 +1552,29 @@ async function idbFileDelete(key) {
     tx.oncomplete = () => resolve();
     tx.onerror = () => resolve();
   });
+}
+
+async function idbWorkflowsLoad() {
+  try {
+    const db = await openDB();
+    return await new Promise((resolve) => {
+      const tx = db.transaction(DB_WORKFLOWS_STORE, 'readonly');
+      const req = tx.objectStore(DB_WORKFLOWS_STORE).get('all');
+      req.onsuccess = () => resolve(req.result?.data || null);
+      req.onerror = () => resolve(null);
+    });
+  } catch { return null; }
+}
+async function idbWorkflowsSave(data) {
+  try {
+    const db = await openDB();
+    await new Promise((resolve) => {
+      const tx = db.transaction(DB_WORKFLOWS_STORE, 'readwrite');
+      tx.objectStore(DB_WORKFLOWS_STORE).put({ key: 'all', data });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  } catch {}
 }
 
 async function loadHistory() {
@@ -2097,17 +2122,23 @@ function clearQueue({ keepDone = false } = {}) {
   toast(keepDone ? 'Queue cleaned' : 'Queue cleared', keepDone ? 'Finished results were kept.' : 'Every queued file was removed.', 'info');
 }
 
+function cloneQueue(q) {
+  try { return structuredClone(q); } catch {
+    // Fallback: shallow copy of array (items shared) — better than nothing.
+    return (q || []).slice();
+  }
+}
 function pushQueueHistory() {
   state.queueUndo = state.queueUndo || [];
   state.queueRedo = [];
-  state.queueUndo.push(state.queue.slice());
+  state.queueUndo.push(cloneQueue(state.queue));
   if (state.queueUndo.length > 50) state.queueUndo.shift();
 }
 
 function undoQueue() {
   if (!state.queueUndo?.length) return;
   state.queueRedo = state.queueRedo || [];
-  state.queueRedo.push(state.queue.slice());
+  state.queueRedo.push(cloneQueue(state.queue));
   state.queue = state.queueUndo.pop();
   renderQueue();
   syncConverterChrome();
@@ -2116,7 +2147,7 @@ function undoQueue() {
 function redoQueue() {
   if (!state.queueRedo?.length) return;
   state.queueUndo = state.queueUndo || [];
-  state.queueUndo.push(state.queue.slice());
+  state.queueUndo.push(cloneQueue(state.queue));
   state.queue = state.queueRedo.pop();
   renderQueue();
   syncConverterChrome();
@@ -7998,7 +8029,7 @@ async function reframeExport() {
   }
 }
 
-const WF_NODE_LABELS = { trim: 'Trim', extractAudio: 'Extract audio', ocr: 'OCR text' };
+const WF_NODE_LABELS = { trim: 'Trim', extractAudio: 'Extract audio', ocr: 'OCR text', compress: 'Compress' };
 
 function workflowView() {
   const data = state.workflow;
@@ -8029,6 +8060,7 @@ function workflowView() {
                 <option value="trim">Trim</option>
                 <option value="extractAudio">Extract audio</option>
                 <option value="ocr">OCR text</option>
+                 <option value="compress">Compress</option>
               </select>
               <button class="btn btn-secondary btn-sm" data-action="wf-add-node">Add node</button>
             </div>
@@ -8093,30 +8125,47 @@ async function wfRun() {
   data.nodes.forEach((n) => { if (!visited.has(n.id)) visit(n.id); });
   const idToNode = (id) => data.nodes.find((n) => n.id === id);
 
-  let currentFile = data.source.file;
-  let currentName = data.source.name;
+  const outputs = new Map(); // nodeId -> { file, name }
+  // determine input for a node: first predecessor's output, else source
+  function getInput(id) {
+    const preds = data.edges.filter((e) => e.to === id).map((e) => e.from);
+    if (preds.length && outputs.has(preds[0])) {
+      const o = outputs.get(preds[0]);
+      return { file: o.file, name: o.name };
+    }
+    return { file: data.source.file, name: data.source.name };
+  }
   for (const id of order) {
     if (!state.workflow.running) break;
     const node = idToNode(id);
     if (!node) continue;
     node.status = 'running';
     renderView();
+    const { file: inputFile, name: inputName } = getInput(id);
     try {
       if (node.type === 'trim') {
         const args = ['-hide_banner', '-y', '-i', '{in}', '{out}'];
-        const result = await Engine.run({ blob: currentFile, inputName: extOf(currentName) || 'mp4', outputName: extOf(currentName) || 'mp4', args, mime: currentFile.type || 'application/octet-stream' });
-        currentFile = new File([result.blob], currentName, { type: result.mime });
+        const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: extOf(inputName) || 'mp4', args, mime: inputFile.type || 'application/octet-stream' });
+        const outFile = new File([result.blob], inputName, { type: result.mime });
+        outputs.set(id, { file: outFile, name: inputName });
       } else if (node.type === 'extractAudio') {
-        const result = await Engine.run({ blob: currentFile, inputName: extOf(currentName) || 'mp4', outputName: 'mp3', args: ['-hide_banner', '-y', '-i', '{in}', '-vn', '-c:a', 'libmp3lame', '-b:a', '128k', '{out}'], mime: 'audio/mpeg' });
-        currentFile = new File([result.blob], currentName.replace(/\\.[^.]+$/, '') + '.mp3', { type: 'audio/mpeg' });
-        currentName = currentFile.name;
+        const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: 'mp3', args: ['-hide_banner', '-y', '-i', '{in}', '-vn', '-c:a', 'libmp3lame', '-b:a', '128k', '{out}'], mime: 'audio/mpeg' });
+        const outName = inputName.replace(/\\.[^.]+$/, '') + '.mp3';
+        const outFile = new File([result.blob], outName, { type: 'audio/mpeg' });
+        outputs.set(id, { file: outFile, name: outName });
       } else if (node.type === 'ocr') {
         if (!window.__tesseract) window.__tesseract = await import('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js');
         const Tesseract = window.__tesseract;
         const worker = await Tesseract.createWorker('eng');
-        const { data: ocrData } = await worker.recognize(currentFile);
+        const { data: ocrData } = await worker.recognize(inputFile);
         await worker.terminate();
         node.text = ocrData.text || '';
+        outputs.set(id, { file: inputFile, name: inputName, text: node.text });
+      } else if (node.type === 'compress') {
+        const args = ['-hide_banner', '-y', '-i', '{in}', '-c:v', 'libx264', '-preset', 'fast', '-crf', '28', '-c:a', 'aac', '-b:a', '128k', '{out}'];
+        const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: extOf(inputName) || 'mp4', args, mime: inputFile.type || 'video/mp4' });
+        const outFile = new File([result.blob], inputName, { type: result.mime });
+        outputs.set(id, { file: outFile, name: inputName });
       }
       node.status = 'done';
     } catch (e) {
@@ -8129,11 +8178,19 @@ async function wfRun() {
   data.running = false;
   const out = document.getElementById('wf-out');
   if (out) {
-    const lastOcr = data.nodes.filter((n) => n.type === 'ocr').map((n) => n.text).join('\\n');
+    const ocrNodes = data.nodes.filter((n) => n.type === 'ocr');
+    const lastOcr = ocrNodes.map((n) => n.text).filter(Boolean).join('\\n');
     if (lastOcr) out.innerHTML = `<pre style="white-space:pre-wrap">${esc(lastOcr)}</pre>`;
-    else if (currentFile) {
-      const url = URL.createObjectURL(currentFile);
-      out.innerHTML = `<a class="btn btn-secondary btn-sm" href="${url}" download="${esc(currentName)}">${icon('download')}Download ${esc(currentName)}</a>`;
+    else {
+      // find terminal nodes (no outgoing edges)
+      const hasOutgoing = new Set(data.edges.map((e) => e.from));
+      const terminals = data.nodes.filter((n) => !hasOutgoing.has(n.id));
+      const lastTerminal = terminals.length ? terminals[terminals.length - 1] : data.nodes[data.nodes.length - 1];
+      const o = outputs.get(lastTerminal?.id);
+      if (o?.file) {
+        const url = URL.createObjectURL(o.file);
+        out.innerHTML = `<a class="btn btn-secondary btn-sm" href="${url}" download="${esc(o.name)}">${icon('download')}Download ${esc(o.name)}</a>`;
+      }
     }
   }
   renderView();
@@ -10383,7 +10440,8 @@ async function privacyReset() {
   try { state.queue = []; state.queueRunning = false; } catch {}
   try { await clearHistory(); } catch {}
   try { if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.map((k) => caches.delete(k))); } } catch {}
-  try { localStorage.removeItem('NuVerter-converter'); localStorage.removeItem('NuVerter-prefs'); localStorage.removeItem('NuVerter-ai-chat'); } catch {}
+  try { localStorage.removeItem('NuVerter-converter'); localStorage.removeItem('NuVerter-prefs'); localStorage.removeItem('NuVerter-ai-chat'); localStorage.removeItem('NuVerter-workflows'); } catch {}
+try { const db = await openDB(); const tx = db.transaction(DB_WORKFLOWS_STORE, 'readwrite'); tx.objectStore(DB_WORKFLOWS_STORE).clear(); } catch {}
   try { state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false }; savePrefs(); applyTheme(); } catch {}
   try { renderView(); } catch {}
   toast('Privacy reset', 'Queue, results, caches and preferences cleared. Note: browser/OS may retain other copies.', 'success');
@@ -11281,6 +11339,7 @@ async function handleExtraAction(action, el) {
       state.workflows = state.workflows.filter((w) => w.name !== name);
       state.workflows.push(snap);
       try { localStorage.setItem('NuVerter-workflows', JSON.stringify(state.workflows)); } catch {}
+try { await idbWorkflowsSave(state.workflows); } catch {}
       toast('Saved', name, 'success');
       return true;
     }
@@ -11840,6 +11899,15 @@ function initDesktopUpdates() {
 
 async function boot() {
   loadLocalState();
+  try {
+    const idbWf = await idbWorkflowsLoad();
+    if (Array.isArray(idbWf)) state.workflows = idbWf;
+    else {
+      try { state.workflows = JSON.parse(localStorage.getItem('NuVerter-workflows') || '[]'); } catch { state.workflows = []; }
+    }
+  } catch {
+    try { state.workflows = JSON.parse(localStorage.getItem('NuVerter-workflows') || '[]'); } catch { state.workflows = []; }
+  }
   try { await restorePersistedSubtitleFile(); } catch {}
   // Auto-unlock if returning from a payment provider redirect (e.g. Sociabuzz ?paid=1)
   try {
