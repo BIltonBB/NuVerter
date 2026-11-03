@@ -5312,6 +5312,7 @@ function devWebCodecsBody() {
       <div class="stage-head"><div class="stage-head-copy"><strong>WebCodecs diagnostic</strong><span>Feature detection + mp4box demux (Phase A)</span></div></div>
       <div class="stage-body">
         <button class="btn btn-primary btn-sm" data-action="dev-wc-run">Run diagnostic</button>
+        <button class="btn btn-secondary btn-sm" data-action="dev-wc-decode" style="margin-left:6px">Decode 30 frames (timing)</button>
         <pre id="dev-wc-out" class="util-out" style="white-space:pre-wrap;word-break:break-word;margin-top:10px">Click to run.</pre>
         <p class="field-help" style="margin-top:8px">Vendors mp4box.js and checks VideoDecoder/Encoder support. Demuxes samples/demo-gradient.mp4. No conversion path is changed yet.</p>
       </div>
@@ -5349,6 +5350,153 @@ async function runWebCodecsDiag() {
       });
       lines.push('Tracks: ' + (info.tracks || []).map(t => `${t.name || t.id} ${t.codec} ${t.video ? t.video.width + 'x' + t.video.height : ''}`).join(', '));
     } catch (e) { lines.push('Demux error: ' + (e?.message || e)); }
+  }
+  if (out) out.textContent = lines.join('\n');
+}
+async function runWebCodecsDecode() {
+  const out = document.getElementById('dev-wc-out');
+  const lines = [];
+  if (typeof VideoDecoder === 'undefined') { if (out) out.textContent = 'VideoDecoder not supported.'; return; }
+  if (!window.MP4Box) {
+    try {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'vendor/mp4box/mp4box.all.min.js';
+        s.onload = resolve; s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    } catch (e) { if (out) out.textContent = 'MP4Box load error: ' + e.message; return; }
+  }
+  try {
+    const resp = await fetch('samples/demo-gradient.mp4');
+    const buf = await resp.arrayBuffer();
+    buf.fileStart = 0;
+    const mp4box = window.MP4Box.createFile();
+    const info = await new Promise((resolve, reject) => {
+      mp4box.onReady = (i) => resolve(i);
+      mp4box.onError = (e) => reject(e);
+      mp4box.appendBuffer(buf);
+      mp4box.flush();
+    });
+    const vtrack = (info.tracks || []).find(t => t.video);
+    if (!vtrack) throw new Error('No video track');
+    lines.push('Track: ' + vtrack.codec + ' ' + vtrack.video.width + 'x' + vtrack.video.height);
+    lines.push('Track keys: ' + Object.keys(vtrack).join(','));
+    // try extract avcC description from mp4box
+    let description;
+    try {
+      lines.push('moov keys: ' + Object.keys(mp4box.moov || {}).join(','));
+      const traks = mp4box.moov?.traks || mp4box.moov?.tracks || [];
+      lines.push('traks count: ' + traks.length);
+      lines.push('trak ids: ' + traks.map(t => (t.tkhd ? t.tkhd.track_ID : t.id)).join(','));
+      const trak = traks.find(t => (t.tkhd && t.tkhd.track_ID === vtrack.id) || t.id === vtrack.id) || traks[vtrack.id ? vtrack.id - 1 : 0] || traks[0];
+      if (!trak) throw new Error('trak not found');
+      lines.push('trak keys: ' + Object.keys(trak).join(','));
+      // find stsd
+      const mdia = trak.mdia || trak;
+      const minf = mdia.minf || mdia;
+      const stbl = minf.stbl || minf;
+      const stsd = stbl.stsd;
+      const entry = stsd.entries[0];
+      lines.push('stsd entry keys: ' + Object.keys(entry).join(','));
+      const box = entry.avcC || entry.hvcC || entry.vpcC || entry.pasP;
+      if (box) {
+        lines.push('box keys: ' + Object.keys(box).join(','));
+        lines.push('SPS count: ' + box.nb_SPS_nalus + ' PPS count: ' + box.nb_PPS_nalus);
+      lines.push('lengthSizeMinusOne: ' + box.lengthSizeMinusOne + ' profile: ' + box.AVCProfileIndication + ' level: ' + box.AVCLevelIndication);
+      const sps0 = box.SPS[0];
+      lines.push('SPS0 type: ' + (typeof sps0) + ' keys: ' + (sps0 ? Object.keys(sps0).join(',') : 'none'));
+      if (sps0) {
+        lines.push('SPS0 has data: ' + !!sps0.data + ' nalUnit: ' + !!sps0.nalUnit + ' length: ' + (sps0.length || sps0.size || 'n/a'));
+      }
+        const spsList = (box.SPS || []).map(s => (s && s.nalu) ? s.nalu : s);
+        const ppsList = (box.PPS || []).map(s => (s && s.nalu) ? s.nalu : s);
+        let size = 6;
+        size += 1;
+        for (const sps of spsList) size += 2 + sps.length;
+        size += 1;
+        for (const pps of ppsList) size += 2 + pps.length;
+        const buf = new Uint8Array(size);
+        let o = 0;
+        buf[o++] = box.configurationVersion || 1;
+        buf[o++] = box.AVCProfileIndication;
+        buf[o++] = box.profile_compatibility;
+        buf[o++] = box.AVCLevelIndication;
+        buf[o++] = 0xff;
+        buf[o++] = 0xe0 | (spsList.length & 0x1f);
+        for (const sps of spsList) {
+          buf[o++] = (sps.length >> 8) & 0xff;
+          buf[o++] = sps.length & 0xff;
+          buf.set(sps, o);
+          o += sps.length;
+        }
+        buf[o++] = ppsList.length & 0xff;
+        for (const pps of ppsList) {
+          buf[o++] = (pps.length >> 8) & 0xff;
+          buf[o++] = pps.length & 0xff;
+          buf.set(pps, o);
+          o += pps.length;
+        }
+        description = buf;
+        lines.push('Built description: ' + description.length + ' bytes');
+      } else {
+        // search any property with data
+        for (const k of Object.keys(entry)) {
+          if (entry[k] && entry[k].data) { description = new Uint8Array(entry[k].data); lines.push('Using box ' + k); break; }
+        }
+      }
+    } catch (e) { lines.push('desc extract error: ' + (e?.stack || e?.message || e)); }
+    const samples = await new Promise((resolve, reject) => {
+      const collected = [];
+      mp4box.onSamples = (id, ref, samps) => { collected.push(...samps); };
+      mp4box.setExtractionOptions(vtrack.id, null, { nbSamples: 30 });
+      mp4box.start();
+      // wait a bit for samples
+      setTimeout(() => resolve(collected), 1000);
+    });
+    lines.push('Samples collected: ' + samples.length);
+    if (!samples.length) throw new Error('No samples');
+    const first = samples[0];
+    lines.push('Sample timescale: ' + (first.timescale || 'n/a') + ' cts: ' + first.cts + ' dur: ' + first.duration);
+    lines.push('First is_sync: ' + first.is_sync);
+    lines.push('Sample keys: ' + Object.keys(first).join(','));
+    lines.push('mp4box keys: ' + Object.keys(mp4box).join(','));
+    // try find description in various places
+    if (first.description) lines.push('sample.description: ' + first.description.length + ' bytes');
+    if (vtrack.description) lines.push('track.description: ' + vtrack.description.length + ' bytes');
+    const codec = vtrack.codec;
+    const decoderErrors = [];
+    const decoder = new VideoDecoder({
+      output: (frame) => { frame.close(); },
+      error: (e) => { decoderErrors.push('cb: ' + (e?.name || '') + ' ' + (e?.message || '') + ' code=' + (e?.code || '') + ' stack=' + (e?.stack || '')); }
+    });
+    const cfg = { codec, codedWidth: vtrack.video.width, codedHeight: vtrack.video.height };
+    if (description) cfg.description = description;
+    lines.push('Config description: ' + (description ? description.length + ' bytes' : 'none'));
+    decoder.configure(cfg);
+    let frameCount = 0;
+    const t0 = performance.now();
+    for (const s of samples) {
+      const ts = (s.cts / (s.timescale || vtrack.timescale || 1)) * 1e6;
+      const dur = (s.duration / (s.timescale || vtrack.timescale || 1)) * 1e6;
+      const chunk = new EncodedVideoChunk({
+        type: s.is_sync ? 'key' : 'delta',
+        timestamp: ts,
+        duration: dur,
+        data: s.data
+      });
+      try { decoder.decode(chunk); } catch (e) { decoderErrors.push('decode() threw: ' + (e?.message || e)); }
+      frameCount++;
+    }
+    await decoder.flush().catch(e => decoderErrors.push('flush: ' + (e?.message || e)));
+    const elapsed = performance.now() - t0;
+    lines.push('Decoded frames: ' + frameCount);
+    lines.push('Time: ' + elapsed.toFixed(1) + ' ms');
+    if (decoderErrors.length) lines.push('Decoder errors: ' + decoderErrors.join(' | '));
+    lines.push('FPS: ' + (frameCount / (elapsed / 1000)).toFixed(1));
+    decoder.close();
+  } catch (e) {
+    lines.push('Error: ' + (e?.message || e));
   }
   if (out) out.textContent = lines.join('\n');
 }
@@ -12165,6 +12313,7 @@ async function handleExtraAction(action, el) {
     case 'dev-pii-copy': { const t = window.__piiRedacted; if (t) { try { await navigator.clipboard.writeText(t); toast('Copied', 'Redacted text copied.', 'success'); } catch {} } return true; }
     case 'dev-pii-dl': { const t = window.__piiRedacted; if (t) { const blob = new Blob([t], { type: 'text/plain' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'redacted.txt'; a.click(); URL.revokeObjectURL(a.href); toast('Downloaded', 'redacted.txt', 'success'); } return true; }
     case 'dev-wc-run': { await runWebCodecsDiag(); return true; }
+    case 'dev-wc-decode': { await runWebCodecsDecode(); return true; }
     case 'dev-mock-gen': devMockGenerate(); return true;
     case 'dev-mock-copy': { const d = window.__mockData; if (d) { try { await navigator.clipboard.writeText(JSON.stringify(d, null, 2)); toast('Copied', 'Mock data copied.', 'success'); } catch {} } return true; }
     case 'dev-mock-dl': { const d = window.__mockData; if (d) { const blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'mock-data.json'; a.click(); URL.revokeObjectURL(a.href); } return true; }
