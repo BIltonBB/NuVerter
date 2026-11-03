@@ -8279,6 +8279,7 @@ function reframeView() {
             </div>` : ''}
             <button class="btn btn-secondary btn-sm" data-action="rf-analyze" ${source ? '' : 'disabled'} style="margin-top:10px">Analyze subject</button>
             ${data.cropW ? `<p class="field-help" style="margin-top:6px">Crop: ${data.cropW}×${data.cropH} at x=${data.cropX}</p>` : ''}
+            ${data._tracking ? `<p class="field-help" style="margin-top:2px">Tracking: ${data._tracking.method} · centroid (${data._tracking.centroid.x},${data._tracking.centroid.y}) · ${data._tracking.frames} frames</p>` : ''}
           </div>
         </div>
       </section>
@@ -8328,43 +8329,72 @@ async function reframeAnalyze() {
   await new Promise((resolve, reject) => { video.onloadedmetadata = resolve; video.onerror = reject; });
   const w = video.videoWidth, h = video.videoHeight;
   const targetAspect = parseAspect(data.target);
-  // sample frames
   const canvas = document.createElement('canvas');
   canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext('2d');
-  const samples = 8;
-  let minX = w, maxX = 0, minY = h, maxY = 0, found = false;
+  const samples = 12;
+  // Temporal saliency tracking: weighted centroid using saturation + center bias,
+  // smoothed across frames. Falls back to luminance bbox if no salient region found.
+  const centroids = [];
+  const boxes = [];
+  let found = false;
   for (let i = 0; i < samples; i++) {
-    video.currentTime = (video.duration * i) / Math.max(1, samples - 1);
-    await new Promise((resolve) => { video.onseeked = resolve; setTimeout(resolve, 1000); });
+    video.currentTime = samples > 1 ? (video.duration * i) / (samples - 1) : 0;
+    await new Promise((resolve) => { const done = () => resolve(); video.onseeked = done; setTimeout(done, 1000); });
     ctx.drawImage(video, 0, 0, w, h);
     const img = ctx.getImageData(0, 0, w, h);
-    // edge-ish: find non-background (not near-black/white) pixels
-    for (let y = 0; y < h; y += 4) {
-      for (let x = 0; x < w; x += 4) {
+    let wx = 0, wy = 0, wsum = 0;
+    let minX = w, maxX = 0, minY = h, maxY = 0, pixFound = false;
+    const cx0 = w / 2, cy0 = h / 2;
+    for (let y = 0; y < h; y += 3) {
+      for (let x = 0; x < w; x += 3) {
         const idx = (y * w + x) * 4;
-        const r = img.data[idx], g = img.data[idx+1], b = img.data[idx+2];
+        const r = img.data[idx], g = img.data[idx + 1], b = img.data[idx + 2];
+        const maxc = Math.max(r, g, b), minc = Math.min(r, g, b);
+        const sat = maxc === 0 ? 0 : (maxc - minc) / maxc;
         const lum = (r + g + b) / 3;
-        if (lum > 30 && lum < 225) {
-          if (x < minX) minX = x;
-          if (x > maxX) maxX = x;
-          if (y < minY) minY = y;
-          if (y > maxY) maxY = y;
-          found = true;
-        }
+        // skip near-black / near-white background
+        if (lum < 20 || lum > 235) continue;
+        // center bias
+        const centerWeight = 1 - (Math.hypot(x - cx0, y - cy0) / Math.hypot(cx0, cy0));
+        const score = sat * 0.6 + (lum / 255) * 0.2 + centerWeight * 0.2;
+        if (score < 0.15) continue;
+        wx += x * score; wy += y * score; wsum += score;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+        pixFound = true;
+        found = true;
       }
     }
+    if (pixFound && wsum > 0) {
+      centroids.push({ x: wx / wsum, y: wy / wsum });
+      boxes.push({ minX, maxX, minY, maxY });
+    }
   }
-  if (!found) { minX = 0; maxX = w - 1; minY = 0; maxY = h - 1; }
-  const subjCx = (minX + maxX) / 2;
+  // smooth centroids (moving average)
+  let subjCx = w / 2, subjCy = h / 2;
+  if (centroids.length) {
+    // temporal smoothing
+    const smooth = centroids.reduce((acc, c, i, arr) => {
+      const prev = i > 0 ? arr[i - 1] : c;
+      return { x: acc.x + (prev.x * 0.3 + c.x * 0.7), y: acc.y + (prev.y * 0.3 + c.y * 0.7) };
+    }, { x: 0, y: 0 });
+    subjCx = smooth.x / centroids.length;
+    subjCy = smooth.y / centroids.length;
+  }
+  if (!found && boxes.length === 0) { subjCx = w / 2; }
   const cropH = h;
   const cropW = Math.round(cropH * targetAspect);
   let cropX = Math.round(subjCx - cropW / 2);
-  cropX = Math.max(0, Math.min(w - cropW, cropX));
+  cropX = Math.max(0, Math.min(Math.max(0, w - cropW), cropX));
   if (cropW > w) { data.cropW = w; data.cropH = Math.round(w / targetAspect); data.cropX = 0; }
   else { data.cropW = cropW; data.cropH = cropH; data.cropX = cropX; }
+  // store tracking info for display
+  data._tracking = { centroid: { x: Math.round(subjCx), y: Math.round(subjCy) }, frames: centroids.length, method: 'saliency+center-bias' };
   renderView();
-  toast('Analyzed', 'Subject detected. Adjust if needed.', 'success');
+  toast('Analyzed', `Subject tracked over ${centroids.length} frames (saliency). Adjust if needed.`, 'success');
 }
 
 function parseAspect(a) {
