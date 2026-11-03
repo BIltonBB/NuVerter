@@ -6237,10 +6237,61 @@ function utilDocClear() {
   renderView();
 }
 
+function utilDocQaBody() {
+  const docs = state.docSearch?.docs || [];
+  const model = state.aiChat?.model || 'tiny';
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Document Q&amp;A</strong><span>Ask a local model about your indexed documents</span></div></div>
+      <div class="stage-body">
+        <p class="field-help">${docs.length ? `${docs.length} document(s) indexed.` : 'No documents indexed yet — add some in the Doc Search tab first.'}</p>
+        <div class="field">
+          <div class="field-head"><span class="field-label">Model</span></div>
+          <select data-util="docqa-model" class="select">
+            ${['micro','tiny','balanced','big'].map((m) => `<option value="${m}" ${model === m ? 'selected' : ''}>${m}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field">
+          <div class="field-head"><span class="field-label">Question</span></div>
+          <textarea data-util="docqa-q" class="input" rows="3" placeholder="What does the document say about…?" style="width:100%"></textarea>
+        </div>
+        <button class="btn btn-primary btn-sm" data-action="docqa-ask" style="margin-top:10px">Ask local model</button>
+        <strong style="display:block;margin-top:12px">Answer</strong>
+        <pre id="docqa-out" class="util-out" style="white-space:pre-wrap;word-break:break-word;margin-top:6px;max-height:320px;overflow:auto">Run a question to see the answer.</pre>
+      </div>
+    </div>`;
+}
+
+async function utilDocQaAsk() {
+  const docs = state.docSearch?.docs || [];
+  if (!docs.length) { toast('No documents', 'Index documents in the Doc Search tab first.', 'error'); return; }
+  const q = document.querySelector('[data-util="docqa-q"]')?.value?.trim() || '';
+  if (!q) { toast('No question', 'Enter a question.', 'error'); return; }
+  const modelKey = document.querySelector('[data-util="docqa-model"]')?.value || 'tiny';
+  const out = document.getElementById('docqa-out');
+  if (out) out.textContent = 'Loading model and generating answer…';
+  try {
+    const engine = await getAiChatEngine(modelKey);
+    const context = docs.map((d, i) => `Document ${i + 1} (${d.name}):\n${(d.text || '').slice(0, 4000)}`).join('\n\n---\n\n');
+    const prompt = `You are a helpful assistant. Answer the user's question using only the provided documents. If the answer is not in the documents, say so.\n\nDocuments:\n${context}\n\nQuestion: ${q}\n\nAnswer:`;
+    const res = await engine.chat.completions.create({
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.2,
+      max_tokens: 512
+    });
+    const answer = res?.choices?.[0]?.message?.content || res?.choices?.[0]?.text || 'No answer generated.';
+    if (out) out.textContent = answer;
+    toast('Answer ready', 'Generated locally.', 'success');
+  } catch (e) {
+    if (out) out.textContent = 'Error: ' + (e?.message || 'Failed.');
+    toast('Q&A failed', e?.message || 'Failed.', 'error');
+  }
+}
+
 function aiToolsView() {
   const tab = state.aiTools?.tab || 'aibg';
-  const tabs = ['aiimg','aibg','aiup','ocr','tts','emb','models','docs'];
-  const labels = { aiimg:'AI Image', aibg:'AI BG', aiup:'AI Upscale', ocr:'OCR', tts:'TTS', emb:'Embeddings', models:'Models', docs:'Doc Search' };
+  const tabs = ['aiimg','aibg','aiup','ocr','tts','emb','models','docs','docqa'];
+  const labels = { aiimg:'AI Image', aibg:'AI BG', aiup:'AI Upscale', ocr:'OCR', tts:'TTS', emb:'Embeddings', models:'Models', docs:'Doc Search', docqa:'Doc Q&A' };
   return `
     ${viewHead({ index: '11', kicker: 'AI tools', title: 'AI <span class="accent">utilities.</span>', sub: 'Image generation, background removal, upscaling, OCR, TTS and embeddings — local where it counts.' })}
     <div class="util-tabs segmented" role="tablist">
@@ -6254,7 +6305,8 @@ function aiToolsView() {
         tab === 'tts' ? utilTtsBody() :
         tab === 'models' ? utilAiModelsBody() :
         tab === 'docs' ? utilDocSearchBody() :
-        utilEmbBody()}
+        tab === 'docqa' ? utilDocQaBody() :
+         utilEmbBody()}
     </div>
     <div class="queue-progress tool-progress" id="ai-tools-progress" hidden style="margin-top:10px">
       <div class="progress"><span style="width:0%"></span></div>
@@ -11216,6 +11268,7 @@ async function handleExtraAction(action, el) {
     case 'doc-add': await utilDocAdd(); return true;
     case 'doc-clear': utilDocClear(); return true;
     case 'doc-search': state.docSearch.query = document.querySelector('[data-util="doc-query"]')?.value || ''; renderView(); return true;
+    case 'docqa-ask': await utilDocQaAsk(); return true;
     case 'util-aibg': await utilAiBg(); return true;
     case 'util-aiup': await utilAiUpscale(); return true;
     case 'util-emb': await utilEmb(); return true;
