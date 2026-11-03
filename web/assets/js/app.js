@@ -457,7 +457,8 @@ const state = {
     heal: { active: false, size: 20 },
     inpaint: { active: false, size: 20, mask: null },
     onnxModelUrl: '',
-    onnxPreset: 'generic-256'
+    onnxPreset: 'generic-256',
+    onnxUseWebGPU: false
   },
   videoEditor: {
     source: null, result: null, busy: false,
@@ -7420,8 +7421,17 @@ function imageEditorView() {
                   </select>
                   <input type="text" class="input" style="width:100%" placeholder="https://.../lama.onnx" value="${esc(data.onnxModelUrl || '')}" data-ie-onnx="url" />
                </div>
-               <button class="btn btn-primary btn-sm" data-action="ie-onnx-inpaint-apply" ${source && data.inpaint.active ? '' : 'disabled'} style="margin-top:6px">Apply AI inpaint</button>
-               <p class="field-help" style="margin-top:6px">Runs a local ONNX inpainting model (e.g. LaMa) on the masked region. Choose a preset matching your model's input size/normalization. Requires a model URL; falls back to patch-based fill on failure. Model is fetched and cached by the browser. Phase B: tiled inference with overlap blending.</p>
+               <div class="field" style="margin-top:6px">
+                  <label style="display:flex;align-items:center;gap:6px;font-size:12px">
+                    <input type="checkbox" data-ie-onnx="webgpu" ${data.onnxUseWebGPU ? 'checked' : ''} /> Use WebGPU if available (faster, experimental)
+                  </label>
+                </div>
+                <div id="ie-onnx-progress" class="progress-wrap" style="margin-top:6px" hidden>
+                  <div class="progress"><span style="width:0%"></span></div>
+                  <span class="pct">0%</span>
+                </div>
+                <button class="btn btn-primary btn-sm" data-action="ie-onnx-inpaint-apply" ${source && data.inpaint.active ? '' : 'disabled'} style="margin-top:6px">Apply AI inpaint</button>
+               <p class="field-help" style="margin-top:6px">Runs a local ONNX inpainting model (e.g. LaMa) on the masked region. Choose a preset matching your model's input size/normalization. Requires a model URL; falls back to patch-based fill on failure. Model is fetched and cached by the browser. Phase C: tiled inference with overlap blending, optional WebGPU, progress UI, and hardware/download disclosure. Model is downloaded from your URL (size depends on model). WebGPU is experimental and falls back to WASM.</p>
              </details>
              <div class="field">
                <div class="field-head"><span class="field-label">Brush size</span><span class="field-value">${data.heal.size}px</span></div>
@@ -7733,6 +7743,8 @@ async function imageEditorOnnxInpaintApply() {
   const masked = [];
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (maskData.data[(y * w + x) * 4 + 3] > 50) masked.push([x, y]);
   if (!masked.length) { toast('No mask', 'Paint a mask first.', 'error'); return; }
+  const onnxProgress = document.getElementById('ie-onnx-progress');
+  if (onnxProgress) { onnxProgress.hidden = false; const fill = onnxProgress.querySelector('.progress > span'); if (fill) fill.style.width = '0%'; const pct = onnxProgress.querySelector('.pct'); if (pct) pct.textContent = '0%'; }
   const presetSize = preset === 'lama-512' ? 512 : 256;
   const SIZE = presetSize;
   toast('Loading model', `Fetching ONNX runtime and model (${preset}, ${SIZE}×${SIZE})…`, 'info');
@@ -7749,7 +7761,11 @@ async function imageEditorOnnxInpaintApply() {
     }
     const ort = window.ort;
     if (!ort?.InferenceSession) throw new Error('ONNX Runtime failed to load.');
-    const session = await ort.InferenceSession.create(modelUrl, { executionProviders: ['wasm'] });
+    const useWebGPU = !!(data.onnxUseWebGPU && navigator.gpu);
+    const eps = useWebGPU ? ['webgpu', 'wasm'] : ['wasm'];
+    let session = null;
+    try { session = await ort.InferenceSession.create(modelUrl, { executionProviders: eps }); }
+    catch (e) { if (useWebGPU) { session = await ort.InferenceSession.create(modelUrl, { executionProviders: ['wasm'] }); } else throw e; }
     // Tiled inference (Phase B): split image into overlapping tiles, run model per tile, blend.
     const tileSize = SIZE;
     const overlap = Math.max(16, Math.floor(tileSize * 0.25));
@@ -7834,6 +7850,13 @@ async function imageEditorOnnxInpaintApply() {
       for (let tx = 0; tx < w; tx += step) {
         tileCount++;
         toast('AI inpaint', `Processing tile ${tileCount}/${totalTiles}…`, 'info');
+        if (onnxProgress) {
+          const p = Math.round((tileCount / totalTiles) * 100);
+          const fill = onnxProgress.querySelector('.progress > span');
+          if (fill) fill.style.width = p + '%';
+          const pct = onnxProgress.querySelector('.pct');
+          if (pct) pct.textContent = p + '%';
+        }
         const sw = Math.min(tileSize, w - tx);
         const sh = Math.min(tileSize, h - ty);
         const tileImg = document.createElement('canvas');
@@ -7903,10 +7926,12 @@ async function imageEditorOnnxInpaintApply() {
       imageEditorPushHistory();
       renderView();
       imageEditorRender();
+      if (onnxProgress) onnxProgress.hidden = true;
       toast('AI inpainted', `ONNX model applied (${preset}).`, 'success');
     };
     newImg.src = canvas.toDataURL();
   } catch (e) {
+    if (onnxProgress) onnxProgress.hidden = true;
     toast('AI inpaint failed', (e?.message || 'Failed.') + ' Falling back to patch-based.', 'error');
     try { await imageEditorInpaintApply(); } catch {}
   }
@@ -7933,6 +7958,8 @@ function bindImageEditor() {
   if (onnxInput) onnxInput.onchange = () => { state.imageEditor.onnxModelUrl = onnxInput.value.trim(); };
   const onnxPreset = document.querySelector('[data-ie-onnx="preset"]');
   if (onnxPreset) onnxPreset.onchange = () => { state.imageEditor.onnxPreset = onnxPreset.value; };
+  const onnxWebGPU = document.querySelector('[data-ie-onnx="webgpu"]');
+  if (onnxWebGPU) onnxWebGPU.onchange = () => { state.imageEditor.onnxUseWebGPU = !!onnxWebGPU.checked; };
   const sizeInput = document.querySelector('[data-ie-heal="size"]');
   if (sizeInput) sizeInput.oninput = () => { state.imageEditor.heal.size = Number(sizeInput.value); const v = sizeInput.closest('.field')?.querySelector('.field-value'); if (v) v.textContent = sizeInput.value + 'px'; };
   const canvas = document.getElementById('ie-canvas');
