@@ -417,6 +417,7 @@ const state = {
     busy: false,
     aspect: 'free',
     crop: { x: .1, y: .1, w: .8, h: .8 },
+    showGrid: false,
     settings: { format: 'mp4', quality: 'balanced', keepAudio: true, rotate: '0', flipH: false, flipV: false }
   },
   extractor: {
@@ -9153,6 +9154,7 @@ function cropperView() {
   const s = data.settings;
   const source = data.source;
   const crop = data.crop;
+  const showGrid = !!data.showGrid;
   const pixelW = source?.width ? Math.max(2, Math.round(source.width * crop.w)) : 0;
   const pixelH = source?.height ? Math.max(2, Math.round(source.height * crop.h)) : 0;
   const isImage = source?.kind === 'image';
@@ -9166,6 +9168,12 @@ function cropperView() {
         <div class="crop-box" id="crop-box" style="left:${crop.x * 100}%;top:${crop.y * 100}%;width:${crop.w * 100}%;height:${crop.h * 100}%">
           ${cropHandles()}
           <span class="crop-size-tag" id="crop-size-tag">${pixelW}×${pixelH}</span>
+          ${showGrid ? `<div style="position:absolute;inset:0;pointer-events:none">
+            <div style="position:absolute;left:33.33%;top:0;bottom:0;width:1px;background:rgba(255,255,255,0.5)"></div>
+            <div style="position:absolute;left:66.66%;top:0;bottom:0;width:1px;background:rgba(255,255,255,0.5)"></div>
+            <div style="position:absolute;top:33.33%;left:0;right:0;height:1px;background:rgba(255,255,255,0.5)"></div>
+            <div style="position:absolute;top:66.66%;left:0;right:0;height:1px;background:rgba(255,255,255,0.5)"></div>
+          </div>` : ''}
         </div>
       </div>
     </div>
@@ -9176,6 +9184,7 @@ function cropperView() {
       </div>
       <span class="toolbar-spacer"></span>
       ${!isImage ? `<button class="btn btn-ghost btn-sm" data-action="crop-play">${icon('pause')}<span>Play / pause</span></button>` : ''}
+      <button class="btn btn-ghost btn-sm" data-action="toggle-crop-grid">${icon('layout-grid')}<span>Grid</span></button>
       <button class="btn btn-ghost btn-sm" data-action="reset-crop">${icon('rotate-ccw')}<span>Reset</span></button>
     </div>` : sourceDrop({ tool: 'cropper', accept: ['MP4', 'WEBM', 'MOV', 'PNG', 'JPG', 'WEBP'], title: 'Drop a video or image to crop', hint: 'Drag the box after loading · original stays untouched', iconName: 'crop' });
 
@@ -12042,6 +12051,7 @@ async function handleAction(action, el) {
       break;
     case 'crop-play': toggleCropPlay(); break;
     case 'reset-crop': resetCrop(); break;
+    case 'toggle-crop-grid': state.cropper.showGrid = !state.cropper.showGrid; renderView(); return true;
     case 'reset-tool': resetTool(el.dataset.tool || state.tool); break;
     case 'run-compressor': runCompressor(); break;
     case 'run-cropper': runCropper(); break;
