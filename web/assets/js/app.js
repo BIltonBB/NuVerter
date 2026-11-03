@@ -463,6 +463,7 @@ const state = {
     adjustments: { brightness: 100, contrast: 100, saturation: 100, hue: 0 },
     text: '', textSize: 24, textColor: '#ffffff', textPos: 'bottom',
     overlays: [],
+    audioKf: [],
     trimStart: 0, trimEnd: 100, aspect: 'free', speed: '1',
     history: [], historyIndex: -1,
     settings: { format: 'mp4', quality: 'balanced', keepAudio: true }
@@ -7971,6 +7972,23 @@ function videoEditorView() {
           </div>
         </div>
         <div class="stage-card">
+          <div class="stage-head"><div class="stage-head-copy"><strong>Audio volume keyframes</strong><span>Animate volume over time</span></div></div>
+          <div class="stage-body">
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              <input type="number" min="0" max="200" value="100" id="ve-vol-input" class="input" style="width:70px" title="volume %" />
+              <button class="btn btn-secondary btn-sm" data-action="ve-add-vol-kf">+ Add at playhead</button>
+              <span style="font-size:11px;color:var(--text-3)">${(data.audioKf||[]).length} kf</span>
+            </div>
+            ${(data.audioKf||[]).length ? `<div style="margin-top:6px;font-size:11px;display:flex;flex-direction:column;gap:2px">
+              ${(data.audioKf||[]).map((k,ki) => `<div style="display:flex;gap:6px;align-items:center">
+                <span class="mono">${((k.t/100)*(data.source?.duration||0)).toFixed(2)}s</span>
+                <span>${k.volume}%</span>
+                <button class="btn btn-ghost btn-sm" data-action="ve-del-vol-kf" data-kf="${ki}" style="margin-left:auto">✕</button>
+              </div>`).join('')}
+            </div>` : ''}
+          </div>
+        </div>
+        <div class="stage-card">
           <div class="stage-head"><div class="stage-head-copy"><strong>Trim & crop</strong><span>Range and aspect</span></div></div>
           <div class="stage-body">
             <div class="field">
@@ -8149,8 +8167,9 @@ async function videoEditorLoad(file) {
   data.adjustments = { brightness: 100, contrast: 100, saturation: 100, hue: 0 };
   data.text = ''; data.textSize = 24; data.textColor = '#ffffff'; data.textPos = 'bottom';
   data.overlays = [];
+   data.audioKf = [];
   data.trimStart = 0; data.trimEnd = 100; data.aspect = 'free'; data.speed = '1';
-  data.history = [JSON.stringify({ adjustments: data.adjustments, text: data.text, textSize: data.textSize, textColor: data.textColor, textPos: data.textPos, trimStart: data.trimStart, trimEnd: data.trimEnd, aspect: data.aspect, speed: data.speed, overlays: data.overlays })];
+  data.history = [JSON.stringify({ adjustments: data.adjustments, text: data.text, textSize: data.textSize, textColor: data.textColor, textPos: data.textPos, trimStart: data.trimStart, trimEnd: data.trimEnd, aspect: data.aspect, speed: data.speed, overlays: data.overlays, audioKf: data.audioKf })];
   data.historyIndex = 0;
   data.result = null;
   renderView();
@@ -8159,7 +8178,7 @@ async function videoEditorLoad(file) {
 
 function videoEditorSnapshot() {
   const d = state.videoEditor;
-  return JSON.stringify({ adjustments: d.adjustments, text: d.text, textSize: d.textSize, textColor: d.textColor, textPos: d.textPos, trimStart: d.trimStart, trimEnd: d.trimEnd, aspect: d.aspect, speed: d.speed, overlays: JSON.parse(JSON.stringify(d.overlays || [])) });
+  return JSON.stringify({ adjustments: d.adjustments, text: d.text, textSize: d.textSize, textColor: d.textColor, textPos: d.textPos, trimStart: d.trimStart, trimEnd: d.trimEnd, aspect: d.aspect, speed: d.speed, overlays: JSON.parse(JSON.stringify(d.overlays || [])), audioKf: JSON.parse(JSON.stringify(d.audioKf || [])) });
 }
 
 function videoEditorPushHistory() {
@@ -8180,6 +8199,7 @@ function videoEditorUndo() {
   d.adjustments = s.adjustments; d.text = s.text; d.textSize = s.textSize; d.textColor = s.textColor; d.textPos = s.textPos;
   d.trimStart = s.trimStart; d.trimEnd = s.trimEnd; d.aspect = s.aspect; d.speed = s.speed;
   if (s.overlays) d.overlays = JSON.parse(JSON.stringify(s.overlays));
+   if (s.audioKf) d.audioKf = JSON.parse(JSON.stringify(s.audioKf));
   renderView();
 }
 
@@ -8191,6 +8211,7 @@ function videoEditorRedo() {
   d.adjustments = s.adjustments; d.text = s.text; d.textSize = s.textSize; d.textColor = s.textColor; d.textPos = s.textPos;
   d.trimStart = s.trimStart; d.trimEnd = s.trimEnd; d.aspect = s.aspect; d.speed = s.speed;
   if (s.overlays) d.overlays = JSON.parse(JSON.stringify(s.overlays));
+   if (s.audioKf) d.audioKf = JSON.parse(JSON.stringify(s.audioKf));
   renderView();
 }
 
@@ -8206,7 +8227,7 @@ function buildVeKfExpr(kf, prop, dur) {
   if (!Array.isArray(kf) || kf.length < 2) return null;
   const pts = kf.slice().sort((a, b) => a.t - b.t).filter((k, i, arr) => i === 0 || k.t > arr[i - 1].t);
   if (pts.length < 2) return null;
-  const sp = pts.map(k => ({ t: (Number(k.t) / 100) * dur, v: Number(k[prop]) }));
+  const sp = pts.map(k => ({ t: (Number(k.t) / 100) * dur, v: Number(k[prop] ?? 0) }));
   let expr = String(sp[sp.length - 1].v);
   for (let i = sp.length - 2; i >= 0; i--) {
     const t0 = sp[i].t, t1 = sp[i + 1].t;
@@ -8244,8 +8265,13 @@ function buildVideoEditorArgs(data) {
   const dur = Number(data.source?.duration) || 0;
   (data.overlays || []).forEach((o) => {
     if (!o.text || !o.text.trim()) return;
-    const pos = o.pos === 'top' ? 'x=(w-text_w)/2:y=20' : o.pos === 'center' ? 'x=(w-text_w)/2:y=(h-text_h)/2' : 'x=(w-text_w)/2:y=h-text_h-20';
     const color = o.color || '#ffffff';
+    const baseY = o.pos === 'top' ? '20' : o.pos === 'center' ? '(h-text_h)/2' : 'h-text_h-20';
+    const xKf = buildVeKfExpr(o.kf, 'x', dur);
+    const yKf = buildVeKfExpr(o.kf, 'y', dur);
+    const xExpr = xKf || String(Number(o.offsetX) || 0);
+    const yExpr = yKf || String(Number(o.offsetY) || 0);
+    const pos = `x=(w-text_w)/2+(${xExpr}):y=${baseY}+(${yExpr})`;
     const startPct = Math.max(0, Math.min(100, Number(o.start) || 0)) / 100;
     const endPct = Math.max(0, Math.min(100, Number(o.end) || 100)) / 100;
     let enable = '';
@@ -8271,6 +8297,14 @@ function buildVideoEditorArgs(data) {
   const fmt = data.settings.format === 'webm' ? 'webm' : 'mp4';
   args.push(...(fmt === 'webm' ? ['-c:v', 'libvpx', '-b:v', '2M'] : ['-c:v', 'libx264', '-preset', 'fast', '-crf', '23']));
   if (data.settings.keepAudio) args.push('-c:a', 'aac', '-b:a', '128k'); else args.push('-an');
+  // volume keyframes
+  if (data.settings.keepAudio && Array.isArray(data.audioKf) && data.audioKf.length) {
+    const dur = Number(data.source?.duration) || 0;
+    let volExpr = null;
+    if (data.audioKf.length >= 2) volExpr = buildVeKfExpr(data.audioKf, 'volume', dur);
+    else volExpr = String(Number(data.audioKf[0].volume ?? 100));
+    if (volExpr) args.push('-af', `volume='${volExpr}/100'`);
+  }
   if (data.settings.stripMetadata) args.push('-map_metadata', '-1');
   args.push('{out}');
   return { args, fmt };
@@ -8328,6 +8362,8 @@ function renderVideoOverlays() {
         <input type="number" min="8" max="120" value="${o.size}" data-ve-overlay="${i}" data-field="size" class="input" style="width:60px" title="size" />
         <input type="color" value="${esc(o.color)}" data-ve-overlay="${i}" data-field="color" title="color" />
         <input type="number" min="0" max="100" value="${o.opacity ?? 100}" data-ve-overlay="${i}" data-field="opacity" class="input" style="width:55px" title="opacity %" />
+        <input type="number" value="${o.offsetX ?? 0}" data-ve-overlay="${i}" data-field="offsetX" class="input" style="width:50px" title="X offset" />
+        <input type="number" value="${o.offsetY ?? 0}" data-ve-overlay="${i}" data-field="offsetY" class="input" style="width:50px" title="Y offset" />
         <select data-ve-overlay="${i}" data-field="pos" class="select">
           <option value="top" ${o.pos === 'top' ? 'selected' : ''}>Top</option>
           <option value="center" ${o.pos === 'center' ? 'selected' : ''}>Center</option>
@@ -8344,7 +8380,9 @@ function renderVideoOverlays() {
         ${(o.kf||[]).map((k,ki) => `<div style="display:flex;gap:6px;align-items:center">
           <span class="mono">${((k.t/100)*(data.source?.duration||0)).toFixed(2)}s</span>
           <span>size ${k.size}</span>
-          <span>opacity ${k.opacity}%</span>
+          <span>op ${k.opacity}%</span>
+          <span>x ${k.x ?? 0}</span>
+          <span>y ${k.y ?? 0}</span>
           <button class="btn btn-ghost btn-sm" data-action="ve-del-kf" data-idx="${i}" data-kf="${ki}" style="margin-left:auto">✕</button>
         </div>`).join('')}
       </div>` : ''}
@@ -8374,6 +8412,8 @@ function bindVideoEditor() {
       else if (field === 'size') d.overlays[idx].size = Number(el.value);
       else if (field === 'color') d.overlays[idx].color = el.value;
       else if (field === 'opacity') d.overlays[idx].opacity = Number(el.value);
+      else if (field === 'offsetX') d.overlays[idx].offsetX = Number(el.value);
+      else if (field === 'offsetY') d.overlays[idx].offsetY = Number(el.value);
         else if (field === 'pos') d.overlays[idx].pos = el.value;
       else if (field === 'start') d.overlays[idx].start = Number(el.value);
       else if (field === 'end') d.overlays[idx].end = Number(el.value);
@@ -12013,7 +12053,7 @@ async function handleAction(action, el) {
     case 've-redo': videoEditorRedo(); return true;
     case 've-reset': videoEditorReset(); return true;
     case 've-add-overlay': {
-      state.videoEditor.overlays.push({ text: 'Text', size: 24, color: '#ffffff', pos: 'bottom', start: 0, end: 100, opacity: 100, kf: [] });
+      state.videoEditor.overlays.push({ text: 'Text', size: 24, color: '#ffffff', pos: 'bottom', start: 0, end: 100, opacity: 100, offsetX: 0, offsetY: 0, kf: [] });
       videoEditorPushHistory();
       return true;
     }
@@ -12031,7 +12071,7 @@ async function handleAction(action, el) {
       const dur = Number(d.source?.duration) || 0;
       const tPct = dur > 0 ? Math.max(0, Math.min(100, (d.playhead || 0) / dur * 100)) : 0;
       o.kf = (o.kf || []).filter(k => Math.abs(k.t - tPct) > 0.5);
-      o.kf.push({ t: Math.round(tPct * 10) / 10, size: Number(o.size) || 24, opacity: Number(o.opacity ?? 100) });
+      o.kf.push({ t: Math.round(tPct * 10) / 10, size: Number(o.size) || 24, opacity: Number(o.opacity ?? 100), x: Number(o.offsetX) || 0, y: Number(o.offsetY) || 0 });
       o.kf.sort((a, b) => a.t - b.t);
       videoEditorPushHistory();
       renderVideoOverlays();
@@ -12043,6 +12083,26 @@ async function handleAction(action, el) {
       const d = state.videoEditor;
       const o = d.overlays[idx];
       if (o && Array.isArray(o.kf) && !isNaN(ki)) { o.kf.splice(ki, 1); videoEditorPushHistory(); renderVideoOverlays(); }
+      return true;
+    }
+    case 've-add-vol-kf': {
+      const d = state.videoEditor;
+      if (!Array.isArray(d.audioKf)) d.audioKf = [];
+      const dur = Number(d.source?.duration) || 0;
+      const tPct = dur > 0 ? Math.max(0, Math.min(100, (d.playhead || 0) / dur * 100)) : 0;
+      const input = document.getElementById('ve-vol-input');
+      const vol = input ? Number(input.value) : 100;
+      d.audioKf = (d.audioKf || []).filter(k => Math.abs(k.t - tPct) > 0.5);
+      d.audioKf.push({ t: Math.round(tPct * 10) / 10, volume: isNaN(vol) ? 100 : vol });
+      d.audioKf.sort((a, b) => a.t - b.t);
+      videoEditorPushHistory();
+      renderView();
+      return true;
+    }
+    case 've-del-vol-kf': {
+      const ki = Number(el?.dataset?.kf);
+      const d = state.videoEditor;
+      if (Array.isArray(d.audioKf) && !isNaN(ki)) { d.audioKf.splice(ki, 1); videoEditorPushHistory(); renderView(); }
       return true;
     }
     case 've-export': await videoEditorExport(); return true;
