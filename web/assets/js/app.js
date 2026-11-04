@@ -429,7 +429,7 @@ const state = {
   practical: { tab: 'diff' },
   aiTools: { tab: 'aibg' },
   docSearch: { docs: [], query: '' },
-  workflow: { source: null, nodes: [], edges: [], running: false, pan: { x: 0, y: 0 }, zoom: 1, connectFrom: null },
+  workflow: { source: null, nodes: [], edges: [], running: false, pan: { x: 0, y: 0 }, zoom: 1, connectFrom: null, selectedNodeId: null },
   workflows: [],
   aiImage: { model: 'sd-turbo', folderName: '', status: '', busy: false, apiKey: (localStorage.getItem('NuVerter-pollinations-key') || '') },
   audioTools: { tab: 'audioclean' },
@@ -9426,7 +9426,22 @@ async function reframeExport() {
   }
 }
 
-const WF_NODE_LABELS = { trim: 'Trim', extractAudio: 'Extract audio', ocr: 'OCR text', compress: 'Compress' };
+const WF_NODE_LABELS = { trim: 'Trim', extractAudio: 'Extract audio', ocr: 'OCR text', compress: 'Compress', convert: 'Convert', gif: 'GIF', merge: 'Merge', branch: 'Branch' };
+const WF_NODE_IO = { trim: { in: 'file', out: 'file' }, extractAudio: { in: 'file', out: 'file' }, ocr: { in: 'file', out: 'text' }, compress: { in: 'file', out: 'file' }, convert: { in: 'file', out: 'file' }, gif: { in: 'file', out: 'file' }, merge: { in: 'file', out: 'file' }, branch: { in: 'file', out: 'file' } };
+
+function workflowNodeInspector(data) {
+  const n = data.nodes.find((x) => x.id === data.selectedNodeId);
+  if (!n) return '<p class="field-help" style="margin-top:6px">Add/select a node to configure it.</p>';
+  n.config = n.config || {};
+  if (n.type === 'trim') return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px"><label>Start (s)<input class="input" data-wfcfg="trim.start" value="' + esc(n.config.start || '') + '" /></label><label>End (s)<input class="input" data-wfcfg="trim.end" value="' + esc(n.config.end || '') + '" /></label></div>';
+  if (n.type === 'compress') return '<div style="margin-top:8px"><label>CRF (18-35)<input class="input" data-wfcfg="compress.crf" value="' + esc(n.config.crf || '28') + '" /></label></div>';
+  if (n.type === 'ocr') return '<div style="margin-top:8px"><label>Language<input class="input" data-wfcfg="ocr.lang" value="' + esc(n.config.lang || 'eng') + '" /></label></div>';
+  if (n.type === 'convert') return '<div style="margin-top:8px"><label>Format<select class="select" data-wfcfg="convert.format">' + ['mp4','webm','mp3','wav','png','jpg','webp'].map((f) => '<option value="' + f + '"' + (n.config.format === f ? ' selected' : '') + '>' + f + '</option>').join('') + '</select></label></div>';
+  if (n.type === 'gif') return '<p class="field-help" style="margin-top:6px">Converts input to GIF.</p>';
+  if (n.type === 'merge') return '<p class="field-help" style="margin-top:6px">Concatenates all incoming video inputs into one.</p>';
+  if (n.type === 'branch') return '<p class="field-help" style="margin-top:6px">Duplicates input to multiple downstream branches.</p>';
+  return '<p class="field-help" style="margin-top:6px">No options for this node.</p>';
+}
 
 function workflowView() {
   const data = state.workflow;
@@ -9458,6 +9473,10 @@ function workflowView() {
                 <option value="extractAudio">Extract audio</option>
                 <option value="ocr">OCR text</option>
                  <option value="compress">Compress</option>
+                 <option value="convert">Convert</option>
+                 <option value="gif">GIF</option>
+                 <option value="merge">Merge</option>
+                 <option value="branch">Branch</option>
               </select>
               <button class="btn btn-secondary btn-sm" data-action="wf-add-node">Add node</button>
             </div>
@@ -9471,6 +9490,22 @@ function workflowView() {
               <button class="btn btn-secondary btn-sm" data-action="wf-load-saved">Load</button>` : ''}
             </div>
             <div id="wf-out" class="util-out" style="margin-top:8px"></div>
+            <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
+              <div style="font-weight:600;font-size:12px;margin-bottom:6px">Node inspector</div>
+              <select id="wf-sel-node" class="select" style="width:100%">
+                <option value="">Select a node…</option>
+                ${data.nodes.map((n) => `<option value="${esc(n.id)}" ${data.selectedNodeId === n.id ? 'selected' : ''}>${esc(WF_NODE_LABELS[n.type] || n.type)} (${esc(n.id)})</option>`).join('')}
+              </select>
+              ${workflowNodeInspector(data)}
+              <div style="margin-top:8px;display:flex;gap:6px">
+                <button class="btn btn-danger btn-sm" data-action="wf-delete-node">Delete node</button>
+              </div>
+              ${data.edges.length ? `<div style="margin-top:10px"><strong style="font-size:11px">Connections</strong>
+                ${data.edges.map((e, i) => `<div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;margin-top:4px">
+                  <span>${esc(e.from)} → ${esc(e.to)}</span>
+                  <button class="icon-btn is-sm is-danger" data-action="wf-delete-edge" data-edge="${i}" title="Remove connection">${icon('x')}</button>
+                </div>`).join('')}</div>` : ''}
+            </div>
           </div>
         </div>
       </section>
@@ -9526,11 +9561,12 @@ async function wfRun() {
   // determine input for a node: first predecessor's output, else source
   function getInput(id) {
     const preds = data.edges.filter((e) => e.to === id).map((e) => e.from);
-    if (preds.length && outputs.has(preds[0])) {
-      const o = outputs.get(preds[0]);
-      return { file: o.file, name: o.name };
+    const predOuts = preds.map((p) => outputs.get(p)).filter(Boolean);
+    if (predOuts.length) {
+      const o = predOuts[0];
+      return { file: o.file, name: o.name, files: predOuts.map((x) => x.file), names: predOuts.map((x) => x.name) };
     }
-    return { file: data.source.file, name: data.source.name };
+    return { file: data.source.file, name: data.source.name, files: [data.source.file], names: [data.source.name] };
   }
   for (const id of order) {
     if (!state.workflow.running) break;
@@ -9538,10 +9574,18 @@ async function wfRun() {
     if (!node) continue;
     node.status = 'running';
     renderView();
-    const { file: inputFile, name: inputName } = getInput(id);
+    const inputInfo = getInput(id);
+    const inputFile = inputInfo.file;
+    const inputName = inputInfo.name;
+    const inputFiles = inputInfo.files || [inputFile];
     try {
       if (node.type === 'trim') {
-        const args = ['-hide_banner', '-y', '-i', '{in}', '{out}'];
+        const cfg = node.config || {};
+        const start = cfg.start ? String(cfg.start) : '0';
+        const end = cfg.end ? String(cfg.end) : '';
+        const args = end
+          ? ['-hide_banner', '-y', '-ss', start, '-to', end, '-i', '{in}', '-c', 'copy', '{out}']
+          : ['-hide_banner', '-y', '-i', '{in}', '{out}'];
         const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: extOf(inputName) || 'mp4', args, mime: inputFile.type || 'application/octet-stream' });
         const outFile = new File([result.blob], inputName, { type: result.mime });
         outputs.set(id, { file: outFile, name: inputName });
@@ -9553,16 +9597,51 @@ async function wfRun() {
       } else if (node.type === 'ocr') {
         if (!window.__tesseract) window.__tesseract = await import('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js');
         const Tesseract = window.__tesseract;
-        const worker = await Tesseract.createWorker('eng');
+        const worker = await Tesseract.createWorker((node.config || {}).lang || 'eng');
         const { data: ocrData } = await worker.recognize(inputFile);
         await worker.terminate();
         node.text = ocrData.text || '';
         outputs.set(id, { file: inputFile, name: inputName, text: node.text });
       } else if (node.type === 'compress') {
-        const args = ['-hide_banner', '-y', '-i', '{in}', '-c:v', 'libx264', '-preset', 'fast', '-crf', '28', '-c:a', 'aac', '-b:a', '128k', '{out}'];
+        const crf = (node.config || {}).crf || '28';
+        const args = ['-hide_banner', '-y', '-i', '{in}', '-c:v', 'libx264', '-preset', 'fast', '-crf', String(crf), '-c:a', 'aac', '-b:a', '128k', '{out}'];
         const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: extOf(inputName) || 'mp4', args, mime: inputFile.type || 'video/mp4' });
         const outFile = new File([result.blob], inputName, { type: result.mime });
         outputs.set(id, { file: outFile, name: inputName });
+      } else if (node.type === 'convert') {
+        const fmt = (node.config || {}).format || 'mp4';
+        const isAudio = ['mp3', 'wav'].includes(fmt);
+        const args = isAudio
+          ? ['-hide_banner', '-y', '-i', '{in}', '-vn', '-c:a', 'libmp3lame', '-b:a', '128k', '{out}']
+          : ['-hide_banner', '-y', '-i', '{in}', '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-c:a', 'aac', '-b:a', '128k', '{out}'];
+        const mime = isAudio ? 'audio/mpeg' : 'video/mp4';
+        const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: fmt, args, mime });
+        const outName = inputName.replace(/\.[^.]+$/, '') + '.' + fmt;
+        const outFile = new File([result.blob], outName, { type: result.mime || mime });
+        outputs.set(id, { file: outFile, name: outName });
+      } else if (node.type === 'gif') {
+        const args = ['-hide_banner', '-y', '-i', '{in}', '-vf', 'fps=10,scale=320:-1:flags=lanczos', '-c:v', 'gif', '{out}'];
+        const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: 'gif', args, mime: 'image/gif' });
+        const outName = inputName.replace(/\.[^.]+$/, '') + '.gif';
+        const outFile = new File([result.blob], outName, { type: 'image/gif' });
+        outputs.set(id, { file: outFile, name: outName });
+      } else if (node.type === 'branch') {
+        outputs.set(id, { file: inputFile, name: inputName });
+      } else if (node.type === 'merge') {
+        const files = inputFiles && inputFiles.length ? inputFiles : [inputFile];
+        if (files.length <= 1) {
+          outputs.set(id, { file: inputFile, name: inputName });
+        } else {
+          const names = files.map((f, i) => 'm' + i + '.mp4');
+          const listText = names.map((nm) => "file '" + nm + "'").join('\n');
+          const listBlob = new Blob([listText], { type: 'text/plain' });
+          const extraFiles = files.map((f, i) => ({ name: names[i], blob: f }));
+          extraFiles.push({ name: 'list.txt', blob: listBlob });
+          const result = await Engine.run({ blob: files[0], inputName: 'mp4', outputName: extOf(inputName) || 'mp4', args: ['-hide_banner', '-y', '-f', 'concat', '-safe', '0', '-i', 'list.txt', '-c', 'copy', '{out}'], mime: inputFile.type || 'video/mp4', extraFiles });
+          const outName = inputName.replace(/\.[^.]+$/, '') + '-merged.' + (extOf(inputName) || 'mp4');
+          const outFile = new File([result.blob], outName, { type: result.mime });
+          outputs.set(id, { file: outFile, name: outName });
+        }
       }
       node.status = 'done';
     } catch (e) {
@@ -9573,6 +9652,7 @@ async function wfRun() {
     renderView();
   }
   data.running = false;
+  renderView();
   const out = document.getElementById('wf-out');
   if (out) {
     const ocrNodes = data.nodes.filter((n) => n.type === 'ocr');
@@ -9590,7 +9670,6 @@ async function wfRun() {
       }
     }
   }
-  renderView();
 }
 
 function bindWorkflow() {
@@ -9625,6 +9704,15 @@ function bindWorkflow() {
     if (inPort && state.workflow.connectFrom) {
       const from = state.workflow.connectFrom;
       const to = inPort.dataset.portIn;
+      const fromNode = state.workflow.nodes.find((n) => n.id === from);
+      const toNode = state.workflow.nodes.find((n) => n.id === to);
+      const fromType = fromNode ? (WF_NODE_IO[fromNode.type] || {}).out : null;
+      const toType = toNode ? (WF_NODE_IO[toNode.type] || {}).in : null;
+      if (fromType && toType && fromType !== toType) {
+        toast('Incompatible ports', fromType + ' cannot connect to ' + toType + '.', 'warning');
+        state.workflow.connectFrom = null;
+        return;
+      }
       if (from !== to && !state.workflow.edges.some((e) => e.from === from && e.to === to)) {
         state.workflow.edges.push({ from, to });
       }
@@ -9658,6 +9746,24 @@ function bindWorkflow() {
     }
   });
   canvas.addEventListener('pointerup', () => { draggingNode = null; });
+  // node selection
+  const sel = document.getElementById('wf-sel-node');
+  if (sel) {
+    sel.onchange = () => { state.workflow.selectedNodeId = sel.value || null; renderView(); };
+  }
+  // config inputs
+  document.querySelectorAll('[data-wfcfg]').forEach((inp) => {
+    const key = inp.dataset.wfcfg;
+    const [type, field] = key.split('.');
+    const node = state.workflow.nodes.find((n) => n.id === state.workflow.selectedNodeId);
+    if (!node) return;
+    node.config = node.config || {};
+    const handler = () => {
+      node.config[field] = inp.value;
+    };
+    inp.addEventListener('input', handler);
+    inp.addEventListener('change', handler);
+  });
 }
 
 function bindReframe() {
@@ -12740,8 +12846,27 @@ async function handleExtraAction(action, el) {
       const type = document.getElementById('wf-add-node')?.value || 'trim';
       const id = 'n' + Math.random().toString(36).slice(2, 8);
       const n = state.workflow.nodes.length;
-      state.workflow.nodes.push({ id, type, x: 40 + (n % 3) * 180, y: 40 + Math.floor(n / 3) * 100, status: 'idle' });
+      state.workflow.nodes.push({ id, type, x: 40 + (n % 3) * 180, y: 40 + Math.floor(n / 3) * 100, status: 'idle', config: {} });
+      state.workflow.selectedNodeId = id;
       renderView();
+      return true;
+    }
+    case 'wf-delete-node': {
+      const id = state.workflow.selectedNodeId;
+      if (id) {
+        state.workflow.nodes = state.workflow.nodes.filter((n) => n.id !== id);
+        state.workflow.edges = state.workflow.edges.filter((e) => e.from !== id && e.to !== id);
+        state.workflow.selectedNodeId = null;
+        renderView();
+      }
+      return true;
+    }
+    case 'wf-delete-edge': {
+      const idx = Number(el?.dataset?.edge);
+      if (!Number.isNaN(idx) && idx >= 0 && idx < state.workflow.edges.length) {
+        state.workflow.edges.splice(idx, 1);
+        renderView();
+      }
       return true;
     }
     case 'wf-clear': {
