@@ -97,13 +97,20 @@ function applyRenameTemplate(item, target, template) {
   const tpl = (template || '').trim();
   if (!tpl) return outputName(item.name, target.ext, extOf(item.name) === target.ext ? '-converted' : '');
   const base = baseName(item.name);
+  const origExt = extOf(item.name) || target.ext;
   const res = (state.converter.resolution === 'source' ? (item.width ? item.width + 'x' + item.height : '') : state.converter.resolution + 'p');
+  const date = new Date().toISOString().slice(0, 10);
   let name = tpl
+    .replace(/\{original_name\}/g, base)
     .replace(/\{name\}/g, base)
+    .replace(/\{original_ext\}/g, origExt)
     .replace(/\{ext\}/g, target.ext)
     .replace(/\{format\}/g, target.ext)
     .replace(/\{index\}/g, String(state.queue.indexOf(item) + 1))
-    .replace(/\{resolution\}/g, res || 'source');
+    .replace(/\{resolution\}/g, res || 'source')
+    .replace(/\{date\}/g, date)
+    .replace(/\{width\}/g, item.width ? String(item.width) : '')
+    .replace(/\{height\}/g, item.height ? String(item.height) : '');
   if (!name.includes('.')) name = name + '.' + target.ext;
   return safeName(name);
 }
@@ -118,6 +125,27 @@ function uniqueName(name, used) {
   }
   used.add(candidate);
   return candidate;
+}
+
+function previewQueueOutputName(item, plan, queue) {
+  const name = plan.outputName;
+  let count = 0;
+  for (const q of (queue || [])) {
+    if (q === item) break;
+    try {
+      const p = planFor(q, state.converter.format);
+      if (p && p.outputName === name) count++;
+    } catch {}
+  }
+  if (count === 0) return name;
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? `${name.slice(0, dot)}-${count + 1}${name.slice(dot)}` : `${name}-${count + 1}`;
+}
+
+let queueUsedOutputNames = new Set();
+function uniqueQueueOutputName(name) {
+  if (!queueUsedOutputNames) queueUsedOutputNames = new Set();
+  return uniqueName(name, queueUsedOutputNames);
 }
 
 function downloadBlob(blob, name) {
@@ -2377,7 +2405,7 @@ async function processOneQueueItem(item, counters) {
       sourceName: item.name,
       sourceSize: item.size,
       blob: result.blob,
-      name: plan.outputName,
+      name: uniqueQueueOutputName(plan.outputName),
       mime: result.mime || plan.target.mime,
       meta: { format: plan.target.label, kind: item.kind, width: result.width, height: result.height }
     });
@@ -2414,6 +2442,7 @@ async function startQueue() {
     return;
   }
   state.queueRunning = true;
+  queueUsedOutputNames = new Set();
   state.cancelItemId = null;
   renderQueue();
   syncConverterChrome();
@@ -3280,7 +3309,7 @@ function converterPanes() {
       <div class="field">
         <div class="field-head"><span class="field-label">Rename template</span></div>
         <input type="text" value="${esc(conv.renameTemplate || '')}" data-field="converter.renameTemplate" class="input" style="width:100%" placeholder="{name}_NuVerter_{resolution}" />
-        <p class="field-help">Tokens: {name}, {ext}, {index}, {resolution}. Leave empty for default.</p>
+        <p class="field-help">Tokens: {original_name}/{name}, {original_ext}/{ext}, {format}, {index}, {resolution}, {date}, {width}, {height}. Duplicate output names get -2, -3… automatically. Leave empty for default.</p>
       </div>
       <div class="switch-row">
         <div class="switch-copy"><strong>Strip metadata</strong><small>Remove EXIF/GPS/camera data from outputs. Images are verified after export; video uses FFmpeg -map_metadata -1.</small></div>
@@ -3536,7 +3565,7 @@ function queueRow(item, index) {
           <span class="queue-name" title="${esc(item.name)}">${esc(item.name)}</span>
           ${ghost ? `<span class="pill is-mono" title="Free plan runs these automatically after the first three">Slot ${index + 1}</span>` : ''}
         </div>
-        <div class="queue-meta">${meta}<span class="sep"></span><span class="plan">${plan.compatible ? `to <strong>${plan.target.label}</strong>` : '<strong>needs another format</strong>'}</span></div>
+        <div class="queue-meta">${meta}<span class="sep"></span><span class="plan">${plan.compatible ? `to <strong>${plan.target.label}</strong>` : '<strong>needs another format</strong>'}</span>${state.converter.renameTemplate ? `<span class="sep"></span><span class="faint" title="Planned output name">${esc(previewQueueOutputName(item, plan, state.queue))}</span>` : ''}</div>
         ${processing ? `
           <div class="queue-progress">
             <div class="progress"><span style="width:${Math.round(item.progress * 100)}%"></span></div>
@@ -3556,7 +3585,9 @@ function queueRow(item, index) {
     </div>`;
 }
 
+let queuePreviewUsedNames = new Set();
 function renderQueue() {
+  queuePreviewUsedNames = new Set();
   const slot = $('#queue-slot');
   if (!slot) return;
   const stats = queueStats();
