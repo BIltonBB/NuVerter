@@ -5377,10 +5377,10 @@ function devToolsView() {
   return `
     ${viewHead({ index: '10', kicker: 'Developer tools', title: 'Dev <span class="accent">utilities.</span>', sub: 'JSON, base64, regex and hashing â€” all local.' })}
     <div class="util-tabs segmented" role="tablist">
-      ${['json','base64','regex','pii','mock','wc'].map((t) => `<button data-action="dev-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${t === 'json' ? 'JSON' : t === 'base64' ? 'Base64' : t === 'regex' ? 'Regex' : t === 'pii' ? 'PII scrub' : t === 'mock' ? 'Mock data' : 'WebCodecs'}</button>`).join('')}
+      ${['json','base64','regex','pii','mock','wc','clip'].map((t) => `<button data-action="dev-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${t === 'json' ? 'JSON' : t === 'base64' ? 'Base64' : t === 'regex' ? 'Regex' : t === 'pii' ? 'PII scrub' : t === 'mock' ? 'Mock data' : t === 'wc' ? 'WebCodecs' : 'Clipboard'}</button>`).join('')}
     </div>
     <div class="util-body">
-      ${tab === 'json' ? devJsonBody() : tab === 'base64' ? devBase64Body() : tab === 'regex' ? devRegexBody() : tab === 'pii' ? devPiiBody() : tab === 'mock' ? devMockBody() : devWebCodecsBody()}
+      ${tab === 'json' ? devJsonBody() : tab === 'base64' ? devBase64Body() : tab === 'regex' ? devRegexBody() : tab === 'pii' ? devPiiBody() : tab === 'mock' ? devMockBody() : tab === 'wc' ? devWebCodecsBody() : devClipboardBody()}
     </div>`;
 }
 
@@ -5468,6 +5468,21 @@ function devWebCodecsBody() {
       </div>
     </div>`;
 }
+function devClipboardBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Clipboard assistant</strong><span>Inspect and use clipboard contents (user-triggered only)</span></div></div>
+      <div class="stage-body">
+        <p class="field-help">Click to read the current clipboard text. Nothing is transmitted or stored.</p>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" data-action="dev-clip-read">Read clipboard text</button>
+          <button class="btn btn-secondary btn-sm" data-action="dev-clip-copy">Copy sample text</button>
+        </div>
+        <pre id="dev-clip-out" class="util-out" style="white-space:pre-wrap;word-break:break-word;margin-top:10px">Click "Read clipboard text".</pre>
+      </div>
+    </div>`;
+}
+
 async function runWebCodecsDiag() {
   const out = document.getElementById('dev-wc-out');
   const lines = [];
@@ -9426,8 +9441,9 @@ async function reframeExport() {
   }
 }
 
-const WF_NODE_LABELS = { trim: 'Trim', extractAudio: 'Extract audio', ocr: 'OCR text', compress: 'Compress', convert: 'Convert', gif: 'GIF', merge: 'Merge', branch: 'Branch' };
-const WF_NODE_IO = { trim: { in: 'file', out: 'file' }, extractAudio: { in: 'file', out: 'file' }, ocr: { in: 'file', out: 'text' }, compress: { in: 'file', out: 'file' }, convert: { in: 'file', out: 'file' }, gif: { in: 'file', out: 'file' }, merge: { in: 'file', out: 'file' }, branch: { in: 'file', out: 'file' } };
+const WF_NODE_CATEGORIES = { input: ['branch'], process: ['trim','extractAudio','ocr','compress','convert','gif','merge','branch'], output: ['output'] };
+const WF_NODE_LABELS = { trim: 'Trim', extractAudio: 'Extract audio', ocr: 'OCR text', compress: 'Compress', convert: 'Convert', gif: 'GIF', merge: 'Merge', branch: 'Branch', output: 'Output' };
+const WF_NODE_IO = { trim: { in: 'file', out: 'file' }, extractAudio: { in: 'file', out: 'file' }, ocr: { in: 'file', out: 'text' }, compress: { in: 'file', out: 'file' }, convert: { in: 'file', out: 'file' }, gif: { in: 'file', out: 'file' }, merge: { in: 'file', out: 'file' }, branch: { in: 'file', out: 'file' }, output: { in: 'file', out: null } };
 
 function workflowNodeInspector(data) {
   const n = data.nodes.find((x) => x.id === data.selectedNodeId);
@@ -9469,14 +9485,19 @@ function workflowView() {
             ${src ? `<p style="margin-top:8px">${esc(src.name)}</p>` : ''}
             <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
               <select id="wf-add-node" class="select">
-                <option value="trim">Trim</option>
-                <option value="extractAudio">Extract audio</option>
-                <option value="ocr">OCR text</option>
-                 <option value="compress">Compress</option>
-                 <option value="convert">Convert</option>
-                 <option value="gif">GIF</option>
-                 <option value="merge">Merge</option>
-                 <option value="branch">Branch</option>
+                <optgroup label="Process">
+                  <option value="trim">Trim</option>
+                  <option value="extractAudio">Extract audio</option>
+                  <option value="ocr">OCR text</option>
+                  <option value="compress">Compress</option>
+                  <option value="convert">Convert</option>
+                  <option value="gif">GIF</option>
+                  <option value="merge">Merge (concat)</option>
+                  <option value="branch">Branch (fan-out)</option>
+                </optgroup>
+                <optgroup label="Output">
+                  <option value="output">Output (download)</option>
+                </optgroup>
               </select>
               <button class="btn btn-secondary btn-sm" data-action="wf-add-node">Add node</button>
             </div>
@@ -9490,6 +9511,7 @@ function workflowView() {
               <button class="btn btn-secondary btn-sm" data-action="wf-load-saved">Load</button>` : ''}
             </div>
             <div id="wf-out" class="util-out" style="margin-top:8px"></div>
+            <p class="field-help" style="margin-top:8px">How to use: 1) Choose a file. 2) Add nodes (Process/Output). 3) Drag nodes to arrange. 4) Click an output port (colored dot) then an input port to connect. 5) Click Run. Nodes are color-grouped by category; Output nodes produce a download link.</p>
             <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
               <div style="font-weight:600;font-size:12px;margin-bottom:6px">Node inspector</div>
               <select id="wf-sel-node" class="select" style="width:100%">
@@ -9513,17 +9535,17 @@ function workflowView() {
         <div class="stage-card" style="height:100%">
           <div class="stage-head"><div class="stage-head-copy"><strong>Canvas</strong><span>Drag nodes Â· click output port then input port to connect</span></div></div>
           <div class="stage-body" style="padding:0">
-            <div id="wf-canvas" style="position:relative;width:100%;height:420px;overflow:hidden;background:var(--surface-2);border-radius:8px;cursor:grab">
+            <div id="wf-canvas" style="position:relative;width:100%;height:420px;overflow:hidden;background:var(--surface-2);border-radius:8px;cursor:grab;touch-action:none">
               <svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none" id="wf-svg">
                 <defs><marker id="wf-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="var(--accent)" /></marker></defs>
                 ${lines}
               </svg>
               ${data.nodes.map((n) => `
-                <div class="wf-node" data-node="${n.id}" style="position:absolute;left:${n.x}px;top:${n.y}px;width:150px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 8px;user-select:none;cursor:move">
+                <div class="wf-node" data-node="${n.id}" style="position:absolute;left:${n.x}px;top:${n.y}px;width:150px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 8px;user-select:none;cursor:move;touch-action:none">
                   <div style="font-weight:600;font-size:12px">${WF_NODE_LABELS[n.type] || n.type}</div>
                   <div style="font-size:10px;color:var(--text-3);margin-top:2px">${esc(n.status || 'idle')}${n.error ? ' Â· ' + esc(n.error) : ''}</div>
-                  <div class="wf-port wf-port-in" data-port-in="${n.id}" style="position:absolute;left:-6px;top:20px;width:12px;height:12px;border-radius:50%;background:var(--border);border:2px solid var(--surface);cursor:pointer"></div>
-                  <div class="wf-port wf-port-out" data-port-out="${n.id}" style="position:absolute;right:-6px;top:20px;width:12px;height:12px;border-radius:50%;background:var(--accent);border:2px solid var(--surface);cursor:pointer"></div>
+                  ${(WF_NODE_IO[n.type] || {}).in ? `<div class="wf-port wf-port-in" data-port-in="${n.id}" style="position:absolute;left:-6px;top:20px;width:12px;height:12px;border-radius:50%;background:var(--border);border:2px solid var(--surface);cursor:pointer"></div>` : ''}
+                  ${(WF_NODE_IO[n.type] || {}).out ? `<div class="wf-port wf-port-out" data-port-out="${n.id}" style="position:absolute;right:-6px;top:20px;width:12px;height:12px;border-radius:50%;background:var(--accent);border:2px solid var(--surface);cursor:pointer"></div>` : ''}
                 </div>`).join('')}
             </div>
           </div>
@@ -9642,6 +9664,9 @@ async function wfRun() {
           const outFile = new File([result.blob], outName, { type: result.mime });
           outputs.set(id, { file: outFile, name: outName });
         }
+      } else if (node.type === 'output') {
+        outputs.set(id, { file: inputFile, name: inputName });
+        node.text = inputName;
       }
       node.status = 'done';
     } catch (e) {
@@ -10110,6 +10135,24 @@ function cropHandles() {
     .map((h) => `<span class="crop-handle" data-h="${h}"></span>`).join('');
 }
 
+function runCropPreview() {
+  const frame = document.getElementById('crop-frame');
+  const media = frame ? frame.querySelector('img, video') : null;
+  const canvas = document.getElementById('crop-preview');
+  if (!media || !canvas) return;
+  const crop = state.cropper.crop;
+  const sw = media.naturalWidth || media.videoWidth || 0;
+  const sh = media.naturalHeight || media.videoHeight || 0;
+  if (!sw || !sh) return;
+  const sx = Math.max(0, Math.round(sw * crop.x));
+  const sy = Math.max(0, Math.round(sh * crop.y));
+  const swc = Math.max(2, Math.round(sw * crop.w));
+  const shc = Math.max(2, Math.round(sh * crop.h));
+  canvas.width = swc; canvas.height = shc;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(media, sx, sy, swc, shc, 0, 0, swc, shc);
+}
+
 function cropperView() {
   const data = state.cropper;
   const s = data.settings;
@@ -10161,6 +10204,11 @@ function cropperView() {
       <div class="field-head"><span class="field-label">${icon('crop')}Crop area</span><span class="field-value">${Math.round(crop.w * 100)}% Ã— ${Math.round(crop.h * 100)}%</span></div>
       <p class="field-help" style="margin-top:0">Drag the frame or its handles in the preview. Everything outside the box is removed.</p>
     </div>
+     <div class="field">
+       <div class="field-head"><span class="field-label">Final framing preview</span></div>
+       <canvas id="crop-preview" style="max-width:100%;border:1px solid var(--border);border-radius:8px;background:var(--surface-2)"></canvas>
+       <div style="margin-top:6px"><button class="btn btn-secondary btn-sm" data-action="crop-preview">${icon('eye')}<span>Render preview</span></button></div>
+     </div>
     ${!isImage ? `
       <div class="field">
         <div class="field-head"><span class="field-label">Output container</span><span class="field-value">${s.format === 'webm' ? 'WEBM' : 'MP4'}</span></div>
@@ -12265,7 +12313,7 @@ async function openDesktopAppInfo() {
       </div>
       <div class="modal-section">
         <div class="modal-section-title">${icon('download')}Ready-to-run build</div>
-        <div class="modal-note" style="font-size:10.5px;line-height:1.65">A portable build (no installer) is available at <code>desktop/dist-packager/NuVerter-portable-flat.zip</code>. Unzip and run <code>NuVerter.exe</code>.</div>
+        <div class="modal-note" style="font-size:10.5px;line-height:1.65">The Electron desktop build has been archived to <code>D:\\Websites\\Universal Converter Others\\Old Electron desktop</code>. The portable Tauri build is recommended instead.</div>
         <div class="modal-note" style="margin-top:8px;font-size:10.5px">To make the in-app button download automatically, set <code>APP_DOWNLOAD_URL</code> in <code>app.js</code> to your hosted zip/exe URL.</div>
       </div>
       <div class="modal-section">
@@ -12273,7 +12321,7 @@ async function openDesktopAppInfo() {
         <pre style="background:var(--surface-2);padding:10px;border-radius:8px;font-size:11px;overflow:auto">cd desktop
 npm install
 npm run build</pre>
-        <div class="modal-note" style="margin-top:8px">Installers are written to <code>desktop/dist</code>. Auto-update activates only after you publish a release (GitHub/Generic) and configure electron-updater.</div>
+        <div class="modal-note" style="margin-top:8px">The Electron desktop build has been archived; the Tauri build (in <code>tauri/</code>) is the supported desktop target.</div>
         <div class="modal-note" style="margin-top:8px;font-size:10.5px">Source code: <a href="https://github.com/BIltonBB/NuVerter" target="_blank" rel="noopener noreferrer">github.com/BIltonBB/NuVerter</a></div>
         <div class="modal-note" style="margin-top:8px;font-size:10px">Build note: on Windows, electron-builder needs symlink privileges. Enable <strong>Developer Mode</strong> (Settings â†’ For developers) or run the terminal as Administrator, otherwise the winCodeSign extraction fails. Use <code>npm run build -- --dir</code> for an unpackaged build (no signing).</div>
       </div>`,
@@ -12809,6 +12857,23 @@ async function handleExtraAction(action, el) {
     case 'dev-wc-run': { await runWebCodecsDiag(); return true; }
     case 'dev-wc-decode': { await runWebCodecsDecode(); return true; }
     case 'dev-wc-frame': { await runWebCodecsFrameExtract(); return true; }
+    case 'dev-clip-read': {
+      const out = document.getElementById('dev-clip-out');
+      try {
+        if (!navigator.clipboard?.readText) { if (out) out.textContent = 'Clipboard API not available in this browser.'; return true; }
+        const text = await navigator.clipboard.readText();
+        if (out) out.textContent = text || '(clipboard is empty)';
+      } catch (e) {
+        if (out) out.textContent = 'Could not read clipboard: ' + (e?.message || e);
+      }
+      return true;
+    }
+    case 'dev-clip-copy': {
+      const sample = 'NuVerter clipboard test ' + new Date().toISOString();
+      try { await navigator.clipboard.writeText(sample); toast('Copied', 'Sample text copied to clipboard.', 'success'); }
+      catch (e) { toast('Copy failed', e?.message || 'Browser blocked clipboard access.', 'error'); }
+      return true;
+    }
     case 'dev-mock-gen': devMockGenerate(); return true;
     case 'dev-mock-copy': { const d = window.__mockData; if (d) { try { await navigator.clipboard.writeText(JSON.stringify(d, null, 2)); toast('Copied', 'Mock data copied.', 'success'); } catch {} } return true; }
     case 'dev-mock-dl': { const d = window.__mockData; if (d) { const blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'mock-data.json'; a.click(); URL.revokeObjectURL(a.href); } return true; }
@@ -13120,6 +13185,7 @@ async function handleAction(action, el) {
     case 'reset-crop': resetCrop(); break;
     case 'toggle-crop-grid': state.cropper.showGrid = !state.cropper.showGrid; renderView(); return true;
     case 'toggle-crop-dim': state.cropper.dimOutside = !state.cropper.dimOutside; renderView(); return true;
+    case 'crop-preview': runCropPreview(); return true;
     case 'reset-tool': resetTool(el.dataset.tool || state.tool); break;
     case 'run-compressor': runCompressor(); break;
     case 'run-cropper': runCropper(); break;
