@@ -1,7 +1,7 @@
-﻿'use strict';
+'use strict';
 
 /* ==========================================================================
-   NuVerter â€” local media suite
+   NuVerter — local media suite
    Application logic
    ========================================================================== */
 
@@ -41,7 +41,7 @@ function formatBytes(bytes, decimals = 1) {
 
 function formatDuration(seconds, showHours = true) {
   const s = Number(seconds);
-  if (!Number.isFinite(s) || s <= 0) return 'â€”';
+  if (!Number.isFinite(s) || s <= 0) return '—';
   const total = Math.round(s);
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
@@ -1261,7 +1261,7 @@ function confirmDialog({ title, message, confirmLabel = 'Confirm', cancelLabel =
 }
 
 /* ==========================================================================
-   Local engine â€” FFmpeg WebAssembly
+   Local engine — FFmpeg WebAssembly
    ========================================================================== */
 const Engine = {
   instance: null,
@@ -1672,7 +1672,7 @@ async function registerOutput({ tool, sourceName, blob, name, mime, sourceSize =
 }
 
 /* ==========================================================================
-   Local conversion â€” image pipeline, command builders, queue runner
+   Local conversion — image pipeline, command builders, queue runner
    ========================================================================== */
 function canvasToBlob(canvas, mime, quality) {
   return new Promise((resolve, reject) => {
@@ -2264,7 +2264,7 @@ function clearQueue({ keepDone = false } = {}) {
 
 function cloneQueue(q) {
   try { return structuredClone(q); } catch {
-    // Fallback: shallow copy of array (items shared) â€” better than nothing.
+    // Fallback: shallow copy of array (items shared) — better than nothing.
     return (q || []).slice();
   }
 }
@@ -2446,7 +2446,7 @@ async function startQueue() {
   state.cancelItemId = null;
   renderQueue();
   syncConverterChrome();
-  toast('Local processing started', `${pending.length} file${pending.length === 1 ? '' : 's'} Â· engine runs on this device.`, 'info');
+  toast('Local processing started', `${pending.length} file${pending.length === 1 ? '' : 's'} · engine runs on this device.`, 'info');
   Engine.preload();
   const counters = { done: 0, fail: 0, skipped: 0 };
   const turbo = state.prefs.processingMode === 'turbo';
@@ -2477,7 +2477,7 @@ async function startQueue() {
   renderQueue();
   syncConverterChrome();
   if (counters.done) {
-    toast('Batch complete', `${counters.done} file${counters.done === 1 ? '' : 's'} finished locally${counters.skipped ? ` Â· ${counters.skipped} skipped` : ''}${counters.fail ? ` Â· ${counters.fail} failed` : ''}.`, 'success');
+    toast('Batch complete', `${counters.done} file${counters.done === 1 ? '' : 's'} finished locally${counters.skipped ? ` · ${counters.skipped} skipped` : ''}${counters.fail ? ` · ${counters.fail} failed` : ''}.`, 'success');
   } else if (counters.fail) {
     toast('Conversion failed', 'Open the failed row for the engine message, then try again.', 'error');
   } else if (wasStopped) {
@@ -2756,7 +2756,7 @@ async function loadToolSource(tool, file) {
   stateForTool.source = item;
   renderView();
   Engine.preload();
-  toast('Source loaded', `${item.name} Â· ${formatBytes(item.size)}`, 'success');
+  toast('Source loaded', `${item.name} · ${formatBytes(item.size)}`, 'success');
 }
 
 function setToolBusy(tool, busy) {
@@ -2824,7 +2824,7 @@ async function runCompressor() {
       meta: { format: FORMATS[format].label, mode: data.settings.mode }
     });
     data.result = record;
-    toast('Compressed locally', `${formatBytes(data.source.size)} â†’ ${formatBytes(record.size)} (${Math.max(0, Math.round((1 - record.size / data.source.size) * 100))}% smaller).`, 'success');
+    toast('Compressed locally', `${formatBytes(data.source.size)} → ${formatBytes(record.size)} (${Math.max(0, Math.round((1 - record.size / data.source.size) * 100))}% smaller).`, 'success');
   } catch (error) {
     if (error?.name !== 'AbortError') toast('Compression failed', error.message, 'error');
   } finally {
@@ -2869,7 +2869,7 @@ async function runCropper() {
       meta: { crop: data.crop }
     });
     data.result = record;
-    toast('Crop rendered', `${record.name} Â· ${formatBytes(record.size)}`, 'success');
+    toast('Crop rendered', `${record.name} · ${formatBytes(record.size)}`, 'success');
   } catch (error) {
     if (error?.name !== 'AbortError') toast('Crop failed', error.message, 'error');
   } finally {
@@ -2909,7 +2909,7 @@ async function runExtractor() {
       meta: { format: FORMATS[format].label }
     });
     data.result = record;
-    toast('Audio extracted', `${record.name} Â· ${formatBytes(record.size)}`, 'success');
+    toast('Audio extracted', `${record.name} · ${formatBytes(record.size)}`, 'success');
   } catch (error) {
     if (error?.name !== 'AbortError') toast('Extraction failed', error.message, 'error');
   } finally {
@@ -2944,7 +2944,7 @@ async function runGifMaker() {
       meta: { fps: data.settings.fps, width: data.settings.width }
     });
     data.result = record;
-    toast('GIF created', `${record.name} Â· ${formatBytes(record.size)}`, 'success');
+    toast('GIF created', `${record.name} · ${formatBytes(record.size)}`, 'success');
   } catch (error) {
     if (error?.name !== 'AbortError') toast('GIF failed', error.message, 'error');
   } finally {
@@ -3099,9 +3099,9 @@ function renderUpgradeCard() {
 
 /* ---------- engine chrome ---------- */
 const ENGINE_COPY = {
-  idle: { label: 'Local engine', sub: 'FFmpeg Â· on this device', pill: 'Engine idle', dot: 'is-idle' },
-  loading: { label: 'Starting engine', sub: 'Loading WebAssembly core', pill: 'Loading engineâ€¦', dot: 'is-loading' },
-  ready: { label: 'Engine ready', sub: 'FFmpeg Â· runs offline', pill: 'Engine ready', dot: 'is-ready' },
+  idle: { label: 'Local engine', sub: 'FFmpeg · on this device', pill: 'Engine idle', dot: 'is-idle' },
+  loading: { label: 'Starting engine', sub: 'Loading WebAssembly core', pill: 'Loading engine…', dot: 'is-loading' },
+  ready: { label: 'Engine ready', sub: 'FFmpeg · runs offline', pill: 'Engine ready', dot: 'is-ready' },
   busy: { label: 'Engine working', sub: 'Processing on this device', pill: 'Engine busy', dot: 'is-busy' },
   error: { label: 'Engine offline', sub: 'Start the local server', pill: 'Engine offline', dot: 'is-error' }
 };
@@ -3121,7 +3121,7 @@ function updateEngineUI() {
   const pill = $('#engine-pill-label');
   if (pill) {
     const pct = Math.round((Engine.progress || 0) * 100);
-    pill.textContent = status === 'busy' && pct > 0 ? `Engine Â· ${pct}%` : copy.pill;
+    pill.textContent = status === 'busy' && pct > 0 ? `Engine · ${pct}%` : copy.pill;
   }
   $$('[data-engine-chip]').forEach((chip) => {
     chip.classList.toggle('is-busy', status === 'loading' || status === 'busy');
@@ -3138,7 +3138,7 @@ function updateEngineUI() {
 function updateEngineProgress(value) {
   const pct = Math.round(clamp(Number(value) || 0, 0, 1) * 100);
   const pill = $('#engine-pill-label');
-  if (pill && Engine.status === 'busy') pill.textContent = `Engine Â· ${pct}%`;
+  if (pill && Engine.status === 'busy') pill.textContent = `Engine · ${pct}%`;
   const bar = $('#engine-modal-progress');
   if (bar) bar.style.width = `${pct}%`;
 }
@@ -3154,8 +3154,8 @@ function updateChrome() {
     count.hidden = state.history.length === 0;
   }
   document.title = state.tool === 'converter'
-    ? 'NuVerter â€” Private Media Studio'
-    : `${tool.label} â€” NuVerter`;
+    ? 'NuVerter — Private Media Studio'
+    : `${tool.label} — NuVerter`;
   renderUpgradeCard();
   updateAccountUI();
   updateEngineUI();
@@ -3229,7 +3229,7 @@ function converterPanes() {
           <div class="format-grid">${FORMAT_GROUPS[3].keys.map((key) => formatChip(key)).join('')}</div>
         </div>
         <p class="field-help">${conv.format === 'auto'
-          ? 'AUTO sends video â†’ MP4, audio â†’ MP3, images â†’ WEBP and text/code â†’ TXT so mixed batches just work.'
+          ? 'AUTO sends video → MP4, audio → MP3, images → WEBP and text/code → TXT so mixed batches just work.'
           : 'Only files that match this media type will be processed.'}</p>
       </div>
 
@@ -3291,11 +3291,11 @@ function converterPanes() {
         <div class="field-head"><span class="field-label">Social preset</span></div>
         <select class="select" data-field="converter.socialPreset" aria-label="Social preset">
           <option value="none" ${conv.socialPreset === 'none' ? 'selected' : ''}>None</option>
-          <option value="tiktok" ${conv.socialPreset === 'tiktok' ? 'selected' : ''}>TikTok (1080Ã—1920)</option>
-          <option value="reels" ${conv.socialPreset === 'reels' ? 'selected' : ''}>IG Reels (1080Ã—1920)</option>
-          <option value="shorts" ${conv.socialPreset === 'shorts' ? 'selected' : ''}>YouTube Shorts (1080Ã—1920)</option>
-          <option value="yt" ${conv.socialPreset === 'yt' ? 'selected' : ''}>YouTube (1920Ã—1080)</option>
-          <option value="ig" ${conv.socialPreset === 'ig' ? 'selected' : ''}>Instagram (1080Ã—1080)</option>
+          <option value="tiktok" ${conv.socialPreset === 'tiktok' ? 'selected' : ''}>TikTok (1080×1920)</option>
+          <option value="reels" ${conv.socialPreset === 'reels' ? 'selected' : ''}>IG Reels (1080×1920)</option>
+          <option value="shorts" ${conv.socialPreset === 'shorts' ? 'selected' : ''}>YouTube Shorts (1080×1920)</option>
+          <option value="yt" ${conv.socialPreset === 'yt' ? 'selected' : ''}>YouTube (1920×1080)</option>
+          <option value="ig" ${conv.socialPreset === 'ig' ? 'selected' : ''}>Instagram (1080×1080)</option>
         </select>
       </div>
       <div class="field">
@@ -3309,7 +3309,7 @@ function converterPanes() {
       <div class="field">
         <div class="field-head"><span class="field-label">Rename template</span></div>
         <input type="text" value="${esc(conv.renameTemplate || '')}" data-field="converter.renameTemplate" class="input" style="width:100%" placeholder="{name}_NuVerter_{resolution}" />
-        <p class="field-help">Tokens: {original_name}/{name}, {original_ext}/{ext}, {format}, {index}, {resolution}, {date}, {width}, {height}. Duplicate output names get -2, -3… automatically. Leave empty for default.</p>
+        <p class="field-help">Tokens: {original_name}/{name}, {original_ext}/{ext}, {format}, {index}, {resolution}, {date}, {width}, {height}. Duplicate output names get -2, -3� automatically. Leave empty for default.</p>
       </div>
       <div class="switch-row">
         <div class="switch-copy"><strong>Strip metadata</strong><small>Remove EXIF/GPS/camera data from outputs. Images are verified after export; video uses FFmpeg -map_metadata -1.</small></div>
@@ -3323,7 +3323,7 @@ function converterPanes() {
         <div class="field-head"><span class="field-label">${icon('monitor')}Resolution</span><span class="field-value">${conv.resolution === 'source' ? 'Source' : `${conv.resolution}p`}</span></div>
         <div class="select-wrap">
           <select class="select" data-field="converter.resolution" aria-label="Video resolution">
-            ${[['source', 'Keep source'], ['2160', '2160p Â· 4K'], ['1440', '1440p'], ['1080', '1080p'], ['720', '720p'], ['480', '480p'], ['360', '360p']]
+            ${[['source', 'Keep source'], ['2160', '2160p · 4K'], ['1440', '1440p'], ['1080', '1080p'], ['720', '720p'], ['480', '480p'], ['360', '360p']]
               .map(([value, text]) => `<option value="${value}"${conv.resolution === value ? ' selected' : ''}>${text}</option>`).join('')}
           </select>
           ${icon('chevron-down')}
@@ -3389,7 +3389,7 @@ function converterPanes() {
         <div class="field">
           <div class="field-head"><span class="field-label">CRF value</span><span class="field-value" data-live="crf">${conv.crf}</span></div>
           <input type="range" min="10" max="40" step="1" value="${conv.crf}" data-field="converter.crf" aria-label="Constant rate factor" />
-          <p class="field-help">Lower is sharper and larger. 18 â‰ˆ visually lossless, 30 â‰ˆ compact.</p>
+          <p class="field-help">Lower is sharper and larger. 18 ≈ visually lossless, 30 ≈ compact.</p>
         </div>` : `
         <div class="field">
           <div class="field-head"><span class="field-label">Video bitrate</span><span class="field-value" data-live="bitrate">${conv.bitrate} kbps</span></div>
@@ -3437,7 +3437,7 @@ function converterPanes() {
       </div>
 
       <div class="switch-row">
-        <div class="switch-copy"><strong>Normalize loudness</strong><small>Target âˆ’16 LUFS for speech</small></div>
+        <div class="switch-copy"><strong>Normalize loudness</strong><small>Target −16 LUFS for speech</small></div>
         <button class="switch" role="switch" aria-checked="${conv.normalize}" aria-label="Normalize loudness" data-toggle="converter.normalize"></button>
       </div>
       <div class="switch-row">
@@ -3474,7 +3474,7 @@ function converterView() {
           <span class="drop-ico">${icon('cloud-upload')}</span>
           <div class="drop-copy">
             <div class="drop-title">Drop your media here</div>
-            <div class="drop-sub">Videos, audio and images Â· processed locally in your browser</div>
+            <div class="drop-sub">Videos, audio and images · processed locally in your browser</div>
             <div class="drop-formats">
               ${['MP4', 'WEBM', 'MOV', 'MKV', 'MP3', 'WAV', 'FLAC', 'PNG', 'JPG', 'WEBP', 'TXT', 'MD', 'JSON', 'CSV'].map((label) => `<span class="drop-format">${label}</span>`).join('')}
             </div>
@@ -3483,7 +3483,7 @@ function converterView() {
             <span class="drop-browse">${icon('folder-open')}Browse files</span>
             <button class="drop-demo" data-action="import-link" type="button">paste a link</button>
             <button class="drop-demo" data-action="load-demo" type="button">or try the batch</button>
-            <span class="drop-shortcut"><span class="kbd">âŒ˜</span><span class="kbd">O</span> to add</span>
+            <span class="drop-shortcut"><span class="kbd">⌘</span><span class="kbd">O</span> to add</span>
           </div>
         </div>
       </section>
@@ -3515,17 +3515,17 @@ function converterView() {
               <button class="btn btn-ghost btn-sm" data-action="queue-undo" ${state.queueUndo?.length ? '' : 'disabled'}>${icon('undo-2')}Undo</button>
               <button class="btn btn-ghost btn-sm" data-action="queue-redo" ${state.queueRedo?.length ? '' : 'disabled'}>${icon('repeat')}Redo</button>
             </div>
-            <p class="process-hint" id="conv-hint">${icon('cpu')}${state.premium ? 'Premium Â· every slot active' : 'Free Â· slots 4+ continue after the first three'}</p>
+            <p class="process-hint" id="conv-hint">${icon('cpu')}${state.premium ? 'Premium · every slot active' : 'Free · slots 4+ continue after the first three'}</p>
           </div>
         </div>
       </aside>
     </div>
     <div class="trust-row">
-      <span class="trust-item">${icon('shield-check')}<b>No uploads</b> Â· local WASM</span>
-      <span class="trust-item">${icon('cpu')}<b>Your hardware</b> Â· no cloud GPU</span>
+      <span class="trust-item">${icon('shield-check')}<b>No uploads</b> · local WASM</span>
+      <span class="trust-item">${icon('cpu')}<b>Your hardware</b> · no cloud GPU</span>
       <span class="trust-item">${icon('lock')}<b>Private by design</b></span>
       <span class="trust-spacer"></span>
-      <span class="trust-item trust-engine">ffmpeg.wasm Â· IndexedDB history</span>
+      <span class="trust-item trust-engine">ffmpeg.wasm · IndexedDB history</span>
     </div>`;
 }
 
@@ -3554,7 +3554,7 @@ function queueRow(item, index) {
     item.kind ? `<span>${item.kind}</span>` : '',
     `<span>${formatBytes(item.size)}</span>`,
     item.duration ? `<span>${formatDuration(item.duration)}</span>` : '',
-    item.width ? `<span>${item.width}Ã—${item.height}</span>` : '',
+    item.width ? `<span>${item.width}×${item.height}</span>` : '',
     ghost ? '<span class="faint">slot ' + (index + 1) + '</span>' : ''
   ].filter(Boolean).join('<span class="sep"></span>');
   return `
@@ -3625,8 +3625,8 @@ function renderQueue() {
       </div>
       ${hasQueue ? `
         <div class="queue-total">
-          <span>${stats.pending.length} waiting Â· ${doneCount} done${stats.failed.length ? ` Â· ${stats.failed.length} failed` : ''}</span>
-          <span class="mono">${formatBytes(stats.inputBytes)} in Â· ${formatBytes(stats.outputBytes)} out</span>
+          <span>${stats.pending.length} waiting · ${doneCount} done${stats.failed.length ? ` · ${stats.failed.length} failed` : ''}</span>
+          <span class="mono">${formatBytes(stats.inputBytes)} in · ${formatBytes(stats.outputBytes)} out</span>
         </div>` : ''}
     </div>`;
 }
@@ -3638,26 +3638,26 @@ function syncConverterChrome() {
   const failed = state.queue.filter((item) => item.status === 'error').length;
   const left = $('#conv-summary-left');
   if (left) {
-    if (state.queueRunning) left.textContent = `Processing Â· ${Math.max(0, queued)} left`;
-    else if (queued) left.textContent = `${queued} file${queued === 1 ? '' : 's'} ready${done ? ` Â· ${done} done` : ''}`;
-    else if (done) left.textContent = `${done} result${done === 1 ? '' : 's'} ready${failed ? ` Â· ${failed} failed` : ''}`;
+    if (state.queueRunning) left.textContent = `Processing · ${Math.max(0, queued)} left`;
+    else if (queued) left.textContent = `${queued} file${queued === 1 ? '' : 's'} ready${done ? ` · ${done} done` : ''}`;
+    else if (done) left.textContent = `${done} result${done === 1 ? '' : 's'} ready${failed ? ` · ${failed} failed` : ''}`;
     else left.textContent = 'Queue is empty';
   }
   const right = $('#conv-summary-right');
   if (right) {
     const estimate = estimateQueueSeconds();
-    right.textContent = estimate > 0 ? `~${formatDuration(estimate, false)} Â· ${state.converter.format === 'auto' ? 'AUTO' : FORMATS[state.converter.format].label}` : (state.converter.format === 'auto' ? 'AUTO' : FORMATS[state.converter.format].label);
+    right.textContent = estimate > 0 ? `~${formatDuration(estimate, false)} · ${state.converter.format === 'auto' ? 'AUTO' : FORMATS[state.converter.format].label}` : (state.converter.format === 'auto' ? 'AUTO' : FORMATS[state.converter.format].label);
   }
   const button = $('#conv-start');
   if (button) {
     button.disabled = !queued || state.queueRunning;
     button.classList.toggle('is-working', state.queueRunning);
     const label = button.querySelector('span');
-    if (label) label.textContent = state.queueRunning ? 'Processing locallyâ€¦' : queued ? `Process ${queued} file${queued === 1 ? '' : 's'}` : 'Add files to begin';
+    if (label) label.textContent = state.queueRunning ? 'Processing locally…' : queued ? `Process ${queued} file${queued === 1 ? '' : 's'}` : 'Add files to begin';
   }
   const hint = $('#conv-hint');
   if (hint) {
-    hint.innerHTML = `${icon('cpu')}Local processing Â· all slots run automatically Â· stays on this device`;
+    hint.innerHTML = `${icon('cpu')}Local processing · all slots run automatically · stays on this device`;
   }
   const startFill = $('#trim-fill-start');
   const endFill = $('#trim-fill-end');
@@ -4053,7 +4053,7 @@ function utilitiesView() {
   const data = state.utilities;
   const tab = data.tab || 'frames';
   return `
-    ${viewHead({ index: '09', kicker: 'Utilities', title: 'Small tools. <span class="accent">Big help.</span>', sub: 'Frames, spritesheets, text, audio, AI and dev helpers â€” all local.' })}
+    ${viewHead({ index: '09', kicker: 'Utilities', title: 'Small tools. <span class="accent">Big help.</span>', sub: 'Frames, spritesheets, text, audio, AI and dev helpers — all local.' })}
     <div class="util-tab-groups">
       <div class="util-tab-group">
         <span class="util-tab-group-label">Media</span>
@@ -4459,9 +4459,9 @@ async function utilHash() {
   let compareHtml = '';
   if (expected) {
     const match = expected === hex;
-    compareHtml = `<div style="margin-top:8px;padding:8px;border-radius:8px;background:${match ? 'rgba(16,185,129,.12)' : 'rgba(239,68,68,.12)'};color:${match ? '#10b981' : '#ef4444'};font-weight:600">${match ? 'âœ“ Match â€” hash matches the expected value.' : 'âœ— Mismatch â€” hash does not match.'}</div>`;
+    compareHtml = `<div style="margin-top:8px;padding:8px;border-radius:8px;background:${match ? 'rgba(16,185,129,.12)' : 'rgba(239,68,68,.12)'};color:${match ? '#10b981' : '#ef4444'};font-weight:600">${match ? '✓ Match — hash matches the expected value.' : '✗ Mismatch — hash does not match.'}</div>`;
   }
-  if (out) out.innerHTML = `<div class="mono" style="word-break:break-all;margin-top:8px">${hex}</div><p style="margin-top:6px">${esc(file.name)} Â· ${formatBytes(file.size)} Â· ${alg}</p>${compareHtml}<button class="btn btn-soft btn-sm" data-action="util-hash-copy" data-hash="${esc(hex)}" style="margin-top:8px">Copy hash</button>`;
+  if (out) out.innerHTML = `<div class="mono" style="word-break:break-all;margin-top:8px">${hex}</div><p style="margin-top:6px">${esc(file.name)} · ${formatBytes(file.size)} · ${alg}</p>${compareHtml}<button class="btn btn-soft btn-sm" data-action="util-hash-copy" data-hash="${esc(hex)}" style="margin-top:8px">Copy hash</button>`;
   toast('Hash computed', alg + ' ready.', 'success');
 }
 
@@ -4654,7 +4654,7 @@ async function utilSlicer() {
         const im = document.createElement('img');
         im.src = dataUrl; im.style.width = '64px'; im.style.height = '64px'; im.style.display = 'block';
         const a = document.createElement('a');
-        a.href = dataUrl; a.download = `frame-${String(n).padStart(3, '0')}.png`; a.textContent = 'â†“';
+        a.href = dataUrl; a.download = `frame-${String(n).padStart(3, '0')}.png`; a.textContent = '↓';
         a.className = 'btn btn-soft btn-sm';
         wrap.appendChild(im); wrap.appendChild(a);
         out.appendChild(wrap);
@@ -4669,7 +4669,7 @@ async function utilSlicer() {
   zipBtn.style.marginTop = '10px';
   zipBtn.onclick = async () => {
     // rebuild frames and zip
-    toast('Preparing ZIPâ€¦', 'Collecting frames.', 'info');
+    toast('Preparing ZIP…', 'Collecting frames.', 'info');
   };
   if (out) out.appendChild(zipBtn);
   toast('Sliced', n + ' frames.', 'success');
@@ -4678,7 +4678,7 @@ async function utilSlicer() {
 function utilVectorBody() {
   return `
     <div class="stage-card">
-      <div class="stage-head"><div class="stage-head-copy"><strong>Image vectorization</strong><span>Raster image â†’ SVG (Potrace)</span></div></div>
+      <div class="stage-head"><div class="stage-head-copy"><strong>Image vectorization</strong><span>Raster image → SVG (Potrace)</span></div></div>
       <div class="stage-body">
         <label class="btn btn-secondary btn-sm" for="util-vector-file">Choose image</label>
         <input id="util-vector-file" type="file" accept="image/*" data-util="vector-file" hidden />
@@ -4810,7 +4810,7 @@ async function utilWaveformLoad(file) {
   w.file = file;
   renderView();
   drawUtilWaveform();
-  toast('Loaded', file.name + ' Â· ' + audioBuf.duration.toFixed(2) + 's', 'success');
+  toast('Loaded', file.name + ' · ' + audioBuf.duration.toFixed(2) + 's', 'success');
 }
 
 function drawUtilWaveform() {
@@ -5304,7 +5304,7 @@ async function utilFileInfo() {
     if (kind === 'image') {
       try {
         const bmp = await createImageBitmap(file);
-        extra = `<p>Dimensions: ${bmp.width} Ã— ${bmp.height}</p>`;
+        extra = `<p>Dimensions: ${bmp.width} × ${bmp.height}</p>`;
         bmp.close?.();
       } catch {}
     }
@@ -5375,7 +5375,7 @@ async function utilOcr() {
 function devToolsView() {
   const tab = state.devTools?.tab || 'json';
   return `
-    ${viewHead({ index: '10', kicker: 'Developer tools', title: 'Dev <span class="accent">utilities.</span>', sub: 'JSON, base64, regex and hashing â€” all local.' })}
+    ${viewHead({ index: '10', kicker: 'Developer tools', title: 'Dev <span class="accent">utilities.</span>', sub: 'JSON, base64, regex and hashing — all local.' })}
     <div class="util-tabs segmented" role="tablist">
       ${['json','base64','regex','pii','mock','wc','clip'].map((t) => `<button data-action="dev-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${t === 'json' ? 'JSON' : t === 'base64' ? 'Base64' : t === 'regex' ? 'Regex' : t === 'pii' ? 'PII scrub' : t === 'mock' ? 'Mock data' : t === 'wc' ? 'WebCodecs' : 'Clipboard'}</button>`).join('')}
     </div>
@@ -5431,9 +5431,9 @@ function devRegexBody() {
 function devPiiBody() {
   return `
     <div class="stage-card">
-      <div class="stage-head"><div class="stage-head-copy"><strong>PII scrubber</strong><span>Detect and redact personal data in text â€” 100% local</span></div></div>
+      <div class="stage-head"><div class="stage-head-copy"><strong>PII scrubber</strong><span>Detect and redact personal data in text — 100% local</span></div></div>
       <div class="stage-body">
-        <textarea data-dev="pii-in" class="input" rows="8" placeholder="Paste text containing emails, phones, SSNs, credit cards, IPsâ€¦" style="width:100%"></textarea>
+        <textarea data-dev="pii-in" class="input" rows="8" placeholder="Paste text containing emails, phones, SSNs, credit cards, IPs…" style="width:100%"></textarea>
         <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <label><input type="checkbox" data-dev="pii-email" checked /> Email</label>
           <label><input type="checkbox" data-dev="pii-phone" checked /> Phone</label>
@@ -5899,7 +5899,7 @@ function piiScan() {
     if (!matches.length) matchesEl.textContent = 'No matches found.';
     else {
       const summary = Object.entries(counts).map(([t, c]) => `${t}: ${c}`).join(', ');
-      matchesEl.textContent = `${matches.length} match(es) â€” ${summary}\\n\\n` + matches.map((m) => `${m.type}: ${m.value}`).join('\\n');
+      matchesEl.textContent = `${matches.length} match(es) — ${summary}\\n\\n` + matches.map((m) => `${m.type}: ${m.value}`).join('\\n');
     }
   }
   // redact
@@ -6120,11 +6120,11 @@ const AI_IMAGE_FOLDER_KEY = 'NuVerter-ai-folder';
 const AI_IMAGE_MODELS = [
   { id: 'sd-turbo-tiny', label: 'SD-Turbo Tiny', kind: 'local', specs: '256 px' },
   { id: 'sd-turbo-balanced', label: 'SD-Turbo Balanced', kind: 'local', specs: '384 px' },
-  { id: 'sd-turbo', label: 'SD-Turbo', kind: 'local', specs: '512 px Â· 2.5 GB download Â· 4â€“6 GB RAM Â· WebGPU' },
-  { id: 'flux', label: 'FLUX', kind: 'online', specs: 'up to 1024 px Â· 0 GB download Â· 0 GB RAM Â· online' },
-  { id: 'gptimage', label: 'GPT Image', kind: 'online', specs: 'up to 1024 px Â· 0 GB download Â· 0 GB RAM Â· online' },
-  { id: 'sdxl', label: 'SDXL Turbo', kind: 'online', specs: 'up to 1024 px Â· 0 GB download Â· 0 GB RAM Â· online' },
-  { id: 'flux2', label: 'FLUX.2 Klein', kind: 'online', specs: 'up to 1024 px Â· 0 GB download Â· 0 GB RAM Â· online' }
+  { id: 'sd-turbo', label: 'SD-Turbo', kind: 'local', specs: '512 px · 2.5 GB download · 4–6 GB RAM · WebGPU' },
+  { id: 'flux', label: 'FLUX', kind: 'online', specs: 'up to 1024 px · 0 GB download · 0 GB RAM · online' },
+  { id: 'gptimage', label: 'GPT Image', kind: 'online', specs: 'up to 1024 px · 0 GB download · 0 GB RAM · online' },
+  { id: 'sdxl', label: 'SDXL Turbo', kind: 'online', specs: 'up to 1024 px · 0 GB download · 0 GB RAM · online' },
+  { id: 'flux2', label: 'FLUX.2 Klein', kind: 'online', specs: 'up to 1024 px · 0 GB download · 0 GB RAM · online' }
 ];
 
 async function getAiImageModule() {
@@ -6154,7 +6154,7 @@ function utilAiImageBody() {
   return `
     <div class="stage-card">
       <div class="stage-head">
-        <div class="stage-head-copy"><strong>AI Text â†’ Image</strong><span>Stable Diffusion Turbo on this device, plus two online models</span></div>
+        <div class="stage-head-copy"><strong>AI Text → Image</strong><span>Stable Diffusion Turbo on this device, plus two online models</span></div>
         <span class="pill is-amber">${icon('sparkles')}3 models</span>
       </div>
       <div class="stage-body">
@@ -6193,7 +6193,7 @@ function utilAiImageBody() {
           <p class="field-help">Pick the downloaded <span class="mono">sd-turbo-ort-web</span> folder. It needs <span class="mono">unet/model.onnx</span>, <span class="mono">text_encoder/model.onnx</span>, <span class="mono">vae_decoder/model.onnx</span> and the two tokenizer files.</p>
           <div class="ai-specs">
             <span>${icon('hard-drive')}2.5 GB on disk</span>
-            <span>${icon('zap')}4â€“6 GB RAM</span>
+            <span>${icon('zap')}4–6 GB RAM</span>
             <span>${icon('monitor')}WebGPU + f16</span>
           </div>
           <div class="ai-local-status" id="aiimg-status" data-tone="info" aria-live="polite">${esc(status)}</div>
@@ -6227,9 +6227,9 @@ function utilAiImageBody() {
         <div class="ai-image-actions">
           <div class="select-wrap ai-size-select">
             <select class="select" id="aiimg-size" aria-label="Image size">
-              <option value="512">512 Ã— 512</option>
-              <option value="768" ${model.startsWith('sd-turbo') ? 'disabled' : ''}>768 Ã— 768</option>
-              <option value="1024" ${model.startsWith('sd-turbo') ? 'disabled' : ''}>1024 Ã— 1024</option>
+              <option value="512">512 × 512</option>
+              <option value="768" ${model.startsWith('sd-turbo') ? 'disabled' : ''}>768 × 768</option>
+              <option value="1024" ${model.startsWith('sd-turbo') ? 'disabled' : ''}>1024 × 1024</option>
             </select>${icon('chevron-down')}
           </div>
           <button class="btn btn-primary" id="aiimg-generate" data-action="ai-image-generate">${icon('sparkles')}Generate</button>
@@ -6289,11 +6289,11 @@ async function loadAiImageFiles(files, label, handle) {
   aiImageLoading = true;
   aiImageEngine?.dispose?.();
   aiImageEngine = null;
-  setAiImageStatus('Reading model filesâ€¦');
+  setAiImageStatus('Reading model files…');
   try {
     aiImageEngine = await mod.createEngine(files, (stage) => {
       const pct = Math.round((stage.progress || 0) * 100);
-      setAiImageStatus((stage.label || 'Loading') + ' Â· ' + pct + '%');
+      setAiImageStatus((stage.label || 'Loading') + ' · ' + pct + '%');
     });
     setAiImageStatus('Model ready on this device.', 'ok');
     toast('Local model ready', 'SD-Turbo is compiled on the GPU. Generations never leave this tab.', 'success');
@@ -6322,11 +6322,11 @@ async function downloadAiImageModel() {
   const mod = await getAiImageModule();
   const spec = mod.LOCAL_MODEL_SPEC;
   const base = 'https://huggingface.co/schmuell/sd-turbo-ort-web/resolve/main/';
-  setAiImageStatus('Downloading model filesâ€¦');
+  setAiImageStatus('Downloading model files…');
   try {
     for (let i = 0; i < spec.files.length; i++) {
       const rel = spec.files[i];
-      setAiImageStatus('Downloading ' + rel + ' (' + (i + 1) + '/' + spec.files.length + ')â€¦');
+      setAiImageStatus('Downloading ' + rel + ' (' + (i + 1) + '/' + spec.files.length + ')…');
       const res = await fetch(base + rel, { mode: 'cors' });
       if (!res.ok) throw new Error('HTTP ' + res.status + ' for ' + rel);
       const parts = rel.split('/');
@@ -6338,7 +6338,7 @@ async function downloadAiImageModel() {
       const writable = await fileHandle.createWritable();
       await res.body.pipeTo(writable);
     }
-    setAiImageStatus('Download complete. Connecting folderâ€¦');
+    setAiImageStatus('Download complete. Connecting folder…');
     await adoptAiImageFolder(dirHandle, true);
   } catch (error) {
     setAiImageStatus(error?.message || 'Download failed.', 'error');
@@ -6361,7 +6361,7 @@ async function adoptAiImageFolder(handle, requestPermission) {
     toast('Folder not connected', 'Allow read access to the model folder and try again.', 'error');
     return;
   }
-  setAiImageStatus('Scanning folderâ€¦');
+  setAiImageStatus('Scanning folder…');
   const entries = await mod.readAllFiles(handle);
   const files = mod.resolveModelFiles(entries);
   await loadAiImageFiles(files, handle.name || 'Model folder', handle);
@@ -6458,11 +6458,11 @@ async function generateAiImage() {
 
   try {
     if (model.startsWith('sd-turbo')) {
-      if (out) out.innerHTML = `<div class="ai-image-loading">Preparing the local modelâ€¦</div>`;
+      if (out) out.innerHTML = `<div class="ai-image-loading">Preparing the local model…</div>`;
       const engine = await ensureAiImageReady();
       const imageData = await engine.generate(prompt, {
         onStage: (stage) => {
-          if (out) out.innerHTML = `<div class="ai-image-loading">${esc(stage)}â€¦</div>`;
+          if (out) out.innerHTML = `<div class="ai-image-loading">${esc(stage)}…</div>`;
         }
       });
       const canvas = document.createElement('canvas');
@@ -6474,10 +6474,10 @@ async function generateAiImage() {
         URL.createObjectURL(blob),
         'nuverter-' + model + '-' + Date.now() + '.png',
         prompt,
-        imageData.width + 'Ã—' + imageData.height + ' Â· SD-Turbo Â· generated locally'
+        imageData.width + '×' + imageData.height + ' · SD-Turbo · generated locally'
       );
     } else {
-      if (out) out.innerHTML = `<div class="ai-image-loading">Requesting ${esc(model)}â€¦</div>`;
+      if (out) out.innerHTML = `<div class="ai-image-loading">Requesting ${esc(model)}…</div>`;
       const seedInput = Number(document.getElementById('aiimg-seed')?.value || 0);
       const seed = seedInput > 0 ? seedInput : Math.floor(Math.random() * 1000000);
       const negative = (document.getElementById('aiimg-negative')?.value || '').trim();
@@ -6497,7 +6497,7 @@ async function generateAiImage() {
         URL.createObjectURL(blob),
         'nuverter-' + model + '-' + Date.now() + '.png',
         prompt,
-        size + 'Ã—' + size + ' Â· ' + model + ' Â· generated online'
+        size + '×' + size + ' · ' + model + ' · generated online'
       );
     }
     toast('Image ready', model.startsWith('sd-turbo') ? 'Generated on this device.' : 'Generated online.', 'success');
@@ -6522,7 +6522,7 @@ function utilAiBgBody() {
         <div class="field" style="margin-top:10px">
           <div class="field-head"><span class="field-label">Model</span></div>
           <div class="plan-options">
-            <button type="button" class="plan-option is-active" data-action="util-aibg-model" data-model="tiny"><span class="plan-radio"></span><strong>Tiny</strong><span>fast Â· ~50MB Â· Xenova/segformer-b0</span></button>
+            <button type="button" class="plan-option is-active" data-action="util-aibg-model" data-model="tiny"><span class="plan-radio"></span><strong>Tiny</strong><span>fast · ~50MB · Xenova/segformer-b0</span></button>
             <button type="button" class="plan-option" data-action="util-aibg-model" data-model="balanced"><span class="plan-radio"></span><strong>Balanced</strong><span>~100MB - 3GB RAM - Xenova/segformer-b2</span></button>
             <button type="button" class="plan-option" data-action="util-aibg-model" data-model="advanced"><span class="plan-radio"></span><strong>Advanced</strong><span>~200MB - 6GB RAM - Xenova/segformer-b4</span></button>
           </div>
@@ -6637,7 +6637,7 @@ function utilAiUpscaleBody() {
         <div class="field" style="margin-top:10px">
           <div class="field-head"><span class="field-label">Model</span></div>
           <div class="plan-options">
-            <button type="button" class="plan-option is-active" data-action="util-aiup-model" data-model="tiny"><span class="plan-radio"></span><strong>Tiny</strong><span>2x Â· fast Â· Xenova/swin2SR-lightweight-x2-64</span></button>
+            <button type="button" class="plan-option is-active" data-action="util-aiup-model" data-model="tiny"><span class="plan-radio"></span><strong>Tiny</strong><span>2x · fast · Xenova/swin2SR-lightweight-x2-64</span></button>
             <button type="button" class="plan-option" data-action="util-aiup-model" data-model="balanced"><span class="plan-radio"></span><strong>Balanced</strong><span>2x - ~100MB - Xenova/swin2SR-classical-sr-x2-64</span></button>
             <button type="button" class="plan-option" data-action="util-aiup-model" data-model="advanced"><span class="plan-radio"></span><strong>Advanced</strong><span>4x - ~200MB - Xenova/swin2SR-realworld-sr-x4-64</span></button>
           </div>
@@ -6833,7 +6833,7 @@ function utilAiModelsBody() {
           <div class="settings-item"><div class="settings-item-copy"><strong>CPU threads</strong><small>hardwareConcurrency</small></div><span class="mono">${esc(String(hw))}</span></div>
           <div class="settings-item"><div class="settings-item-copy"><strong>Device memory</strong><small>deviceMemory (approx)</small></div><span class="mono">${esc(String(mem))}</span></div>
           <div class="settings-item"><div class="settings-item-copy"><strong>WebGPU</strong><small>GPU acceleration</small></div><span class="mono">${esc(webgpu)}</span></div>
-          <div class="settings-item"><div class="settings-item-copy"><strong>Storage used</strong><small>Browser-managed caches</small></div><span class="mono" id="ai-models-storage">checkingâ€¦</span></div>
+          <div class="settings-item"><div class="settings-item-copy"><strong>Storage used</strong><small>Browser-managed caches</small></div><span class="mono" id="ai-models-storage">checking…</span></div>
         </div>
       </div>
     </div>
@@ -6841,13 +6841,13 @@ function utilAiModelsBody() {
       <div class="stage-head"><div class="stage-head-copy"><strong>Local models</strong><span>Known models and caches</span></div></div>
       <div class="stage-body">
         <div class="settings-list">
-          <div class="settings-item"><div class="settings-item-copy"><strong>AI image (sd-turbo)</strong><small>Folder: ${esc(state.aiImage.folderName || 'not selected')} Â· ~1-2 GB on disk</small></div>
+          <div class="settings-item"><div class="settings-item-copy"><strong>AI image (sd-turbo)</strong><small>Folder: ${esc(state.aiImage.folderName || 'not selected')} · ~1-2 GB on disk</small></div>
             <button class="btn btn-ghost btn-sm" data-action="ai-image-forget">Clear selection</button></div>
-          <div class="settings-item"><div class="settings-item-copy"><strong>Background removal</strong><small>Xenova/segformer-b0 (tiny) Â· cached by browser</small></div><span class="mono">auto</span></div>
-          <div class="settings-item"><div class="settings-item-copy"><strong>Upscaler</strong><small>Xenova/swin2SR (tiny) Â· cached by browser</small></div><span class="mono">auto</span></div>
-          <div class="settings-item"><div class="settings-item-copy"><strong>OCR</strong><small>tesseract.js Â· cached by browser</small></div><span class="mono">auto</span></div>
-          <div class="settings-item"><div class="settings-item-copy"><strong>Embeddings / TTS / Whisper</strong><small>Xenova transformers Â· cached by browser</small></div><span class="mono">auto</span></div>
-          <div class="settings-item"><div class="settings-item-copy"><strong>AI chat (WebLLM)</strong><small>Model: ${esc(state.aiChat.model || 'tiny')} Â· cached by browser</small></div><span class="mono">auto</span></div>
+          <div class="settings-item"><div class="settings-item-copy"><strong>Background removal</strong><small>Xenova/segformer-b0 (tiny) · cached by browser</small></div><span class="mono">auto</span></div>
+          <div class="settings-item"><div class="settings-item-copy"><strong>Upscaler</strong><small>Xenova/swin2SR (tiny) · cached by browser</small></div><span class="mono">auto</span></div>
+          <div class="settings-item"><div class="settings-item-copy"><strong>OCR</strong><small>tesseract.js · cached by browser</small></div><span class="mono">auto</span></div>
+          <div class="settings-item"><div class="settings-item-copy"><strong>Embeddings / TTS / Whisper</strong><small>Xenova transformers · cached by browser</small></div><span class="mono">auto</span></div>
+          <div class="settings-item"><div class="settings-item-copy"><strong>AI chat (WebLLM)</strong><small>Model: ${esc(state.aiChat.model || 'tiny')} · cached by browser</small></div><span class="mono">auto</span></div>
         </div>
         <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
           <button class="btn btn-danger btn-sm" data-action="ai-models-clear-cache">Clear all AI caches</button>
@@ -6896,7 +6896,7 @@ function utilDocSearchBody() {
         <button class="btn btn-ghost btn-sm" data-action="doc-clear" style="margin-left:6px">Clear</button>
         <div class="field" style="margin-top:10px">
           <div class="field-head"><span class="field-label">Search</span></div>
-          <input class="input" data-util="doc-query" value="${esc(q)}" placeholder="Search extracted textâ€¦" style="width:100%" />
+          <input class="input" data-util="doc-query" value="${esc(q)}" placeholder="Search extracted text…" style="width:100%" />
         </div>
         <button class="btn btn-secondary btn-sm" data-action="doc-search" style="margin-top:6px">Search</button>
         <div id="util-doc-out" class="util-out" style="margin-top:10px">
@@ -6917,7 +6917,7 @@ async function utilDocAdd() {
   const files = Array.from(document.querySelector('[data-util="doc-files"]')?.files || []);
   if (!files.length) { toast('No images', 'Choose images first.', 'error'); return; }
   const out = document.getElementById('util-doc-out');
-  if (out) out.innerHTML = 'OCR processingâ€¦';
+  if (out) out.innerHTML = 'OCR processing…';
   try {
     if (!window.__tesseract) window.__tesseract = await import('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js');
     const Tesseract = window.__tesseract;
@@ -6949,7 +6949,7 @@ function utilDocQaBody() {
     <div class="stage-card">
       <div class="stage-head"><div class="stage-head-copy"><strong>Document Q&amp;A</strong><span>Ask a local model about your indexed documents</span></div></div>
       <div class="stage-body">
-        <p class="field-help">${docs.length ? `${docs.length} document(s) indexed.` : 'No documents indexed yet â€” add some in the Doc Search tab first.'}</p>
+        <p class="field-help">${docs.length ? `${docs.length} document(s) indexed.` : 'No documents indexed yet — add some in the Doc Search tab first.'}</p>
         <div class="field">
           <div class="field-head"><span class="field-label">Model</span></div>
           <select data-util="docqa-model" class="select">
@@ -6958,7 +6958,7 @@ function utilDocQaBody() {
         </div>
         <div class="field">
           <div class="field-head"><span class="field-label">Question</span></div>
-          <textarea data-util="docqa-q" class="input" rows="3" placeholder="What does the document say aboutâ€¦?" style="width:100%"></textarea>
+          <textarea data-util="docqa-q" class="input" rows="3" placeholder="What does the document say about…?" style="width:100%"></textarea>
         </div>
         <button class="btn btn-primary btn-sm" data-action="docqa-ask" style="margin-top:10px">Ask local model</button>
         <strong style="display:block;margin-top:12px">Answer</strong>
@@ -6974,7 +6974,7 @@ async function utilDocQaAsk() {
   if (!q) { toast('No question', 'Enter a question.', 'error'); return; }
   const modelKey = document.querySelector('[data-util="docqa-model"]')?.value || 'tiny';
   const out = document.getElementById('docqa-out');
-  if (out) out.textContent = 'Loading model and generating answerâ€¦';
+  if (out) out.textContent = 'Loading model and generating answer…';
   try {
     const engine = await getAiChatEngine(modelKey);
     const context = docs.map((d, i) => `Document ${i + 1} (${d.name}):\n${(d.text || '').slice(0, 4000)}`).join('\n\n---\n\n');
@@ -6998,7 +6998,7 @@ function aiToolsView() {
   const tabs = ['aiimg','aibg','aiup','ocr','tts','emb','models','docs','docqa'];
   const labels = { aiimg:'AI Image', aibg:'AI BG', aiup:'AI Upscale', ocr:'OCR', tts:'TTS', emb:'Embeddings', models:'Models', docs:'Doc Search', docqa:'Doc Q&A' };
   return `
-    ${viewHead({ index: '11', kicker: 'AI tools', title: 'AI <span class="accent">utilities.</span>', sub: 'Image generation, background removal, upscaling, OCR, TTS and embeddings â€” local where it counts.' })}
+    ${viewHead({ index: '11', kicker: 'AI tools', title: 'AI <span class="accent">utilities.</span>', sub: 'Image generation, background removal, upscaling, OCR, TTS and embeddings — local where it counts.' })}
     <div class="util-tabs segmented" role="tablist">
       ${tabs.map((t) => `<button data-action="ai-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${labels[t]}</button>`).join('')}
     </div>
@@ -7023,9 +7023,9 @@ function aiToolsView() {
 function pdfToolsView() {
   const tab = state.pdfTools?.tab || 'merge';
   const tabs = ['merge','split','img2pdf','pdf2img','redact'];
-  const labels = { merge:'Merge', split:'Split', img2pdf:'Imagesâ†’PDF', pdf2img:'PDFâ†’Images', redact:'Redact' };
+  const labels = { merge:'Merge', split:'Split', img2pdf:'Images→PDF', pdf2img:'PDF→Images', redact:'Redact' };
   return `
-    ${viewHead({ index: '13', kicker: 'PDF tools', title: 'PDF <span class="accent">utilities.</span>', sub: 'Merge, split and convert PDFs â€” 100% local.' })}
+    ${viewHead({ index: '13', kicker: 'PDF tools', title: 'PDF <span class="accent">utilities.</span>', sub: 'Merge, split and convert PDFs — 100% local.' })}
     <div class="util-tabs segmented" role="tablist">
       ${tabs.map((t) => `<button data-action="pdf-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${labels[t]}</button>`).join('')}
     </div>
@@ -7080,7 +7080,7 @@ function pdfRedactBody() {
       <div class="stage-body">
         <input type="file" accept="application/pdf" data-util="pdf-redact-file" hidden id="pdf-redact-file" />
         <label class="btn btn-secondary btn-sm" for="pdf-redact-file">Choose PDF</label>
-        ${rd.file ? `<p style="margin-top:8px">${esc(rd.file.name)} Â· ${rd.numPages} page(s)</p>` : ''}
+        ${rd.file ? `<p style="margin-top:8px">${esc(rd.file.name)} · ${rd.numPages} page(s)</p>` : ''}
         <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
           <button class="btn btn-secondary btn-sm" data-action="pdf-redact-prev" ${rd.page > 1 ? '' : 'disabled'}>Prev</button>
           <span>Page ${rd.page} / ${rd.numPages || 1}</span>
@@ -7142,7 +7142,7 @@ async function pdfRedactExport() {
   const rd = state.pdfRedact;
   if (!rd.pdf) return;
   const out = document.getElementById('pdf-redact-out');
-  if (out) out.innerHTML = 'Exportingâ€¦';
+  if (out) out.innerHTML = 'Exporting…';
   try {
     const { PDFDocument } = await getPdfLib();
     const doc = await PDFDocument.create();
@@ -7336,8 +7336,8 @@ async function pdfPdf2Img() {
 function aiChatView() {
   const model = state.aiChat?.model || 'tiny';
   const tiers = [
-    { id: 'micro', label: 'Micro', model: 'SmolLM2-360M-Instruct-q4f16_1-MLC', size: '~0.4 GB', ram: '0.4 GB', note: 'Ultra-light Â· instant', tools: false, group: 'General' },
-    { id: 'tiny', label: 'Tiny', model: 'Llama-3.2-1B-Instruct-q4f16_1-MLC', size: '~0.9 GB', ram: '1 GB', note: 'Fast Â· stories & chat', tools: false, group: 'General' },
+    { id: 'micro', label: 'Micro', model: 'SmolLM2-360M-Instruct-q4f16_1-MLC', size: '~0.4 GB', ram: '0.4 GB', note: 'Ultra-light · instant', tools: false, group: 'General' },
+    { id: 'tiny', label: 'Tiny', model: 'Llama-3.2-1B-Instruct-q4f16_1-MLC', size: '~0.9 GB', ram: '1 GB', note: 'Fast · stories & chat', tools: false, group: 'General' },
     { id: 'balanced', label: 'Balanced', model: 'Llama-3.2-3B-Instruct-q4f16_1-MLC', size: '~2.3 GB', ram: '3 GB', note: 'Better reasoning', tools: false, group: 'General' },
     { id: 'big', label: 'Big', model: 'Phi-3.5-mini-instruct-q4f16_1-MLC', size: '~3.7 GB', ram: '4 GB', note: 'Deep reasoning', tools: false, group: 'General' },
     { id: 'code-tiny', label: 'Code Tiny', model: 'Qwen2.5-Coder-0.5B-Instruct-q4f16_1-MLC', size: '~0.9 GB', ram: '1 GB', note: 'Efficient coding', tools: false, group: 'Coding' },
@@ -7346,9 +7346,9 @@ function aiChatView() {
     { id: 'vision', label: 'Vision', model: 'Phi-3.5-vision-instruct-q4f16_1-MLC', size: '~3.7 GB', ram: '4 GB', note: 'Image understanding (multi-frame)', tools: false, group: 'Vision & Media' },
     { id: 'gemma', label: 'Gemma 2B', model: 'gemma-2-2b-it-q4f16_1-MLC', size: '~1.9 GB', ram: '2 GB', note: 'Google Gemma', tools: false, group: 'Large' },
     { id: 'mistral', label: 'Mistral 7B', model: 'Mistral-7B-Instruct-v0.3-q4f16_1-MLC', size: '~4.6 GB', ram: '5 GB', note: 'Mistral instruct', tools: false, group: 'Large' },
-    { id: 'uncensored-tiny', label: 'Uncensored Tiny', model: 'Hermes-3-Llama-3.2-3B-q4f16_1-MLC', size: '2.0 GB', ram: '2.3 GB', note: 'Smallest real uncensored Â· Llama-3.2-3B', tools: false, group: 'Uncensored' },
-    { id: 'uncensored-balanced', label: 'Uncensored Balanced', model: 'Hermes-2-Pro-Mistral-7B-q4f16_1-MLC', size: '4.0 GB', ram: '4.0 GB', note: 'Less aligned Â· Mistral 7B', tools: true, group: 'Uncensored' },
-    { id: 'uncensored-big', label: 'Uncensored Big', model: 'Hermes-3-Llama-3.1-8B-q4f16_1-MLC', size: '4.8 GB', ram: '4.9 GB', note: 'Less aligned Â· Llama-3.1-8B', tools: true, group: 'Uncensored' },
+    { id: 'uncensored-tiny', label: 'Uncensored Tiny', model: 'Hermes-3-Llama-3.2-3B-q4f16_1-MLC', size: '2.0 GB', ram: '2.3 GB', note: 'Smallest real uncensored · Llama-3.2-3B', tools: false, group: 'Uncensored' },
+    { id: 'uncensored-balanced', label: 'Uncensored Balanced', model: 'Hermes-2-Pro-Mistral-7B-q4f16_1-MLC', size: '4.0 GB', ram: '4.0 GB', note: 'Less aligned · Mistral 7B', tools: true, group: 'Uncensored' },
+    { id: 'uncensored-big', label: 'Uncensored Big', model: 'Hermes-3-Llama-3.1-8B-q4f16_1-MLC', size: '4.8 GB', ram: '4.9 GB', note: 'Less aligned · Llama-3.1-8B', tools: true, group: 'Uncensored' },
   ];
   const msgs = (state.aiChat?.messages || []).map((m) =>
     '<div class="aichat-row ' + (m.role === 'user' ? 'is-user' : 'is-bot') + '"><div class="aichat-bubble">' +
@@ -7377,7 +7377,7 @@ function aiChatView() {
               });
               return groups.map((g) => '<div class="aichat-group-label">' + esc(g) + '</div>' +
                 tiers.filter((t) => (t.group || 'Other') === g).map((t) =>
-                  '<button type="button" class="aichat-model' + (model === t.id ? ' is-active' : '') + '" data-action="ai-chat-model" data-model="' + t.id + '"><strong>' + esc(t.label) + '</strong><small>' + esc(t.size) + ' Â· ' + esc(t.ram) + '</small><small class="mono">' + esc(t.model) + '</small><small>' + esc(t.note) + (t.tools ? ' Â· tools' : '') + '</small></button>'
+                  '<button type="button" class="aichat-model' + (model === t.id ? ' is-active' : '') + '" data-action="ai-chat-model" data-model="' + t.id + '"><strong>' + esc(t.label) + '</strong><small>' + esc(t.size) + ' · ' + esc(t.ram) + '</small><small class="mono">' + esc(t.model) + '</small><small>' + esc(t.note) + (t.tools ? ' · tools' : '') + '</small></button>'
                 ).join('')
               ).join('');
             })()}
@@ -7386,7 +7386,7 @@ function aiChatView() {
         <button class="btn btn-ghost btn-sm" data-action="ai-chat-clear" style="margin-top:10px;width:100%">Clear chat</button>
         <button class="btn btn-ghost btn-sm" data-action="ai-chat-toggle-search" style="width:100%">Web search: ${state.aiChat?.webSearch ? 'On' : 'Off'}</button>
         <button class="btn btn-ghost btn-sm" data-action="ai-chat-toggle-debug" style="width:100%">Debug: ${state.aiChat?.debug ? 'On' : 'Off'}</button>
-        ${state.aiChat?.busy ? '<div class="aichat-empty" style="margin-top:8px">Loading model / generatingâ€¦</div>' : ''}
+        ${state.aiChat?.busy ? '<div class="aichat-empty" style="margin-top:8px">Loading model / generating…</div>' : ''}
       </aside>
       <section class="aichat-main">
         <div class="aichat-log" id="ai-chat-log">${msgs || '<div class="aichat-empty">' + aiEmptyState('No messages yet', 'Say hello, or ask for a story.', 'sparkles') + '</div>'}</div>
@@ -7394,7 +7394,7 @@ function aiChatView() {
         <div class="aichat-input">
           <button class="btn btn-ghost btn-sm" data-action="ai-chat-attach-image" title="Attach image (Vision model)">${icon('image')}</button>
           <input type="file" id="ai-chat-image-input" accept="image/*" hidden />
-          <textarea id="ai-chat-input" class="input aichat-textarea" rows="1" placeholder="Ask something, attach an image, or ask for a storyâ€¦"></textarea>
+          <textarea id="ai-chat-input" class="input aichat-textarea" rows="1" placeholder="Ask something, attach an image, or ask for a story…"></textarea>
           <button class="btn btn-primary" data-action="ai-chat-send" ${busy}>${icon('arrow-up')}</button>
         </div>
       </section>
@@ -7938,13 +7938,13 @@ function imageEditorView() {
                <button class="btn btn-ghost btn-sm" data-action="ie-inpaint-clear" ${source ? '' : 'disabled'}>Clear mask</button>
              </div>
              <details style="margin-top:8px">
-               <summary style="cursor:pointer;font-size:12px">AI inpaint (ONNX) â€” optional model</summary>
+               <summary style="cursor:pointer;font-size:12px">AI inpaint (ONNX) — optional model</summary>
                <div class="field" style="margin-top:6px">
                  <div class="field-head"><span class="field-label">Model URL (.onnx)</span></div>
                  <select class="select" data-ie-onnx="preset" style="width:100%;margin-bottom:6px">
-                    <option value="generic-256" ${data.onnxPreset === 'generic-256' ? 'selected' : ''}>Generic 256Ã—256 (current)</option>
-                    <option value="lama-256" ${data.onnxPreset === 'lama-256' ? 'selected' : ''}>LaMa 256 (0â€“1 RGB, mask 0/1)</option>
-                    <option value="lama-512" ${data.onnxPreset === 'lama-512' ? 'selected' : ''}>LaMa 512 (0â€“1 RGB, mask 0/1)</option>
+                    <option value="generic-256" ${data.onnxPreset === 'generic-256' ? 'selected' : ''}>Generic 256×256 (current)</option>
+                    <option value="lama-256" ${data.onnxPreset === 'lama-256' ? 'selected' : ''}>LaMa 256 (0–1 RGB, mask 0/1)</option>
+                    <option value="lama-512" ${data.onnxPreset === 'lama-512' ? 'selected' : ''}>LaMa 512 (0–1 RGB, mask 0/1)</option>
                   </select>
                   <input type="text" class="input" style="width:100%" placeholder="https://.../lama.onnx" value="${esc(data.onnxModelUrl || '')}" data-ie-onnx="url" />
                </div>
@@ -8274,7 +8274,7 @@ async function imageEditorOnnxInpaintApply() {
   if (onnxProgress) { onnxProgress.hidden = false; const fill = onnxProgress.querySelector('.progress > span'); if (fill) fill.style.width = '0%'; const pct = onnxProgress.querySelector('.pct'); if (pct) pct.textContent = '0%'; }
   const presetSize = preset === 'lama-512' ? 512 : 256;
   const SIZE = presetSize;
-  toast('Loading model', `Fetching ONNX runtime and model (${preset}, ${SIZE}Ã—${SIZE})â€¦`, 'info');
+  toast('Loading model', `Fetching ONNX runtime and model (${preset}, ${SIZE}×${SIZE})…`, 'info');
   try {
     if (!window.ort) {
       window.ort = await import('https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.0/dist/ort.min.mjs').catch(async () => {
@@ -8376,7 +8376,7 @@ async function imageEditorOnnxInpaintApply() {
     for (let ty = 0; ty < h; ty += step) {
       for (let tx = 0; tx < w; tx += step) {
         tileCount++;
-        toast('AI inpaint', `Processing tile ${tileCount}/${totalTiles}â€¦`, 'info');
+        toast('AI inpaint', `Processing tile ${tileCount}/${totalTiles}…`, 'info');
         if (onnxProgress) {
           const p = Math.round((tileCount / totalTiles) * 100);
           const fill = onnxProgress.querySelector('.progress > span');
@@ -8655,7 +8655,7 @@ function videoEditorView() {
       </section>
       <section class="area-queue">
         <div class="stage-card">
-          <div class="stage-head"><div class="stage-head-copy"><strong>Timeline</strong><span>Multi-track Â· drag clips Â· click to scrub</span></div></div>
+          <div class="stage-head"><div class="stage-head-copy"><strong>Timeline</strong><span>Multi-track · drag clips · click to scrub</span></div></div>
           <div class="stage-body" style="padding:8px">
             <div id="ve-timeline" style="position:relative;height:90px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer">
               <div id="ve-timeline-ruler" style="position:absolute;top:0;left:0;right:0;height:18px;background:var(--surface-3);border-bottom:1px solid var(--border);font-size:10px;color:var(--text-3)"></div>
@@ -8681,7 +8681,7 @@ function videoEditorView() {
               ${(data.audioKf||[]).map((k,ki) => `<div style="display:flex;gap:6px;align-items:center">
                 <span class="mono">${((k.t/100)*(data.source?.duration||0)).toFixed(2)}s</span>
                 <span>${k.volume}%</span>
-                <button class="btn btn-ghost btn-sm" data-action="ve-del-vol-kf" data-kf="${ki}" style="margin-left:auto">âœ•</button>
+                <button class="btn btn-ghost btn-sm" data-action="ve-del-vol-kf" data-kf="${ki}" style="margin-left:auto">✕</button>
               </div>`).join('')}
             </div>` : ''}
           </div>
@@ -8710,10 +8710,10 @@ function videoEditorView() {
             <div class="field">
               <div class="field-head"><span class="field-label">Speed</span></div>
               <select data-ve="speed" class="select">
-                <option value="0.5" ${data.speed === '0.5' ? 'selected' : ''}>0.5Ã—</option>
-                <option value="1" ${data.speed === '1' ? 'selected' : ''}>1Ã—</option>
-                <option value="1.5" ${data.speed === '1.5' ? 'selected' : ''}>1.5Ã—</option>
-                <option value="2" ${data.speed === '2' ? 'selected' : ''}>2Ã—</option>
+                <option value="0.5" ${data.speed === '0.5' ? 'selected' : ''}>0.5×</option>
+                <option value="1" ${data.speed === '1' ? 'selected' : ''}>1×</option>
+                <option value="1.5" ${data.speed === '1.5' ? 'selected' : ''}>1.5×</option>
+                <option value="2" ${data.speed === '2' ? 'selected' : ''}>2×</option>
               </select>
             </div>
             <div class="field">
@@ -9063,8 +9063,8 @@ function renderVideoOverlays() {
     <div class="stage-card" style="margin-bottom:8px;padding:8px">
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
         <strong style="font-size:12px">Layer ${i + 1}</strong>
-        <button class="btn btn-ghost btn-sm" data-action="ve-move-overlay" data-idx="${i}" data-dir="up" title="Move up">â†‘</button>
-         <button class="btn btn-ghost btn-sm" data-action="ve-move-overlay" data-idx="${i}" data-dir="down" title="Move down">â†“</button>
+        <button class="btn btn-ghost btn-sm" data-action="ve-move-overlay" data-idx="${i}" data-dir="up" title="Move up">↑</button>
+         <button class="btn btn-ghost btn-sm" data-action="ve-move-overlay" data-idx="${i}" data-dir="down" title="Move down">↓</button>
          <button class="btn btn-ghost btn-sm" data-action="ve-split-overlay" data-idx="${i}" title="Split at playhead">Split</button>
          <button class="btn btn-ghost btn-sm" data-action="ve-remove-overlay" data-idx="${i}" style="margin-left:auto">${icon('trash-2')}</button>
       </div>
@@ -9100,7 +9100,7 @@ function renderVideoOverlays() {
             <option value="ease-out" ${k.easing==='ease-out'?'selected':''}>Ease out</option>
             <option value="ease-in-out" ${k.easing==='ease-in-out'?'selected':''}>Ease in/out</option>
           </select>
-          <button class="btn btn-ghost btn-sm" data-action="ve-del-kf" data-idx="${i}" data-kf="${ki}" style="margin-left:auto">âœ•</button>
+          <button class="btn btn-ghost btn-sm" data-action="ve-del-kf" data-idx="${i}" data-kf="${ki}" style="margin-left:auto">✕</button>
         </div>`).join('')}
       </div>` : ''}
     </div>`).join('');
@@ -9216,8 +9216,8 @@ function reframeView() {
               <input type="range" min="0" max="100" step="1" value="${data.manualX}" data-field="reframe.manualX" />
             </div>` : ''}
             <button class="btn btn-secondary btn-sm" data-action="rf-analyze" ${source ? '' : 'disabled'} style="margin-top:10px">Analyze subject</button>
-            ${data.cropW ? `<p class="field-help" style="margin-top:6px">Crop: ${data.cropW}Ã—${data.cropH} at x=${data.cropX}</p>` : ''}
-            ${data._tracking ? `<p class="field-help" style="margin-top:2px">Tracking: ${data._tracking.method} Â· centroid (${data._tracking.centroid.x},${data._tracking.centroid.y}) Â· ${data._tracking.frames} frames</p>` : ''}
+            ${data.cropW ? `<p class="field-help" style="margin-top:6px">Crop: ${data.cropW}×${data.cropH} at x=${data.cropX}</p>` : ''}
+            ${data._tracking ? `<p class="field-help" style="margin-top:2px">Tracking: ${data._tracking.method} · centroid (${data._tracking.centroid.x},${data._tracking.centroid.y}) · ${data._tracking.frames} frames</p>` : ''}
           </div>
         </div>
       </section>
@@ -9515,7 +9515,7 @@ function workflowView() {
             <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
               <div style="font-weight:600;font-size:12px;margin-bottom:6px">Node inspector</div>
               <select id="wf-sel-node" class="select" style="width:100%">
-                <option value="">Select a node…</option>
+                <option value="">Select a node�</option>
                 ${data.nodes.map((n) => `<option value="${esc(n.id)}" ${data.selectedNodeId === n.id ? 'selected' : ''}>${esc(WF_NODE_LABELS[n.type] || n.type)} (${esc(n.id)})</option>`).join('')}
               </select>
               ${workflowNodeInspector(data)}
@@ -9524,7 +9524,7 @@ function workflowView() {
               </div>
               ${data.edges.length ? `<div style="margin-top:10px"><strong style="font-size:11px">Connections</strong>
                 ${data.edges.map((e, i) => `<div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;margin-top:4px">
-                  <span>${esc(e.from)} → ${esc(e.to)}</span>
+                  <span>${esc(e.from)} ? ${esc(e.to)}</span>
                   <button class="icon-btn is-sm is-danger" data-action="wf-delete-edge" data-edge="${i}" title="Remove connection">${icon('x')}</button>
                 </div>`).join('')}</div>` : ''}
             </div>
@@ -9533,7 +9533,7 @@ function workflowView() {
       </section>
       <section class="area-queue" style="min-height:420px">
         <div class="stage-card" style="height:100%">
-          <div class="stage-head"><div class="stage-head-copy"><strong>Canvas</strong><span>Drag nodes Â· click output port then input port to connect</span></div></div>
+          <div class="stage-head"><div class="stage-head-copy"><strong>Canvas</strong><span>Drag nodes · click output port then input port to connect</span></div></div>
           <div class="stage-body" style="padding:0">
             <div id="wf-canvas" style="position:relative;width:100%;height:420px;overflow:hidden;background:var(--surface-2);border-radius:8px;cursor:grab;touch-action:none">
               <svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none" id="wf-svg">
@@ -9543,9 +9543,9 @@ function workflowView() {
               ${data.nodes.map((n) => `
                 <div class="wf-node" data-node="${n.id}" style="position:absolute;left:${n.x}px;top:${n.y}px;width:150px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 8px;user-select:none;cursor:move;touch-action:none">
                   <div style="font-weight:600;font-size:12px">${WF_NODE_LABELS[n.type] || n.type}</div>
-                  <div style="font-size:10px;color:var(--text-3);margin-top:2px">${esc(n.status || 'idle')}${n.error ? ' Â· ' + esc(n.error) : ''}</div>
-                  ${(WF_NODE_IO[n.type] || {}).in ? `<div class="wf-port wf-port-in" data-port-in="${n.id}" style="position:absolute;left:-6px;top:20px;width:12px;height:12px;border-radius:50%;background:var(--border);border:2px solid var(--surface);cursor:pointer"></div>` : ''}
-                  ${(WF_NODE_IO[n.type] || {}).out ? `<div class="wf-port wf-port-out" data-port-out="${n.id}" style="position:absolute;right:-6px;top:20px;width:12px;height:12px;border-radius:50%;background:var(--accent);border:2px solid var(--surface);cursor:pointer"></div>` : ''}
+                  <div style="font-size:10px;color:var(--text-3);margin-top:2px">${esc(n.status || 'idle')}${n.error ? ' · ' + esc(n.error) : ''}</div>
+                  ${(WF_NODE_IO[n.type] || {}).in ? `<div class="wf-port wf-port-in" data-port-in="${n.id}" style="position:absolute;left:-9px;top:17px;width:18px;height:18px;border-radius:50%;background:var(--border);border:2px solid var(--surface);cursor:pointer;touch-action:none"></div>` : ''}
+                  ${(WF_NODE_IO[n.type] || {}).out ? `<div class="wf-port wf-port-out" data-port-out="${n.id}" style="position:absolute;right:-9px;top:17px;width:18px;height:18px;border-radius:50%;background:var(--accent);border:2px solid var(--surface);cursor:pointer;touch-action:none"></div>` : ''}
                 </div>`).join('')}
             </div>
           </div>
@@ -9708,25 +9708,19 @@ function bindWorkflow() {
   let draggingNode = null;
   let offset = { x: 0, y: 0 };
   canvas.addEventListener('pointerdown', (e) => {
-    const nodeEl = e.target.closest('.wf-node');
-    if (nodeEl) {
-      const id = nodeEl.dataset.node;
-      const node = state.workflow.nodes.find((n) => n.id === id);
-      if (!node) return;
-      draggingNode = node;
-      const rect = canvas.getBoundingClientRect();
-      offset = { x: e.clientX - rect.left - node.x, y: e.clientY - rect.top - node.y };
-      try { canvas.setPointerCapture(e.pointerId); } catch {}
-      return;
-    }
-    // port connections
+    // Ports are children of nodes, so they must be checked before starting a drag.
     const outPort = e.target.closest('[data-port-out]');
     if (outPort) {
       state.workflow.connectFrom = outPort.dataset.portOut;
+      toast('Port selected', 'Now tap the input port of another node.', 'info');
       return;
     }
     const inPort = e.target.closest('[data-port-in]');
-    if (inPort && state.workflow.connectFrom) {
+    if (inPort) {
+      if (!state.workflow.connectFrom) {
+        toast('Pick an output first', 'Tap a colored output port, then an input port.', 'info');
+        return;
+      }
       const from = state.workflow.connectFrom;
       const to = inPort.dataset.portIn;
       const fromNode = state.workflow.nodes.find((n) => n.id === from);
@@ -9738,11 +9732,24 @@ function bindWorkflow() {
         state.workflow.connectFrom = null;
         return;
       }
-      if (from !== to && !state.workflow.edges.some((e) => e.from === from && e.to === to)) {
+      if (from !== to && !state.workflow.edges.some((edge) => edge.from === from && edge.to === to)) {
         state.workflow.edges.push({ from, to });
       }
       state.workflow.connectFrom = null;
       renderView();
+      return;
+    }
+    // Drag a node (works with mouse, pen and touch via pointer events).
+    const nodeEl = e.target.closest('.wf-node');
+    if (nodeEl) {
+      const id = nodeEl.dataset.node;
+      const node = state.workflow.nodes.find((n) => n.id === id);
+      if (!node) return;
+      draggingNode = node;
+      const rect = canvas.getBoundingClientRect();
+      offset = { x: e.clientX - rect.left - node.x, y: e.clientY - rect.top - node.y };
+      try { canvas.setPointerCapture(e.pointerId); } catch {}
+      e.preventDefault();
     }
   });
   canvas.addEventListener('pointermove', (e) => {
@@ -9770,7 +9777,11 @@ function bindWorkflow() {
       Array.from(frag.documentElement.childNodes).forEach((c) => svg.appendChild(document.importNode(c, true)));
     }
   });
-  canvas.addEventListener('pointerup', () => { draggingNode = null; });
+  canvas.addEventListener('pointerup', (e) => {
+    draggingNode = null;
+    if (canvas.hasPointerCapture?.(e.pointerId)) { try { canvas.releasePointerCapture(e.pointerId); } catch {} }
+  });
+  canvas.addEventListener('pointercancel', () => { draggingNode = null; });
   // node selection
   const sel = document.getElementById('wf-sel-node');
   if (sel) {
@@ -9907,7 +9918,7 @@ function stageMeta(source, extra = '') {
       <span class="kind">${icon(kindIcon)}${source.kind}</span>
       <span>${formatBytes(source.size)}</span>
       ${source.duration ? `<span>${formatDuration(source.duration)}</span>` : ''}
-      ${source.width ? `<span>${source.width}Ã—${source.height}</span>` : ''}
+      ${source.width ? `<span>${source.width}×${source.height}</span>` : ''}
       <span class="stage-meta-right">${extra}<span class="mono">${esc(extOf(source.name).toUpperCase() || 'FILE')}</span></span>
     </div>`;
 }
@@ -9942,14 +9953,14 @@ function resultCard(record, { source = null, tool = '', bars = false, extra = ''
   const saved = source?.size ? Math.round((1 - record.size / source.size) * 100) : 0;
   const sourceSize = source?.size || record.sourceSize || 0;
   const max = Math.max(record.size, sourceSize, 1);
-  const dims = record.meta?.width && record.meta?.height ? `${record.meta.width}Ã—${record.meta.height}` : '';
+  const dims = record.meta?.width && record.meta?.height ? `${record.meta.width}×${record.meta.height}` : '';
   return `
     <div class="result-card">
       <div class="result-head">
         <span class="result-check">${icon('check')}</span>
         <div class="result-title">
           <strong>Result ready</strong>
-          <span>${formatBytes(record.size)} Â· saved to session history</span>
+          <span>${formatBytes(record.size)} · saved to session history</span>
         </div>
         <div class="result-actions">
           <button class="btn btn-secondary btn-sm" data-action="preview-record" data-id="${esc(record.id)}">${icon('eye')}<span>Preview</span></button>
@@ -9987,7 +9998,7 @@ function toolRunButton(tool, label) {
   const disabled = !data.source || data.busy;
   return `
     <button class="btn btn-primary" data-action="run-${tool}" ${disabled ? 'disabled' : ''}>
-      ${icon(data.busy ? 'loader-circle' : 'play', data.busy ? 'spin' : '')}<span>${data.busy ? 'Working locallyâ€¦' : label}</span>
+      ${icon(data.busy ? 'loader-circle' : 'play', data.busy ? 'spin' : '')}<span>${data.busy ? 'Working locally…' : label}</span>
     </button>`;
 }
 
@@ -10050,7 +10061,7 @@ function compressorView() {
         <p class="field-help">Calculated from the source duration. Very small targets lower the bitrate a lot.</p>
       </div>` : `
       <div class="field">
-        <div class="field-head"><span class="field-label">${icon('gauge')}Quality</span><span class="field-value">â‰ˆ${Math.round(compressorFactor(s.quality) * 100)}% of source</span></div>
+        <div class="field-head"><span class="field-label">${icon('gauge')}Quality</span><span class="field-value">≈${Math.round(compressorFactor(s.quality) * 100)}% of source</span></div>
         <div class="quality-grid">
           ${Object.entries(QUALITY).map(([key, preset]) => `
             <button class="quality-btn${s.quality === key ? ' is-active' : ''}" data-action="compressor-quality" data-quality="${key}">
@@ -10060,7 +10071,7 @@ function compressorView() {
         <p class="field-help">The output bitrate is capped below the source, so the compressed file stays smaller than the original.</p>
       </div>`}
     <div class="field">
-      <div class="field-head"><span class="field-label">Container</span><span class="field-value">${s.format === 'webm' ? 'VP8 Â· WebM' : 'H.264 Â· MP4'}</span></div>
+      <div class="field-head"><span class="field-label">Container</span><span class="field-value">${s.format === 'webm' ? 'VP8 · WebM' : 'H.264 · MP4'}</span></div>
       <div class="segmented" role="group" aria-label="Output container">
         <button data-action="compressor-format" data-format="mp4" class="${s.format === 'mp4' ? 'is-active' : ''}">MP4</button>
         <button data-action="compressor-format" data-format="webm" class="${s.format === 'webm' ? 'is-active' : ''}">WEBM</button>
@@ -10090,7 +10101,7 @@ function compressorView() {
       <button class="switch" role="switch" aria-checked="${s.mute}" aria-label="Remove audio" data-toggle="compressor.settings.mute"></button>
     </div>
     <div class="field">
-      <div class="field-head"><span class="field-label">Estimated output size</span><span class="field-value">${source ? formatBytes(Math.round(source.size * (s.mode === 'size' ? (s.targetMB * 1024 * 1024 / Math.max(1, source.size)) : compressorFactor(s.quality)))) : 'â€”'}</span></div>
+      <div class="field-head"><span class="field-label">Estimated output size</span><span class="field-value">${source ? formatBytes(Math.round(source.size * (s.mode === 'size' ? (s.targetMB * 1024 * 1024 / Math.max(1, source.size)) : compressorFactor(s.quality)))) : '—'}</span></div>
       <p class="field-help">Approximate. Actual size depends on content.</p>
     </div>`;
 
@@ -10108,7 +10119,7 @@ function compressorView() {
           title: 'Source video',
           subtitle: source ? source.name : 'Nothing loaded yet',
           actions: source ? `<button class="btn btn-secondary btn-sm" data-action="reset-tool" data-tool="compressor">${icon('x')}<span>Clear</span></button>` : '',
-          body: source ? sourcePreview(source) : sourceDrop({ tool: 'compressor', accept: ['MP4', 'WEBM', 'MOV', 'MKV', 'AVI'], title: 'Drop a video to compress', hint: 'Click to browse Â· the file never leaves your device', iconName: 'minimize-2' }),
+          body: source ? sourcePreview(source) : sourceDrop({ tool: 'compressor', accept: ['MP4', 'WEBM', 'MOV', 'MKV', 'AVI'], title: 'Drop a video to compress', hint: 'Click to browse · the file never leaves your device', iconName: 'minimize-2' }),
           meta: stageMeta(source, source ? `<span>${QUALITY[s.quality]?.label || 'Balanced'}</span>` : '')
         })}
         ${resultCard(data.result, { source, tool: 'compressor', bars: true })}
@@ -10121,7 +10132,7 @@ function compressorView() {
           body,
           runLabel: 'Compress video',
           summaryLeft: source ? (s.mute ? 'Video only' : 'Video + audio') : 'Add a video first',
-          summaryRight: s.mode === 'size' ? `â‰ˆ ${s.targetMB} MB` : `â‰ˆ${Math.round(compressorFactor(s.quality) * 100)}% bitrate Â· ${s.resolution === 'source' ? 'source' : s.resolution + 'p'}`
+          summaryRight: s.mode === 'size' ? `≈ ${s.targetMB} MB` : `≈${Math.round(compressorFactor(s.quality) * 100)}% bitrate · ${s.resolution === 'source' ? 'source' : s.resolution + 'p'}`
         })}
       </aside>
     </div>`;
@@ -10177,7 +10188,7 @@ function cropperView() {
           </div>` : ''}
         <div class="crop-box" id="crop-box" style="left:${crop.x * 100}%;top:${crop.y * 100}%;width:${crop.w * 100}%;height:${crop.h * 100}%">
           ${cropHandles()}
-          <span class="crop-size-tag" id="crop-size-tag">${pixelW}Ã—${pixelH}</span>
+          <span class="crop-size-tag" id="crop-size-tag">${pixelW}×${pixelH}</span>
           ${showGrid ? `<div style="position:absolute;inset:0;pointer-events:none">
             <div style="position:absolute;left:33.33%;top:0;bottom:0;width:1px;background:rgba(255,255,255,0.5)"></div>
             <div style="position:absolute;left:66.66%;top:0;bottom:0;width:1px;background:rgba(255,255,255,0.5)"></div>
@@ -10197,11 +10208,11 @@ function cropperView() {
       <button class="btn btn-ghost btn-sm" data-action="toggle-crop-grid">${icon('layout-grid')}<span>Grid</span></button>
       <button class="btn btn-ghost btn-sm" data-action="toggle-crop-dim">${icon('eye-off')}<span>Dim</span></button>
       <button class="btn btn-ghost btn-sm" data-action="reset-crop">${icon('rotate-ccw')}<span>Reset</span></button>
-    </div>` : sourceDrop({ tool: 'cropper', accept: ['MP4', 'WEBM', 'MOV', 'PNG', 'JPG', 'WEBP'], title: 'Drop a video or image to crop', hint: 'Drag the box after loading Â· original stays untouched', iconName: 'crop' });
+    </div>` : sourceDrop({ tool: 'cropper', accept: ['MP4', 'WEBM', 'MOV', 'PNG', 'JPG', 'WEBP'], title: 'Drop a video or image to crop', hint: 'Drag the box after loading · original stays untouched', iconName: 'crop' });
 
   const body = `
     <div class="field">
-      <div class="field-head"><span class="field-label">${icon('crop')}Crop area</span><span class="field-value">${Math.round(crop.w * 100)}% Ã— ${Math.round(crop.h * 100)}%</span></div>
+      <div class="field-head"><span class="field-label">${icon('crop')}Crop area</span><span class="field-value">${Math.round(crop.w * 100)}% × ${Math.round(crop.h * 100)}%</span></div>
       <p class="field-help" style="margin-top:0">Drag the frame or its handles in the preview. Everything outside the box is removed.</p>
     </div>
      <div class="field">
@@ -10244,10 +10255,10 @@ function cropperView() {
       <div class="tool-main">
         ${sectionCard({
           title: 'Crop stage',
-          subtitle: source ? 'Drag to reposition Â· handles resize' : 'Load a video or image',
+          subtitle: source ? 'Drag to reposition · handles resize' : 'Load a video or image',
           actions: source ? `<button class="btn btn-secondary btn-sm" data-action="reset-tool" data-tool="cropper">${icon('x')}<span>Clear</span></button>` : '',
           body: stage,
-          meta: stageMeta(source, source ? `<span>${Math.round(crop.w * 100)}Ã—${Math.round(crop.h * 100)}%</span>` : '')
+          meta: stageMeta(source, source ? `<span>${Math.round(crop.w * 100)}×${Math.round(crop.h * 100)}%</span>` : '')
         })}
         ${resultCard(data.result, { source, tool: 'cropper' })}
       </div>
@@ -10258,7 +10269,7 @@ function cropperView() {
           subtitle: isImage ? 'Lossless PNG export' : 'Re-encode the selected region',
           body,
           runLabel: isImage ? 'Crop image' : 'Render crop',
-          summaryLeft: source ? `${pixelW} Ã— ${pixelH} px` : 'Add media first',
+          summaryLeft: source ? `${pixelW} × ${pixelH} px` : 'Add media first',
           summaryRight: isImage ? 'PNG' : (s.format || 'mp4').toUpperCase()
         })}
       </aside>
@@ -10278,7 +10289,7 @@ function extractorView() {
       <div class="field-head"><span class="field-label">${icon('music')}Audio format</span><span class="field-value">${FORMATS[s.format].codec}</span></div>
       <div class="select-wrap">
         <select class="select" data-field="extractor.settings.format" aria-label="Audio format">
-          ${['mp3', 'wav', 'm4a', 'flac', 'ogg'].map((key) => `<option value="${key}"${s.format === key ? ' selected' : ''}>${FORMATS[key].label} Â· ${FORMATS[key].codec}</option>`).join('')}
+          ${['mp3', 'wav', 'm4a', 'flac', 'ogg'].map((key) => `<option value="${key}"${s.format === key ? ' selected' : ''}>${FORMATS[key].label} · ${FORMATS[key].codec}</option>`).join('')}
         </select>
         ${icon('chevron-down')}
       </div>
@@ -10317,7 +10328,7 @@ function extractorView() {
       </div>
     </div>
     <div class="switch-row">
-      <div class="switch-copy"><strong>Normalize loudness</strong><small> âˆ’16 LUFS, broadcast-safe peak</small></div>
+      <div class="switch-copy"><strong>Normalize loudness</strong><small> −16 LUFS, broadcast-safe peak</small></div>
       <button class="switch" role="switch" aria-checked="${s.normalize}" aria-label="Normalize loudness" data-toggle="extractor.settings.normalize"></button>
     </div>
     <div class="switch-row">
@@ -10332,7 +10343,7 @@ function extractorView() {
         <div class="wave-playhead" id="wave-playhead"></div>
         <div class="wave-placeholder" id="wave-placeholder" ${peaksReady ? 'hidden' : ''}>
           ${icon('activity')}
-          <span>${data.waveformError ? 'Waveform preview unavailable â€” extraction still works.' : 'Reading the waveform on this deviceâ€¦'}</span>
+          <span>${data.waveformError ? 'Waveform preview unavailable — extraction still works.' : 'Reading the waveform on this device…'}</span>
         </div>
       </div>
       <div class="wave-controls">
@@ -10397,7 +10408,7 @@ function gifView() {
     <div class="field">
       <div class="field-head"><span class="field-label">${icon('film')}Frame rate</span><span class="field-value">${s.fps} fps</span></div>
       <input type="range" min="4" max="24" step="1" value="${s.fps}" data-field="gif.settings.fps" data-number="1" aria-label="GIF frame rate" />
-      <p class="field-help">12â€“15 fps is smooth without ballooning the file.</p>
+      <p class="field-help">12–15 fps is smooth without ballooning the file.</p>
     </div>
     <div class="field">
       <div class="field-head"><span class="field-label">Width</span><span class="field-value">${s.width} px</span></div>
@@ -10412,7 +10423,7 @@ function gifView() {
       <div class="field-head"><span class="field-label">Dithering</span><span class="field-value">${s.dither}</span></div>
       <div class="select-wrap">
         <select class="select" data-field="gif.settings.dither" aria-label="GIF dithering">
-          ${[['bayer', 'Bayer Â· crisp'], ['sierra', 'Sierra Â· smooth'], ['none', 'None Â· flat']].map(([value, text]) => `<option value="${value}"${s.dither === value ? ' selected' : ''}>${text}</option>`).join('')}
+          ${[['bayer', 'Bayer · crisp'], ['sierra', 'Sierra · smooth'], ['none', 'None · flat']].map(([value, text]) => `<option value="${value}"${s.dither === value ? ' selected' : ''}>${text}</option>`).join('')}
         </select>
         ${icon('chevron-down')}
       </div>
@@ -10451,8 +10462,8 @@ function gifView() {
           title: 'Source video',
           subtitle: source ? source.name : 'A short clip works best',
           actions: source ? `<button class="btn btn-secondary btn-sm" data-action="reset-tool" data-tool="gif">${icon('x')}<span>Clear</span></button>` : '',
-          body: source ? sourcePreview(source, { autoplay: true, loop: true }) : sourceDrop({ tool: 'gif', accept: ['MP4', 'WEBM', 'MOV', 'MKV'], title: 'Drop a video for your GIF', hint: 'Keep it short for a small file Â· starts at 12 fps', iconName: 'film' }),
-          meta: stageMeta(source, source ? `<span>${s.fps} fps Â· ${s.width}px</span>` : '')
+          body: source ? sourcePreview(source, { autoplay: true, loop: true }) : sourceDrop({ tool: 'gif', accept: ['MP4', 'WEBM', 'MOV', 'MKV'], title: 'Drop a video for your GIF', hint: 'Keep it short for a small file · starts at 12 fps', iconName: 'film' }),
+          meta: stageMeta(source, source ? `<span>${s.fps} fps · ${s.width}px</span>` : '')
         })}
         ${resultCard(data.result, { source, tool: 'gif' })}
       </div>
@@ -10463,7 +10474,7 @@ function gifView() {
           subtitle: 'Palette, width and loop',
           body,
           runLabel: 'Create GIF',
-          summaryLeft: source ? `${s.fps} fps Â· ${s.width}px` : 'Add a video first',
+          summaryLeft: source ? `${s.fps} fps · ${s.width}px` : 'Add a video first',
           summaryRight: 'GIF'
         })}
       </aside>
@@ -10509,10 +10520,10 @@ function recorderView() {
       <div class="tool-main">
         <div class="card stage-card">
           <div class="stage-head">
-            <div class="stage-head-copy"><strong>Recorder stage</strong><span>${recorderStatusCopy()}${s.status === 'finished' && s.result ? ` Â· ${formatBytes(s.result.size)}` : ''}</span></div>
+            <div class="stage-head-copy"><strong>Recorder stage</strong><span>${recorderStatusCopy()}${s.status === 'finished' && s.result ? ` · ${formatBytes(s.result.size)}` : ''}</span></div>
             <div class="stage-head-actions">
               ${s.status === 'recording' ? `<span class="pill is-red"><span class="pill-dot"></span>REC</span>` : ''}
-              <span class="pill is-mono">${settings.quality}p Â· ${settings.fps} fps</span>
+              <span class="pill is-mono">${settings.quality}p · ${settings.fps} fps</span>
             </div>
           </div>
           <div class="stage-body">
@@ -10538,12 +10549,12 @@ function recorderView() {
                   : s.status === 'countdown'
                     ? `<button class="btn btn-secondary btn-sm" data-action="rec-stop">${icon('x')}<span>Cancel</span></button>`
                     : s.status === 'processing'
-                      ? `<span class="spinner"></span><span class="muted" style="font-size:11px">Writing the clip locallyâ€¦</span>`
+                      ? `<span class="spinner"></span><span class="muted" style="font-size:11px">Writing the clip locally…</span>`
                       : s.status === 'finished' && s.result
                         ? `<button class="btn btn-primary btn-sm" data-action="rec-download">${icon('download')}<span>Download</span></button>`
                         : `<span class="muted" style="font-size:9px">Press start, then pick what to share.</span>`}
             </div>
-            <p class="rec-note">${icon('info')}Your browser controls the capture prompt. NuVerter never receives the stream â€” MediaRecorder writes it in memory, then IndexedDB stores the result.</p>
+            <p class="rec-note">${icon('info')}Your browser controls the capture prompt. NuVerter never receives the stream — MediaRecorder writes it in memory, then IndexedDB stores the result.</p>
           </div>
           ${s.result ? stageMeta({ name: s.result.name, kind: 'video', size: s.result.size, duration: s.elapsed, width: 0, height: 0 }, `<span>${esc(s.result.mime.split(';')[0])}</span>`) : `
             <div class="stage-meta"><span class="kind">${icon('monitor')}screen</span><span>${settings.quality}p</span><span>${settings.fps} fps</span><span>${settings.mic ? 'mic on' : 'mic off'}</span><span class="stage-meta-right"><span class="mono">${settings.format.toUpperCase()}</span></span></div>`}
@@ -10603,9 +10614,9 @@ function recorderView() {
             ${['idle', 'finished'].includes(s.status)
               ? `<button class="btn btn-primary" data-action="rec-start">${icon('circle-play')}<span>${s.status === 'finished' ? 'Record again' : 'Start recording'}</span></button>`
               : s.status === 'processing'
-                ? `<button class="btn btn-primary" disabled>${icon('loader-circle', 'spin')}<span>Saving clipâ€¦</span></button>`
+                ? `<button class="btn btn-primary" disabled>${icon('loader-circle', 'spin')}<span>Saving clip…</span></button>`
                 : `<button class="btn btn-danger" data-action="rec-stop">${icon('square')}<span>${s.status === 'countdown' ? 'Cancel countdown' : 'Stop recording'}</span></button>`}
-            <p class="process-hint">${icon('cpu')}MediaRecorder Â· no frames uploaded</p>
+            <p class="process-hint">${icon('cpu')}MediaRecorder · no frames uploaded</p>
           </div>
         </div>
       </aside>
@@ -10892,7 +10903,7 @@ async function finishRecording() {
     s.result = record;
     s.status = 'finished';
     renderView();
-    toast('Recording ready', `${record.name} Â· ${formatBytes(record.size)}`, 'success');
+    toast('Recording ready', `${record.name} · ${formatBytes(record.size)}`, 'success');
   } catch (error) {
     s.status = 'idle';
     s.error = error?.message || 'The clip could not be saved.';
@@ -10948,7 +10959,7 @@ function historyView() {
       index: '07',
       kicker: 'Session history',
       title: 'Everything you made, <span class="accent">still local.</span>',
-      sub: 'Results are cached in IndexedDB for this browser profile. Clear them anytime â€” deleting here never touches your originals.',
+      sub: 'Results are cached in IndexedDB for this browser profile. Clear them anytime — deleting here never touches your originals.',
       actions: `<button class="btn btn-secondary btn-sm" data-action="clear-history" ${stats.total ? '' : 'disabled'}>${icon('trash-2')}<span>Clear history</span></button>`
     })}
     <div class="history-stats">
@@ -10960,7 +10971,7 @@ function historyView() {
       <div class="history-stat">
         <div class="history-stat-label">${icon('hard-drive')}Local storage</div>
         <div class="history-stat-value" id="history-stat-size">${formatBytes(stats.bytes)}</div>
-        <div class="history-stat-sub">IndexedDB Â· max 24 items</div>
+        <div class="history-stat-sub">IndexedDB · max 24 items</div>
       </div>
       <div class="history-stat">
         <div class="history-stat-label">${icon('zap')}Space saved</div>
@@ -10971,7 +10982,7 @@ function historyView() {
     <div class="history-toolbar">
       <div class="history-search">
         ${icon('search')}
-        <input class="input" type="search" placeholder="Search results, sources, formatsâ€¦" value="${esc(state.historyQuery)}" data-field="historyQuery" aria-label="Search history" />
+        <input class="input" type="search" placeholder="Search results, sources, formats…" value="${esc(state.historyQuery)}" data-field="historyQuery" aria-label="Search history" />
       </div>
       <div class="select-wrap">
         <select class="select history-filter" data-field="historyFilter" aria-label="Filter by tool">
@@ -10990,7 +11001,7 @@ function historyView() {
 function historyRow(record) {
   const kind = kindOfMime(record.mime);
   const tool = TOOLS[record.tool] || TOOLS.converter;
-  const dims = record.meta?.width && record.meta?.height ? `${record.meta.width}Ã—${record.meta.height}` : '';
+  const dims = record.meta?.width && record.meta?.height ? `${record.meta.width}×${record.meta.height}` : '';
   const saved = record.sourceSize ? Math.round((1 - record.size / record.sourceSize) * 100) : 0;
   return `
     <div class="history-row">
@@ -11002,7 +11013,7 @@ function historyRow(record) {
           ${record.meta?.format ? `<span>${esc(record.meta.format)}</span>` : ''}
           <span>${formatBytes(record.size)}</span>
           ${dims ? `<span>${dims}</span>` : ''}
-          ${saved > 0 ? `<span class="green">âˆ’${saved}%</span>` : ''}
+          ${saved > 0 ? `<span class="green">−${saved}%</span>` : ''}
           <span class="sep"></span>
           <span>${timeAgo(record.createdAt)}</span>
         </div>
@@ -11030,7 +11041,7 @@ function renderHistoryList() {
 
   if (!state.historyLoaded && !state.history.length) {
     list.innerHTML = `<div class="empty-state history-empty"><span class="empty-ico">${icon('loader-circle', 'spin')}</span><strong>Reading local history</strong><p>Looking inside this browser's IndexedDB.</p></div>`;
-    foot.innerHTML = '<span>Nothing leaves the device.</span><span class="mono">indexedDB Â· NuVerter-local-v1</span>';
+    foot.innerHTML = '<span>Nothing leaves the device.</span><span class="mono">indexedDB · NuVerter-local-v1</span>';
     return;
   }
   const items = filteredHistory();
@@ -11045,8 +11056,8 @@ function renderHistoryList() {
     list.innerHTML = items.map(historyRow).join('');
   }
   foot.innerHTML = `
-    <span>${items.length} of ${stats.total} result${stats.total === 1 ? '' : 's'} Â· kept in this browser</span>
-    <span class="mono">${formatBytes(stats.bytes)} Â· indexedDB</span>`;
+    <span>${items.length} of ${stats.total} result${stats.total === 1 ? '' : 's'} · kept in this browser</span>
+    <span class="mono">${formatBytes(stats.bytes)} · indexedDB</span>`;
 }
 
 async function deleteHistoryRecord(id) {
@@ -11097,9 +11108,9 @@ function updateCropBox() {
   box.style.height = `${crop.h * 100}%`;
   const source = state.cropper.source;
   const tag = $('#crop-size-tag');
-  if (tag && source) tag.textContent = `${Math.max(2, Math.round((source.width || 0) * crop.w))}Ã—${Math.max(2, Math.round((source.height || 0) * crop.h))}`;
+  if (tag && source) tag.textContent = `${Math.max(2, Math.round((source.width || 0) * crop.w))}×${Math.max(2, Math.round((source.height || 0) * crop.h))}`;
   const summary = $('#cropper-summary-left');
-  if (summary && source) summary.textContent = `${Math.max(2, Math.round((source.width || 0) * crop.w))} Ã— ${Math.max(2, Math.round((source.height || 0) * crop.h))} px`;
+  if (summary && source) summary.textContent = `${Math.max(2, Math.round((source.width || 0) * crop.w))} × ${Math.max(2, Math.round((source.height || 0) * crop.h))} px`;
 }
 
 function initCropStage() {
@@ -11466,7 +11477,7 @@ function syncToolChrome(tool) {
   if (button) {
     button.disabled = !data.source || data.busy;
     const label = button.querySelector('span');
-    if (label && data.busy) label.textContent = 'Working locallyâ€¦';
+    if (label && data.busy) label.textContent = 'Working locally…';
   }
   const fillStart = document.getElementById(`${tool}-trim-fill-start`);
   const fillEnd = document.getElementById(`${tool}-trim-fill-end`);
@@ -11492,7 +11503,7 @@ function syncToolChrome(tool) {
     const left = $('#compressor-summary-left');
     if (left) left.textContent = data.source ? (settings.mute ? 'Video only' : 'Video + audio') : 'Add a video first';
     const right = $('#compressor-summary-right');
-    if (right) right.textContent = settings.mode === 'size' ? `â‰ˆ ${settings.targetMB} MB` : `â‰ˆ${Math.round(compressorFactor(settings.quality) * 100)}% bitrate Â· ${settings.resolution === 'source' ? 'source' : settings.resolution + 'p'}`;
+    if (right) right.textContent = settings.mode === 'size' ? `≈ ${settings.targetMB} MB` : `≈${Math.round(compressorFactor(settings.quality) * 100)}% bitrate · ${settings.resolution === 'source' ? 'source' : settings.resolution + 'p'}`;
   }
   if (tool === 'cropper') {
     updateCropBox();
@@ -11507,19 +11518,19 @@ function syncToolChrome(tool) {
   }
   if (tool === 'gif') {
     const left = $('#gif-summary-left');
-    if (left) left.textContent = data.source ? `${settings.fps} fps Â· ${settings.width}px` : 'Add a video first';
+    if (left) left.textContent = data.source ? `${settings.fps} fps · ${settings.width}px` : 'Add a video first';
   }
   $$('#view input[type="range"]').forEach((input) => setCssPct(input));
 }
 
 /* ==========================================================================
-   Modals â€” plans, settings, help, privacy, advertise, engine, preview
+   Modals — plans, settings, help, privacy, advertise, engine, preview
    ========================================================================== */
 function plansBody() {
   const team = state.plansPlan === 'team';
   const price = team ? '$5' : '$1';
   const idr = team ? 'Rp 75.000' : 'Rp 15.000';
-  const per = team ? 'one-time Â· up to 5 people' : 'one-time Â· forever';
+  const per = team ? 'one-time · up to 5 people' : 'one-time · forever';
   if (state.premium) {
     return `
       <div class="premium-active-box">
@@ -11533,7 +11544,7 @@ function plansBody() {
         <div class="modal-section-title">${icon('badge-check')}What is unlocked</div>
         <div class="feature-list">
           ${[
-            'All queue slots run in parallel style â€” no ghost rows',
+            'All queue slots run in parallel style — no ghost rows',
             'Every tool, every format, no per-file limits',
             'Session history stays available while you work',
             'Support an independent, offline-first tool'
@@ -11552,17 +11563,17 @@ function plansBody() {
         <div class="plans-big-price"><sup>${price[0]}</sup>${price.slice(1)}</div>
         <div class="plans-idr"><b>${idr}</b><br>${per}</div>
       </div>
-      <p class="plans-hero-copy">One payment. No subscription, no account, no uploads. <strong>Slots 4+ keep processing either way</strong> â€” premium removes the wait and the ghost styling.</p>
+      <p class="plans-hero-copy">One payment. No subscription, no account, no uploads. <strong>Slots 4+ keep processing either way</strong> — premium removes the wait and the ghost styling.</p>
       <div class="plan-options">
         <button class="plan-option${!team ? ' is-active' : ''}" data-action="plans-plan" data-plan="lifetime">
           <span class="plan-radio"></span>
-          <strong>Lifetime Â· you</strong>
+          <strong>Lifetime · you</strong>
           <span>$1 / Rp 15.000</span>
-          <small>1 person Â· forever</small>
+          <small>1 person · forever</small>
         </button>
         <button class="plan-option${team ? ' is-active' : ''}" data-action="plans-plan" data-plan="team">
           <span class="plan-radio"></span>
-          <strong>Team Â· 5 seats</strong>
+          <strong>Team · 5 seats</strong>
           <span>$5 / Rp 75.000</span>
           <small>Share with a small studio</small>
         </button>
@@ -11573,18 +11584,18 @@ function plansBody() {
       <div class="modal-section-title">${icon('sparkles')}What changes</div>
       <div class="feature-list">
         ${[
-          '<b>Parallel-style batch queue</b> â€” no ghost slots, no waiting for the first three',
-          '<b>Every tool unlocked</b> â€” converter, compressor, cropper, extractor, GIF, recorder',
-          '<b>No artificial limits</b> â€” process as many local files as your machine can handle',
-          '<b>Yours forever</b> â€” no account, no recurring charge, no telemetry',
-          team ? '<b>Five seats</b> â€” one license for a small team or family' : '<b>One payment</b> â€” a single dollar, once'
+          '<b>Parallel-style batch queue</b> — no ghost slots, no waiting for the first three',
+          '<b>Every tool unlocked</b> — converter, compressor, cropper, extractor, GIF, recorder',
+          '<b>No artificial limits</b> — process as many local files as your machine can handle',
+          '<b>Yours forever</b> — no account, no recurring charge, no telemetry',
+          team ? '<b>Five seats</b> — one license for a small team or family' : '<b>One payment</b> — a single dollar, once'
         ].map((text) => `<div class="feature-item">${icon('check')}<span>${text}</span></div>`).join('')}
       </div>
     </div>
 
     <div class="payment-label">Pay with <span>Sociabuzz</span></div>
     <div class="payment-grid">
-      ${[['qris', 'QRIS', 'Scan'], ['dana', 'DANA', 'Wallet'], ['ovo', 'OVO', 'Wallet'], ['card', 'CARD', 'Visa Â· MC']]
+      ${[['qris', 'QRIS', 'Scan'], ['dana', 'DANA', 'Wallet'], ['ovo', 'OVO', 'Wallet'], ['card', 'CARD', 'Visa · MC']]
         .map(([method, label, sub]) => `
           <button class="pay-method${state.payMethod === method ? ' is-active' : ''}" data-action="pay-method" data-method="${method}">
             <span class="pay-method-logo">${label}</span>
@@ -11643,7 +11654,7 @@ function openPlans(plan = null) {
 async function demoUnlock() {
   setPremium(true);
   closeModal();
-  toast('Premium unlocked Â·', 'Lifetime features are enabled on this browser. No payment was taken.', 'success');
+  toast('Premium unlocked ·', 'Lifetime features are enabled on this browser. No payment was taken.', 'success');
   if (state.tool === 'converter') refreshQueueUI();
   await sleep(60);
   renderView();
@@ -11843,7 +11854,7 @@ function settingsBody() {
           <button class="switch" role="switch" aria-checked="${state.prefs.reduceMotion}" aria-label="Reduce motion" data-toggle="prefs.reduceMotion"></button>
         </div>
         <div class="settings-item">
-          <div class="settings-item-copy"><strong>Processing mode</strong><small>Eco = responsive, one file at a time Â· Turbo = higher throughput</small></div>
+          <div class="settings-item-copy"><strong>Processing mode</strong><small>Eco = responsive, one file at a time · Turbo = higher throughput</small></div>
           <div class="segmented" role="group">
             ${['eco','turbo'].map((m) => `<button data-action="set-processing-mode" data-mode="${m}" class="${(state.prefs.processingMode || 'eco') === m ? 'is-active' : ''}">${m === 'eco' ? 'Eco' : 'Turbo'}</button>`).join('')}
           </div>
@@ -11859,7 +11870,7 @@ function settingsBody() {
       <div class="modal-section-title">${icon('hard-drive')}Local result storage</div>
       <div class="settings-item">
         <div class="settings-item-copy">
-          <strong>${stats.total} result${stats.total === 1 ? '' : 's'} Â· ${formatBytes(stats.bytes)}</strong>
+          <strong>${stats.total} result${stats.total === 1 ? '' : 's'} · ${formatBytes(stats.bytes)}</strong>
           <small>Cached in IndexedDB for this browser profile. Max ${MAX_HISTORY_ITEMS} items / ${formatBytes(MAX_HISTORY_BYTES)}.</small>
           <div class="storage-bar"><span style="width:${Math.max(storagePct, stats.total ? 2 : 0)}%"></span></div>
         </div>
@@ -11876,7 +11887,7 @@ function settingsBody() {
       <div class="modal-section-title">${icon('activity')}Usage statistics</div>
       <div class="settings-item">
         <div class="settings-item-copy">
-          <strong>${getUsage().files || 0} files processed Â· ${formatBytes(getUsage().bytes || 0)}</strong>
+          <strong>${getUsage().files || 0} files processed · ${formatBytes(getUsage().bytes || 0)}</strong>
           <small>Tracked locally on this device. No data is sent anywhere.</small>
         </div>
       </div>
@@ -11908,7 +11919,7 @@ function settingsBody() {
       <div class="modal-section-title">${icon('info')}About this build</div>
       <div class="engine-info-grid">
         <div class="engine-info-cell"><span>App</span><strong id="app-version-label">NuVerter 1.0.9</strong></div>
-        <div class="engine-info-cell"><span>Latest release</span><strong id="latest-release-label">Checkingâ€¦</strong></div>
+        <div class="engine-info-cell"><span>Latest release</span><strong id="latest-release-label">Checking…</strong></div>
         <div class="engine-info-cell"><span>Engine</span><strong>ffmpeg.wasm 0.12</strong></div>
         <div class="engine-info-cell"><span>Served from</span><strong>${esc(protocol)}</strong></div>
         <div class="engine-info-cell"><span>Data sent</span><strong>0 bytes</strong></div>
@@ -11965,7 +11976,7 @@ function openCommandPalette() {
     <div class="modal" role="dialog" aria-modal="true" style="max-width:520px">
       <div class="modal-head"><strong>Command palette</strong><button class="icon-btn is-sm" data-action="close-modal" aria-label="Close">${icon('x')}</button></div>
       <div class="modal-body">
-        <input id="cmd-palette-input" class="input" placeholder="Search tools and actionsâ€¦" style="width:100%" />
+        <input id="cmd-palette-input" class="input" placeholder="Search tools and actions…" style="width:100%" />
         <div id="cmd-palette-list" style="margin-top:10px;max-height:320px;overflow:auto"></div>
       </div>
     </div>`;
@@ -12017,11 +12028,11 @@ try { const db = await openDB(); const tx = db.transaction(DB_WORKFLOWS_STORE, '
 /* ---------- help ---------- */
 function openHelp() {
   const shortcuts = [
-    ['âŒ˜ / Ctrl', 'O', 'Add media to the current tool'],
-    ['âŒ˜ / Ctrl', 'â†µ', 'Start the current batch or tool'],
-    ['âŒ˜ / Ctrl', ',', 'Open settings'],
-    ['âŒ˜ / Ctrl', 'K', 'Command palette (search tools)'],
-    ['1 â€“ 7', '', 'Jump between tools'],
+    ['⌘ / Ctrl', 'O', 'Add media to the current tool'],
+    ['⌘ / Ctrl', '↵', 'Start the current batch or tool'],
+    ['⌘ / Ctrl', ',', 'Open settings'],
+    ['⌘ / Ctrl', 'K', 'Command palette (search tools)'],
+    ['1 – 7', '', 'Jump between tools'],
     ['?', '', 'Show this shortcut sheet'],
     ['Esc', '', 'Close a dialog, stop a recording or cancel a batch']
   ];
@@ -12036,14 +12047,14 @@ function openHelp() {
         <div class="help-list">
           ${shortcuts.map(([key, second, text]) => `
             <div class="help-item">
-              <div class="help-item-copy"><strong>${text}</strong><small>${key === '1 â€“ 7' ? 'Converter through history' : ''}</small></div>
+              <div class="help-item-copy"><strong>${text}</strong><small>${key === '1 – 7' ? 'Converter through history' : ''}</small></div>
               <span class="help-keys">${key ? `<span class="kbd">${key}</span>` : ''}${second ? `<span class="kbd">${second}</span>` : ''}</span>
             </div>`).join('')}
         </div>
       </div>
       <div class="modal-section">
         <div class="modal-section-title">${icon('sparkles')}Good to know</div>
-        <div class="help-tip">${icon('info')}<span><strong>Slots 4+ are never blocked.</strong> The free queue processes them sequentially right after the first three â€” premium only changes the presentation and batch pacing.</span></div>
+        <div class="help-tip">${icon('info')}<span><strong>Slots 4+ are never blocked.</strong> The free queue processes them sequentially right after the first three — premium only changes the presentation and batch pacing.</span></div>
         <div class="help-tip" style="margin-top:6px">${icon('cpu')}<span>The first conversion loads a ~32&nbsp;MB WebAssembly engine. It is cached by the browser, so later runs start faster.</span></div>
         <div class="help-tip" style="margin-top:6px">${icon('shield-check')}<span>Your originals are read-only inputs. Results are separate blobs in IndexedDB and can be deleted from history.</span></div>
       </div>
@@ -12082,12 +12093,12 @@ function openPrivacy() {
         <div class="feature-list">
           <div class="feature-item">${icon('x')}<span>No media uploads, no cloud transcoding, no remote GPU.</span></div>
           <div class="feature-item">${icon('x')}<span>No accounts, analytics, advertising identifiers or behavioral tracking.</span></div>
-          <div class="feature-item">${icon('x')}<span>No third-party CDNs at runtime â€” fonts, icons and the engine are bundled in this folder.</span></div>
+          <div class="feature-item">${icon('x')}<span>No third-party CDNs at runtime — fonts, icons and the engine are bundled in this folder.</span></div>
         </div>
       </div>
       <div class="modal-section">
         <div class="modal-section-title">${icon('badge-dollar-sign')}About the ad slot</div>
-        <div class="modal-note">The fixed bar at the bottom is a reserved placeholder, not a live ad network. If a partner is added later, it will be a static, privacy-respecting placement â€” never a script that reads your media.</div>
+        <div class="modal-note">The fixed bar at the bottom is a reserved placeholder, not a live ad network. If a partner is added later, it will be a static, privacy-respecting placement — never a script that reads your media.</div>
       </div>`,
     footer: `
       <button class="btn btn-secondary" data-action="engine-info">${icon('cpu')}Engine details</button>
@@ -12206,18 +12217,18 @@ function openAdvertise() {
     kind: 'advertise',
     body: `
       <div class="advertise-hero">
-        <strong>A calm 970 Ã— 90 placement</strong>
+        <strong>A calm 970 × 90 placement</strong>
         <p>The bar is fixed to the bottom of the workspace, never overlaps content, and is visible on desktop and mobile. This build ships with an empty, clearly labelled placeholder.</p>
       </div>
       <div class="ad-spec-grid">
-        <div class="ad-spec"><span>Desktop</span><strong>970 Ã— 90</strong></div>
-        <div class="ad-spec"><span>Mobile</span><strong>fluid Ã— 50</strong></div>
-        <div class="ad-spec"><span>Slots</span><strong>1 Â· fixed</strong></div>
+        <div class="ad-spec"><span>Desktop</span><strong>970 × 90</strong></div>
+        <div class="ad-spec"><span>Mobile</span><strong>fluid × 50</strong></div>
+        <div class="ad-spec"><span>Slots</span><strong>1 · fixed</strong></div>
       </div>
       <div class="modal-section">
         <div class="modal-section-title">${icon('shield-check')}Placement principles</div>
         <div class="ad-principles">
-          <div class="feature-item">${icon('check')}<span>Static creative or a privacy-respecting partner link â€” <b>no scripts that inspect media</b>.</span></div>
+          <div class="feature-item">${icon('check')}<span>Static creative or a privacy-respecting partner link — <b>no scripts that inspect media</b>.</span></div>
           <div class="feature-item">${icon('check')}<span>No pop-ups, no auto-play audio, no layout shift.</span></div>
           <div class="feature-item">${icon('check')}<span>Clearly labelled and dismissible in a future build.</span></div>
           <div class="feature-item">${icon('check')}<span>Content stays aligned with a local-first, creative audience.</span></div>
@@ -12235,8 +12246,8 @@ function openAdvertise() {
 
 function copyMediaKit() {
   const text = [
-    'NuVerter â€” Local Media Suite Â· advertising placeholder',
-    'Placement: fixed bottom bar, 970 Ã— 90 desktop, fluid Ã— 50 mobile',
+    'NuVerter — Local Media Suite · advertising placeholder',
+    'Placement: fixed bottom bar, 970 × 90 desktop, fluid × 50 mobile',
     'Audience: creators, editors and privacy-conscious teams using local media tools',
     'Principles: static creative only, no trackers, no media inspection, no pop-ups',
     'This build is a local with no live ad server.'
@@ -12252,7 +12263,7 @@ function engineInfoBody() {
     <div class="engine-info-grid">
       <div class="engine-info-cell"><span>Status</span><strong>${map[Engine.status] || Engine.status}</strong></div>
       <div class="engine-info-cell"><span>Backend</span><strong>ffmpeg.wasm 0.12</strong></div>
-      <div class="engine-info-cell"><span>Core</span><strong>0.12.6 Â· single thread</strong></div>
+      <div class="engine-info-cell"><span>Core</span><strong>0.12.6 · single thread</strong></div>
       <div class="engine-info-cell"><span>Memory</span><strong>${memory}</strong></div>
       <div class="engine-info-cell"><span>Output store</span><strong>IndexedDB</strong></div>
       <div class="engine-info-cell"><span>Served from</span><strong>${esc(location.protocol === 'file:' ? 'file://' : location.host)}</strong></div>
@@ -12280,7 +12291,7 @@ async function installPwa() {
     subtitle: 'Your browser did not expose an automatic installer.',
     size: 'narrow',
     kind: 'install',
-    body: `<div class="modal-note" style="font-size:10.5px;line-height:1.65">Use your browser menu â†’ "Install app" / "Add to Home screen", or use Chrome/Edge on desktop for one-click install.</div>`,
+    body: `<div class="modal-note" style="font-size:10.5px;line-height:1.65">Use your browser menu → "Install app" / "Add to Home screen", or use Chrome/Edge on desktop for one-click install.</div>`,
     footer: `<button class="btn btn-primary" data-action="close-modal">Done</button>`
   });
 }
@@ -12323,7 +12334,7 @@ npm install
 npm run build</pre>
         <div class="modal-note" style="margin-top:8px">The Electron desktop build has been archived; the Tauri build (in <code>tauri/</code>) is the supported desktop target.</div>
         <div class="modal-note" style="margin-top:8px;font-size:10.5px">Source code: <a href="https://github.com/BIltonBB/NuVerter" target="_blank" rel="noopener noreferrer">github.com/BIltonBB/NuVerter</a></div>
-        <div class="modal-note" style="margin-top:8px;font-size:10px">Build note: on Windows, electron-builder needs symlink privileges. Enable <strong>Developer Mode</strong> (Settings â†’ For developers) or run the terminal as Administrator, otherwise the winCodeSign extraction fails. Use <code>npm run build -- --dir</code> for an unpackaged build (no signing).</div>
+        <div class="modal-note" style="margin-top:8px;font-size:10px">Build note: on Windows, electron-builder needs symlink privileges. Enable <strong>Developer Mode</strong> (Settings → For developers) or run the terminal as Administrator, otherwise the winCodeSign extraction fails. Use <code>npm run build -- --dir</code> for an unpackaged build (no signing).</div>
       </div>`,
     footer: `<button class="btn btn-primary" data-action="close-modal">Done</button>`
   });
@@ -12346,15 +12357,15 @@ async function runEngineSelfTest() {
   const out = $('#engine-test-result');
   if (!out) return;
   out.className = 'engine-test-result';
-  out.textContent = 'Encoding a 0.7 s tone to MP3 Â· first run loads the coreâ€¦';
+  out.textContent = 'Encoding a 0.7 s tone to MP3 · first run loads the core…';
   try {
     const result = await Engine.selfTest();
     out.className = 'engine-test-result is-ok';
-    out.textContent = `PASS Â· ${formatBytes(result.size)} MP3 in ${result.elapsed.toFixed(2)} s Â· ${Math.round((result.size / result.elapsed) / 1024)} KB/s`;
+    out.textContent = `PASS · ${formatBytes(result.size)} MP3 in ${result.elapsed.toFixed(2)} s · ${Math.round((result.size / result.elapsed) / 1024)} KB/s`;
     toast('Engine self-test passed', 'Local MP3 encoding works on this device.', 'success');
   } catch (error) {
     out.className = 'engine-test-result is-bad';
-    out.textContent = `FAIL Â· ${error?.message || 'Unknown error'}`;
+    out.textContent = `FAIL · ${error?.message || 'Unknown error'}`;
     toast('Engine self-test failed', error?.message || 'Start the local server and try again.', 'error');
   }
   updateEngineUI();
@@ -12382,11 +12393,11 @@ function openPreview(record) {
       : kind === 'image'
         ? `<img src="${record.url}" alt="${esc(record.name)}" />`
         : `<div class="empty-state"><span class="empty-ico">${icon('file')}</span><strong>No inline preview</strong><p>This file can still be downloaded.</p></div>`;
-  const dims = record.meta?.width && record.meta?.height ? `<span>${record.meta.width}Ã—${record.meta.height}</span>` : '';
+  const dims = record.meta?.width && record.meta?.height ? `<span>${record.meta.width}×${record.meta.height}</span>` : '';
   const saved = record.sourceSize ? Math.round((1 - record.size / record.sourceSize) * 100) : 0;
   openModal({
     title: record.name,
-    subtitle: `${tool.label} Â· ${formatBytes(record.size)} Â· ${timeAgo(record.createdAt)}`,
+    subtitle: `${tool.label} · ${formatBytes(record.size)} · ${timeAgo(record.createdAt)}`,
     size: 'wide',
     kind: 'preview',
     body: `
@@ -12397,7 +12408,7 @@ function openPreview(record) {
         ${dims ? `<span>Size <b>${dims}</b></span>` : ''}
         ${record.sourceName ? `<span>Source <b>${esc(record.sourceName)}</b></span>` : ''}
         ${record.sourceSize ? `<span>Input <b>${formatBytes(record.sourceSize)}</b></span>` : ''}
-        ${saved > 0 ? `<span><b class="green">âˆ’${saved}%</b> vs source</span>` : ''}
+        ${saved > 0 ? `<span><b class="green">−${saved}%</b> vs source</span>` : ''}
       </div>`,
     footer: `
       <button class="btn btn-secondary" data-action="copy-name" data-name="${esc(record.name)}">${icon('copy')}Copy name</button>
@@ -13633,7 +13644,7 @@ async function boot() {
             <div class="feature-list">
               <div class="feature-item">${icon('shield-check')}<span><strong>100% local.</strong> No uploads, no accounts, no tracking.</span></div>
               <div class="feature-item">${icon('cpu')}<span><strong>WebAssembly engine.</strong> FFmpeg runs in your browser.</span></div>
-              <div class="feature-item">${icon('wand-sparkles')}<span><strong>AI tools.</strong> Whisper, background removal, upscaling â€” offline after first download.</span></div>
+              <div class="feature-item">${icon('wand-sparkles')}<span><strong>AI tools.</strong> Whisper, background removal, upscaling — offline after first download.</span></div>
               <div class="feature-item">${icon('keyboard')}<span><strong>Shortcuts.</strong> Press <span class="kbd">?</span> anytime for the full list.</span></div>
             </div>
           </div>`,
@@ -13672,7 +13683,7 @@ window.openDesktopAppInfo = openDesktopAppInfo;
     const laterBtn = wrap.querySelector('.nv-update-later');
     laterBtn.onclick = () => { wrap.remove(); };
     installBtn.onclick = async () => {
-      installBtn.textContent = 'Installingâ€¦';
+      installBtn.textContent = 'Installing…';
       installBtn.disabled = true;
       laterBtn.disabled = true;
       try { await update.downloadAndInstall(); } catch (e) {}
@@ -13861,7 +13872,7 @@ async function getAiChatEngine(modelKey) {
   const engine = await CreateMLCEngine(modelId, {
     initProgressCallback: (r) => {
       const log = document.getElementById('ai-chat-log');
-      if (log) log.innerHTML = '<div class="aichat-empty">' + esc(r?.text || 'Loading modelâ€¦') + '</div>';
+      if (log) log.innerHTML = '<div class="aichat-empty">' + esc(r?.text || 'Loading model…') + '</div>';
     }
   });
   aiChatEngine = engine;
@@ -13979,7 +13990,7 @@ async function aiChatSend() {
           if (log) {
             const stickToBottom = (log.scrollTop + log.clientHeight) >= (log.scrollHeight - 32);
             log.innerHTML = state.aiChat.messages.map((m) =>
-              '<div class="aichat-row ' + (m.role === 'user' ? 'is-user' : 'is-bot') + '"><div class="aichat-bubble">' + renderMarkdown(m.text || (m.role === 'assistant' ? 'â€¦' : '')) + '</div></div>'
+              '<div class="aichat-row ' + (m.role === 'user' ? 'is-user' : 'is-bot') + '"><div class="aichat-bubble">' + renderMarkdown(m.text || (m.role === 'assistant' ? '…' : '')) + '</div></div>'
             ).join('');
             if (stickToBottom) log.scrollTop = log.scrollHeight;
           }
@@ -14001,7 +14012,7 @@ async function aiChatSend() {
       const toolCalls = msg?.tool_calls || [];
       if (toolCalls.length) {
         if (state.aiChat.lastDebug) state.aiChat.lastDebug.toolCalls = toolCalls.map((t) => ({ name: t.function?.name, args: t.function?.arguments }));
-        state.aiChat.messages[assistantIndex].text = 'Using tools: ' + toolCalls.map((t) => t.function?.name).join(', ') + 'â€¦';
+        state.aiChat.messages[assistantIndex].text = 'Using tools: ' + toolCalls.map((t) => t.function?.name).join(', ') + '…';
         if (state.aiChat.debug) renderView();
         const engineMessages = [...messages, msg];
         for (const tc of toolCalls) {
