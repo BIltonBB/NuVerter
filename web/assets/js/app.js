@@ -9849,13 +9849,14 @@ async function reframeExport() {
 }
 
 const WF_NODE_CATEGORIES = { input: ['branch'], process: ['trim','extractAudio','ocr','compress','convert','gif','merge','branch'], output: ['output'] };
-const WF_NODE_LABELS = { trim: 'Trim', extractAudio: 'Extract audio', ocr: 'OCR text', compress: 'Compress', convert: 'Convert', gif: 'GIF', merge: 'Merge', branch: 'Branch', output: 'Output', resize: 'Resize', mute: 'Mute audio', watermark: 'Watermark', rotate: 'Rotate', speed: 'Speed', flip: 'Flip' };
-const WF_NODE_IO = { trim: { in: 'file', out: 'file' }, extractAudio: { in: 'file', out: 'file' }, ocr: { in: 'file', out: 'text' }, compress: { in: 'file', out: 'file' }, convert: { in: 'file', out: 'file' }, gif: { in: 'file', out: 'file' }, merge: { in: 'file', out: 'file' }, branch: { in: 'file', out: 'file' }, output: { in: 'file', out: null }, resize: { in: 'file', out: 'file' }, mute: { in: 'file', out: 'file' }, watermark: { in: 'file', out: 'file' }, rotate: { in: 'file', out: 'file' }, speed: { in: 'file', out: 'file' }, flip: { in: 'file', out: 'file' } };
+const WF_NODE_LABELS = { input: 'Input', trim: 'Trim', extractAudio: 'Extract audio', ocr: 'OCR text', compress: 'Compress', convert: 'Convert', gif: 'GIF', merge: 'Merge', branch: 'Branch', resize: 'Resize', mute: 'Mute audio', watermark: 'Watermark', rotate: 'Rotate', speed: 'Speed', flip: 'Flip', output: 'Output' };
+const WF_NODE_IO = { input: { in: null, out: 'file' }, trim: { in: 'file', out: 'file' }, extractAudio: { in: 'file', out: 'file' }, ocr: { in: 'file', out: 'text' }, compress: { in: 'file', out: 'file' }, convert: { in: 'file', out: 'file' }, gif: { in: 'file', out: 'file' }, merge: { in: 'file', out: 'file' }, branch: { in: 'file', out: 'file' }, resize: { in: 'file', out: 'file' }, mute: { in: 'file', out: 'file' }, watermark: { in: 'file', out: 'file' }, rotate: { in: 'file', out: 'file' }, speed: { in: 'file', out: 'file' }, flip: { in: 'file', out: 'file' }, output: { in: 'file', out: null } };
 
 function workflowNodeInspector(data) {
   const n = data.nodes.find((x) => x.id === data.selectedNodeId);
   if (!n) return '<p class="field-help" style="margin-top:6px">Add/select a node to configure it.</p>';
   n.config = n.config || {};
+  if (n.type === 'input') return '<p class="field-help" style="margin-top:6px">Passes the source file through.</p>';
   if (n.type === 'trim') return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px"><label>Start (s)<input class="input" data-wfcfg="trim.start" value="' + esc(n.config.start || '') + '" /></label><label>End (s)<input class="input" data-wfcfg="trim.end" value="' + esc(n.config.end || '') + '" /></label></div>';
   if (n.type === 'compress') return '<div style="margin-top:8px"><label>CRF (18-35)<input class="input" data-wfcfg="compress.crf" value="' + esc(n.config.crf || '28') + '" /></label></div>';
   if (n.type === 'crop') return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px"><label>X<input class="input" data-wfcfg="crop.x" value="' + esc(n.config.x || '0') + '" /></label><label>Y<input class="input" data-wfcfg="crop.y" value="' + esc(n.config.y || '0') + '" /></label><label>W<input class="input" data-wfcfg="crop.w" value="' + esc(n.config.w || '640') + '" /></label><label>H<input class="input" data-wfcfg="crop.h" value="' + esc(n.config.h || '360') + '" /></label></div>';
@@ -9898,6 +9899,9 @@ function workflowView() {
             ${src ? `<p style="margin-top:8px">${esc(src.name)}</p>` : ''}
             <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
               <select id="wf-add-node" class="select">
+                <optgroup label="Input">
+                  <option value="input">Input (source)</option>
+                </optgroup>
                 <optgroup label="Process">
                   <option value="trim">Trim</option>
                   <option value="extractAudio">Extract audio</option>
@@ -10021,7 +10025,9 @@ async function wfRun() {
     const inputName = inputInfo.name;
     const inputFiles = inputInfo.files || [inputFile];
     try {
-      if (node.type === 'trim') {
+      if (node.type === 'input') {
+        outputs.set(id, { file: data.source.file, name: data.source.name });
+      } else if (node.type === 'trim') {
         const cfg = node.config || {};
         const start = cfg.start ? String(cfg.start) : '0';
         const end = cfg.end ? String(cfg.end) : '';
