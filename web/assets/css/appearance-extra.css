@@ -14,3 +14,6 @@ body.has-bg-gradient .ambient { opacity: .35; }
 .stage-card, .panel { opacity: var(--panel-opacity, 1); }
 *, *::before, *::after { transition-duration: calc(var(--anim-scale, 1) * 150ms) !important; }
 .reduce-motion *, .reduce-motion *::before, .reduce-motion *::after { transition-duration: 0ms !important; }
+
+.tauri-native { background: transparent !important; }
+.tauri-native .workspace, .tauri-native .stage-card { background: rgba(255,255,255,0.06) !important; backdrop-filter: blur(8px); }
