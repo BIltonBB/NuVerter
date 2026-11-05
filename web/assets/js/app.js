@@ -2378,10 +2378,42 @@ async function processOneQueueItem(item, counters) {
         width: converted.width,
         height: converted.height
       };
+    } else if (item.kind === 'video') {
+      const conv = state.converter;
+      const canWC = plan.target.ext === 'mp4' && (conv.trimStart === 0 || conv.trimStart === undefined) && (conv.trimEnd === 100 || conv.trimEnd === undefined) && (conv.imageMax === 'original' || !conv.imageMax) && !conv.imageWidth && !conv.imageHeight && (conv.speed === '1' || !conv.speed) && (conv.aspect === 'original' || conv.aspect === 'free') && !conv.watermarkText && typeof VideoEncoder !== 'undefined';
+      let wcBlob = null;
+      if (canWC) {
+        try {
+          updateQueueProgress(item, .02);
+          const pseudo = { source: { duration: item.duration || 0, size: item.size || 0 }, settings: { format: 'mp4', mode: 'quality', quality: conv.quality || 'balanced', resolution: 'source', normalize: false, denoise: false, mute: !!conv.mute, audioBitrate: conv.audioBitrate || 128, targetMB: Number(conv.targetSizeMB) || 0 } };
+          wcBlob = await webCodecsCompressVideo(item.file, pseudo, (v) => updateQueueProgress(item, .02 + v * .96));
+        } catch (e) {
+          wcBlob = null;
+        }
+      }
+      if (wcBlob) {
+        result = { blob: wcBlob, size: wcBlob.size, mime: plan.target.mime || 'video/mp4' };
+      } else {
+        await acquireEngineLock();
+        try {
+          const inputName = extOf(item.name) || 'mp4';
+          result = await Engine.run({
+            blob: item.file,
+            inputName,
+            outputName: plan.target.ext,
+            args: buildConverterArgs(item, plan),
+            mime: plan.target.mime,
+            extraFiles: state.converter.subtitleFile ? [{ name: state.converter.subtitleFile.name, blob: state.converter.subtitleFile }] : [],
+            onProgress: (value) => updateQueueProgress(item, .04 + value * .96)
+          });
+        } finally {
+          releaseEngineLock();
+        }
+      }
     } else {
       await acquireEngineLock();
       try {
-        const inputName = extOf(item.name) || (item.kind === 'video' ? 'mp4' : item.kind === 'audio' ? 'mp3' : 'png');
+        const inputName = extOf(item.name) || (item.kind === 'audio' ? 'mp3' : 'png');
         result = await Engine.run({
           blob: item.file,
           inputName,
@@ -8911,8 +8943,9 @@ function videoEditorView() {
           <div class="stage-body" style="padding:8px">
             <div id="ve-timeline" style="position:relative;height:90px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer">
               <div id="ve-timeline-ruler" style="position:absolute;top:0;left:0;right:0;height:18px;background:var(--surface-3);border-bottom:1px solid var(--border);font-size:10px;color:var(--text-3)"></div>
-              <div id="ve-track-video" style="position:absolute;top:18px;left:0;right:0;height:24px;background:rgba(124,58,237,0.12)"></div>
-              <div id="ve-track-overlays" style="position:absolute;top:42px;left:0;right:0;height:24px"></div>
+              <div id="ve-track-video" style="position:absolute;top:18px;left:0;right:0;height:20px;background:rgba(124,58,237,0.12)"></div>
+              <div id="ve-track-overlays" style="position:absolute;top:40px;left:0;right:0;height:20px"></div>
+               <div id="ve-track-audio" style="position:absolute;top:62px;left:0;right:0;height:20px;background:rgba(16,185,129,0.12)"></div>
               <div id="ve-playhead" style="position:absolute;top:0;bottom:0;width:2px;background:#ef4444;pointer-events:none"></div>
             </div>
             <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
@@ -9002,13 +9035,27 @@ function renderVideoTimeline() {
       const left = ((o.start || 0) / 100) * 100;
       const width = Math.max(1, ((o.end || 100) - (o.start || 0)));
       const colors = ['#7c3aed','#10b981','#f59e0b','#ef4444','#3b82f6'];
-      return `<div data-ve-clip="${i}" style="position:absolute;left:${left}%;width:${width}%;top:2px;height:20px;background:${colors[i % colors.length]};opacity:0.85;border-radius:3px;font-size:10px;color:#fff;padding:2px 4px;overflow:hidden;white-space:nowrap;cursor:grab">${esc(o.text)}</div>`;
+      const kfMarkers = (o.kf || []).map((k) => {
+        const kpct = Math.max(0, Math.min(100, Number(k.t) || 0));
+        return `<span title="keyframe" style="position:absolute;left:${kpct}%;top:0;bottom:0;width:2px;background:#fff;opacity:0.9;pointer-events:none"></span>`;
+      }).join('');
+      return `<div data-ve-clip="${i}" style="position:absolute;left:${left}%;width:${width}%;top:2px;height:20px;background:${colors[i % colors.length]};opacity:0.85;border-radius:3px;font-size:10px;color:#fff;padding:2px 4px;overflow:hidden;white-space:nowrap;cursor:grab">${esc(o.text)}${kfMarkers}</div>`;
     }).join('');
   }
   // video track clip
   const videoTrack = document.getElementById('ve-track-video');
   if (videoTrack) {
-    videoTrack.innerHTML = `<div style="position:absolute;left:0;width:100%;top:2px;height:20px;background:rgba(124,58,237,0.5);border-radius:3px;font-size:10px;color:#fff;padding:2px 4px">Video</div>`;
+    videoTrack.innerHTML = `<div style="position:absolute;left:0;width:100%;top:2px;height:16px;background:rgba(124,58,237,0.5);border-radius:3px;font-size:10px;color:#fff;padding:2px 4px">Video</div>`;
+  }
+  // audio track (volume keyframes)
+  const audioTrack = document.getElementById('ve-track-audio');
+  if (audioTrack) {
+    const kfs = (data.audioKf || []);
+    const markers = kfs.map((k) => {
+      const kpct = Math.max(0, Math.min(100, Number(k.t) || 0));
+      return `<span title="vol ${k.volume}" style="position:absolute;left:${kpct}%;top:2px;bottom:2px;width:2px;background:#10b981;opacity:0.9;pointer-events:none"></span>`;
+    }).join('');
+    audioTrack.innerHTML = `<div style="position:absolute;left:0;width:100%;top:2px;height:16px;background:rgba(16,185,129,0.25);border-radius:3px;font-size:10px;color:#fff;padding:2px 4px">Audio${kfs.length ? ' · ' + kfs.length + ' kf' : ''}</div>${markers}`;
   }
   // ruler ticks
   const ruler = document.getElementById('ve-timeline-ruler');
