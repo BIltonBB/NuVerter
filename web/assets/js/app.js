@@ -14751,80 +14751,243 @@ function utilTextPaper() {
   else { W = Number(val('tp-cw', 794)); H = Number(val('tp-ch', 1123)); }
   const margin = Number(val('tp-margin', 64));
   const gap = Number(val('tp-gap', 6));
+  const pg = Number(val('tp-pg', 8));
   const font = val('tp-font', 'Georgia, serif');
   const fontSize = Number(val('tp-fontsize', 16)) || 16;
   const lh = Number(val('tp-lh', 1.6)) || 1.6;
+  const align = val('tp-align', 'left');
+  const md = val('tp-md', 'on') === 'on';
   const tcolor = val('tp-tcolor', '#1f2937');
   const pcolor = val('tp-pcolor', '#ffffff');
   const shadow = val('tp-shadow', 'soft');
   const watermark = val('tp-watermark', '');
-  const canvas = document.createElement('canvas');
-  canvas.width = W;
-  canvas.height = H;
-  const ctx = canvas.getContext('2d');
-  // paper
-  ctx.fillStyle = pcolor;
-  ctx.fillRect(0, 0, W, H);
-  // subtle paper texture
-  ctx.fillStyle = 'rgba(0,0,0,0.02)';
-  for (let i = 0; i < 2000; i++) {
-    const x = Math.random() * W;
-    const y = Math.random() * H;
-    ctx.fillRect(x, y, 1, 1);
-  }
-  // text
-  const fontCss = fontSize + 'px ' + font;
-  ctx.font = fontCss;
-  ctx.fillStyle = tcolor;
-  ctx.textBaseline = 'top';
-  const maxW = W - margin * 2;
-  const paragraphs = text.split(/\n/);
-  let y = margin;
-  const lineH = fontSize * lh;
-  paragraphs.forEach((para, pi) => {
-    const words = para.split(/\s+/).filter(Boolean);
-    let line = '';
-    const lines = [];
-    for (const word of words) {
-      const test = line ? line + ' ' + word : word;
-      if (ctx.measureText(test).width > maxW && line) { lines.push(line); line = word; } else line = test;
+
+  // Parse into blocks
+  const lines = text.split(/\n/);
+  const blocks = []; // each: { type: 'h1'|'h2'|'h3'|'p'|'li'|'hr', text }
+  lines.forEach((raw) => {
+    const line = raw.trimEnd();
+    if (md && /^#{1,3}\s/.test(line)) {
+      const level = (line.match(/^#+/) || [''])[0].length;
+      blocks.push({ type: 'h' + level, text: line.replace(/^#+\s*/, '') });
+    } else if (md && /^(-{3,}|\*{3,})$/.test(line.trim())) {
+      blocks.push({ type: 'hr', text: '' });
+    } else if (md && /^[-*]\s/.test(line)) {
+      blocks.push({ type: 'li', text: line.replace(/^[-*]\s+/, '') });
+    } else if (line.trim() === '') {
+      blocks.push({ type: 'br', text: '' });
+    } else {
+      blocks.push({ type: 'p', text: line });
     }
-    if (line) lines.push(line);
-    lines.forEach((l) => {
-      ctx.fillText(l, margin, y);
-      y += lineH;
-    });
-    if (pi < paragraphs.length - 1) y += gap;
   });
-  if (watermark) {
-    ctx.save();
-    ctx.globalAlpha = 0.08;
-    ctx.font = (fontSize * 2) + 'px ' + font;
-    ctx.fillStyle = tcolor;
-    ctx.translate(W / 2, H / 2);
-    ctx.rotate(-Math.PI / 6);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(watermark, 0, 0);
-    ctx.restore();
+
+  const lineH = fontSize * lh;
+  const maxW = W - margin * 2;
+
+  function inlineSegments(str) {
+    // split into bold/italic segments
+    const segs = [];
+    const regex = /(\*\*[^*]+\*\*|\*[^*]+\*|_[^_]+_)/g;
+    let last = 0;
+    let m;
+    while ((m = regex.exec(str)) !== null) {
+      if (m.index > last) segs.push({ t: str.slice(last, m.index), b: false, i: false });
+      const tok = m[0];
+      if (tok.startsWith('**')) segs.push({ t: tok.slice(2, -2), b: true, i: false });
+      else segs.push({ t: tok.slice(1, -1), b: false, i: true });
+      last = m.index + tok.length;
+    }
+    if (last < str.length) segs.push({ t: str.slice(last), b: false, i: false });
+    if (!segs.length) segs.push({ t: str, b: false, i: false });
+    return segs;
   }
-  const url = canvas.toDataURL('image/png');
+
+  function measureSegs(ctx, segs, size, bold) {
+    let w = 0;
+    segs.forEach((s) => {
+      ctx.font = (s.b || bold ? 'bold ' : '') + (s.i ? 'italic ' : '') + size + 'px ' + font;
+      w += ctx.measureText(s.t).width;
+    });
+    return w;
+  }
+
+  function wrapSegments(ctx, segs, size, bold, maxWidth) {
+    // returns array of lines, each line is array of {t,b,i}
+    const linesOut = [];
+    let current = [];
+    let currentW = 0;
+    // flatten words
+    const words = [];
+    segs.forEach((s) => {
+      s.t.split(/(\s+)/).forEach((part) => {
+        if (part === '') return;
+        words.push({ t: part, b: s.b, i: s.i, space: /^\s+$/.test(part) });
+      });
+    });
+    words.forEach((w) => {
+      ctx.font = (w.b || bold ? 'bold ' : '') + (w.i ? 'italic ' : '') + size + 'px ' + font;
+      const ww = ctx.measureText(w.t).width;
+      if (w.space) {
+        if (current.length && currentW + ww > maxWidth) {
+          linesOut.push(current); current = []; currentW = 0;
+        } else {
+          if (current.length) { current.push(w); currentW += ww; }
+        }
+        return;
+      }
+      if (current.length && currentW + ww > maxWidth) {
+        linesOut.push(current); current = [w]; currentW = ww;
+      } else {
+        current.push(w); currentW += ww;
+      }
+    });
+    if (current.length) linesOut.push(current);
+    if (!linesOut.length) linesOut.push([]);
+    return linesOut;
+  }
+
+  // Build render instructions: list of "items" each with size, bold, type, and text segments
+  const items = [];
+  blocks.forEach((b) => {
+    if (b.type === 'br') { items.push({ type: 'br' }); return; }
+    if (b.type === 'hr') { items.push({ type: 'hr' }); return; }
+    let size = fontSize;
+    let bold = false;
+    let indent = 0;
+    if (b.type === 'h1') { size = fontSize * 2; bold = true; }
+    else if (b.type === 'h2') { size = fontSize * 1.5; bold = true; }
+    else if (b.type === 'h3') { size = fontSize * 1.25; bold = true; }
+    else if (b.type === 'li') { indent = fontSize * 1.2; }
+    const segs = inlineSegments(b.text);
+    items.push({ type: b.type, size, bold, indent, segs });
+  });
+
+  // Paginate
+  const pages = []; // each: array of draw ops
+  let currentOps = [];
+  let y = margin;
+  function newPage() { if (currentOps.length) pages.push(currentOps); currentOps = []; y = margin; }
+  function ensureSpace(h) { if (y + h > H - margin) newPage(); }
+
+  // We need ctx for measureText; create temp
+  const tmp = document.createElement('canvas').getContext('2d');
+  // Redo pagination with tmp ctx
+  const pages2 = [];
+  let ops = [];
+  let yy = margin;
+  function newPage2() { if (ops.length) pages2.push(ops); ops = []; yy = margin; }
+  function ensure2(h) { if (yy + h > H - margin) newPage2(); }
+
+  items.forEach((it) => {
+    if (it.type === 'br') { yy += (fontSize * 0.6); return; }
+    if (it.type === 'hr') { ensure2(fontSize); ops.push({ type: 'hr', y: yy, indent: 0 }); yy += fontSize * 0.8; return; }
+    const size = it.size;
+    const lh2 = size * lh;
+    const indent = it.indent || 0;
+    const maxW2 = maxW - indent;
+    const wrapped = wrapSegments(tmp, it.segs, size, it.bold, maxW2);
+    wrapped.forEach((wline, wi) => {
+      ensure2(lh2);
+      ops.push({ type: 'text', y: yy, size, bold: it.bold, indent, segs: wline });
+      yy += lh2;
+    });
+    // paragraph spacing after p
+    if (it.type === 'p' || it.type === 'li') yy += pg;
+  });
+  if (ops.length) pages2.push(ops);
+
+  // Render each page
   const out = document.getElementById('util-tp-out');
   if (out) {
     out.innerHTML = '';
-    // preview with checkerboard + shadow
-    const wrap = document.createElement('div');
-    wrap.style.cssText = 'display:inline-block;padding:16px;background:repeating-conic-gradient(#d1d5db 0% 25%, #f9fafb 0% 50%) 50% / 20px 20px;border-radius:8px;';
-    const img = document.createElement('img');
-    img.src = url;
-    img.style.cssText = 'max-width:100%;box-shadow:' + (shadow === 'hard' ? '8px 8px 0 rgba(0,0,0,.35)' : shadow === 'soft' ? '0 10px 30px rgba(0,0,0,.25)' : 'none') + ';';
-    wrap.appendChild(img);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'text-to-paper.png'; a.className = 'btn btn-secondary btn-sm'; a.textContent = 'Download PNG';
-    a.style.marginTop = '8px';
-    out.append(wrap, document.createElement('br'), a);
+    const shadowCss = shadow === 'hard' ? '8px 8px 0 rgba(0,0,0,.35)' : shadow === 'soft' ? '0 10px 30px rgba(0,0,0,.25)' : 'none';
+    pages2.forEach((pageOps, pi) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = W; canvas.height = H;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = pcolor;
+      ctx.fillRect(0, 0, W, H);
+      // texture
+      ctx.fillStyle = 'rgba(0,0,0,0.02)';
+      for (let i = 0; i < 2000; i++) ctx.fillRect(Math.random() * W, Math.random() * H, 1, 1);
+      // watermark
+      if (watermark) {
+        ctx.save();
+        ctx.globalAlpha = 0.08;
+        ctx.font = (fontSize * 2) + 'px ' + font;
+        ctx.fillStyle = tcolor;
+        ctx.translate(W / 2, H / 2);
+        ctx.rotate(-Math.PI / 6);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(watermark, 0, 0);
+        ctx.restore();
+      }
+      pageOps.forEach((op) => {
+        if (op.type === 'hr') {
+          ctx.strokeStyle = tcolor;
+          ctx.globalAlpha = 0.3;
+          ctx.beginPath();
+          ctx.moveTo(margin, op.y + fontSize * 0.4);
+          ctx.lineTo(W - margin, op.y + fontSize * 0.4);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+          return;
+        }
+        ctx.textBaseline = 'top';
+        const x0 = margin + op.indent;
+        const maxW2 = maxW - op.indent;
+        // measure line width
+        let lineW = 0;
+        op.segs.forEach((s) => {
+          ctx.font = (s.b || op.bold ? 'bold ' : '') + (s.i ? 'italic ' : '') + op.size + 'px ' + font;
+          lineW += ctx.measureText(s.t).width;
+        });
+        let x = x0;
+        if (align === 'center') x = margin + (maxW - lineW) / 2 + op.indent / 2;
+        else if (align === 'right') x = W - margin - lineW;
+        // justify: add spacing between words
+        let extra = 0;
+        const words = op.segs.filter((s) => !/^\s+$/.test(s.t));
+        const spaces = op.segs.filter((s) => /^\s+$/.test(s.t)).length;
+        if (align === 'justify' && spaces > 0) extra = (maxW2 - lineW) / spaces;
+        ctx.fillStyle = tcolor;
+        op.segs.forEach((s) => {
+          ctx.font = (s.b || op.bold ? 'bold ' : '') + (s.i ? 'italic ' : '') + op.size + 'px ' + font;
+          if (/^\s+$/.test(s.t)) {
+            x += ctx.measureText(s.t).width + extra;
+          } else {
+            ctx.fillText(s.t, x, op.y);
+            x += ctx.measureText(s.t).width;
+          }
+        });
+      });
+      const url = canvas.toDataURL('image/png');
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'display:inline-block;margin:8px;padding:16px;background:repeating-conic-gradient(#d1d5db 0% 25%, #f9fafb 0% 50%) 50% / 20px 20px;border-radius:8px;';
+      const img = document.createElement('img');
+      img.src = url;
+      img.style.cssText = 'max-width:100%;box-shadow:' + shadowCss + ';';
+      wrap.appendChild(img);
+      const label = document.createElement('div');
+      label.textContent = 'Page ' + (pi + 1) + ' of ' + pages2.length;
+      label.style.cssText = 'text-align:center;font-size:11px;color:#666;margin-top:4px;';
+      wrap.appendChild(label);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'text-to-paper-' + (pi + 1) + '.png'; a.className = 'btn btn-secondary btn-sm'; a.textContent = 'Download page ' + (pi + 1);
+      a.style.cssText = 'display:block;margin:8px auto 0;';
+      wrap.appendChild(a);
+      out.appendChild(wrap);
+    });
+    if (pages2.length > 1) {
+      const note = document.createElement('p');
+      note.className = 'field-help';
+      note.style.marginTop = '8px';
+      note.textContent = pages2.length + ' pages generated. Download each page separately.';
+      out.appendChild(note);
+    }
   }
-  toast('Paper ready', 'Download it below.', 'success');
+  toast('Paper ready', pages2.length + ' page(s).', 'success');
 }
 
 function utilTextPaperBody() {
@@ -14856,6 +15019,21 @@ function utilTextPaperBody() {
         </div>
         <div class="field"><div class="field-head"><span class="field-label">Font size</span></div><input type="number" min="8" max="72" value="16" data-util="tp-fontsize" class="input" style="width:80px" /></div>
         <div class="field"><div class="field-head"><span class="field-label">Line height</span></div><input type="number" min="1" max="3" step="0.1" value="1.6" data-util="tp-lh" class="input" style="width:80px" /></div>
+        <div class="field"><div class="field-head"><span class="field-label">Paragraph spacing (px)</span></div><input type="number" min="0" max="60" value="8" data-util="tp-pg" class="input" style="width:80px" /></div>
+        <div class="field"><div class="field-head"><span class="field-label">Alignment</span></div>
+          <select data-util="tp-align" class="select">
+            <option value="left" selected>Left</option>
+            <option value="center">Center</option>
+            <option value="right">Right</option>
+            <option value="justify">Justify</option>
+          </select>
+        </div>
+        <div class="field"><div class="field-head"><span class="field-label">Markdown formatting</span></div>
+          <select data-util="tp-md" class="select">
+            <option value="on" selected>On (# headings, **bold**, *italic*, - lists)</option>
+            <option value="off">Off (plain text)</option>
+          </select>
+        </div>
         <div class="field"><div class="field-head"><span class="field-label">Text color</span></div><input type="color" value="#1f2937" data-util="tp-tcolor" /></div>
         <div class="field"><div class="field-head"><span class="field-label">Paper color</span></div><input type="color" value="#ffffff" data-util="tp-pcolor" /></div>
         <div class="field"><div class="field-head"><span class="field-label">Shadow</span></div>
