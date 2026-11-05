@@ -8,3 +8,5 @@ dist/
 tauri/src-tauri/target/
 *.pdb
 web/downloads/
+# Notes (local only)
+ZNotes/

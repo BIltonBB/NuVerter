@@ -9849,8 +9849,8 @@ async function reframeExport() {
 }
 
 const WF_NODE_CATEGORIES = { input: ['branch'], process: ['trim','extractAudio','ocr','compress','convert','gif','merge','branch'], output: ['output'] };
-const WF_NODE_LABELS = { trim: 'Trim', extractAudio: 'Extract audio', ocr: 'OCR text', compress: 'Compress', convert: 'Convert', gif: 'GIF', merge: 'Merge', branch: 'Branch', output: 'Output', resize: 'Resize', mute: 'Mute audio', watermark: 'Watermark' };
-const WF_NODE_IO = { trim: { in: 'file', out: 'file' }, extractAudio: { in: 'file', out: 'file' }, ocr: { in: 'file', out: 'text' }, compress: { in: 'file', out: 'file' }, convert: { in: 'file', out: 'file' }, gif: { in: 'file', out: 'file' }, merge: { in: 'file', out: 'file' }, branch: { in: 'file', out: 'file' }, output: { in: 'file', out: null }, resize: { in: 'file', out: 'file' }, mute: { in: 'file', out: 'file' }, watermark: { in: 'file', out: 'file' } };
+const WF_NODE_LABELS = { trim: 'Trim', extractAudio: 'Extract audio', ocr: 'OCR text', compress: 'Compress', convert: 'Convert', gif: 'GIF', merge: 'Merge', branch: 'Branch', output: 'Output', resize: 'Resize', mute: 'Mute audio', watermark: 'Watermark', rotate: 'Rotate', speed: 'Speed', flip: 'Flip' };
+const WF_NODE_IO = { trim: { in: 'file', out: 'file' }, extractAudio: { in: 'file', out: 'file' }, ocr: { in: 'file', out: 'text' }, compress: { in: 'file', out: 'file' }, convert: { in: 'file', out: 'file' }, gif: { in: 'file', out: 'file' }, merge: { in: 'file', out: 'file' }, branch: { in: 'file', out: 'file' }, output: { in: 'file', out: null }, resize: { in: 'file', out: 'file' }, mute: { in: 'file', out: 'file' }, watermark: { in: 'file', out: 'file' }, rotate: { in: 'file', out: 'file' }, speed: { in: 'file', out: 'file' }, flip: { in: 'file', out: 'file' } };
 
 function workflowNodeInspector(data) {
   const n = data.nodes.find((x) => x.id === data.selectedNodeId);
@@ -9864,6 +9864,9 @@ function workflowNodeInspector(data) {
   if (n.type === 'gif') return '<p class="field-help" style="margin-top:6px">Converts input to GIF.</p>';
   if (n.type === 'resize') return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px"><label>Width<input class="input" data-wfcfg="resize.w" value="' + esc(n.config.w || '1280') + '" /></label><label>Height<input class="input" data-wfcfg="resize.h" value="' + esc(n.config.h || '720') + '" /></label></div>';
   if (n.type === 'watermark') return '<div style="margin-top:8px"><label>Text<input class="input" data-wfcfg="watermark.text" value="' + esc(n.config.text || 'NuVerter') + '" /></label></div>';
+  if (n.type === 'rotate') return '<div style="margin-top:8px"><label>Degrees<select class="select" data-wfcfg="rotate.deg"><option value="90" ' + (n.config.deg === '90' ? 'selected' : '') + '>90</option><option value="180" ' + (n.config.deg === '180' ? 'selected' : '') + '>180</option><option value="270" ' + (n.config.deg === '270' ? 'selected' : '') + '>270</option></select></label></div>';
+  if (n.type === 'speed') return '<div style="margin-top:8px"><label>Factor<input class="input" data-wfcfg="speed.factor" value="' + esc(n.config.factor || '1.5') + '" /></label></div>';
+  if (n.type === 'flip') return '<div style="margin-top:8px"><label>Axis<select class="select" data-wfcfg="flip.axis"><option value="h" ' + (n.config.axis === 'h' ? 'selected' : '') + '>Horizontal</option><option value="v" ' + (n.config.axis === 'v' ? 'selected' : '') + '>Vertical</option></select></label></div>';
   if (n.type === 'merge') return '<p class="field-help" style="margin-top:6px">Concatenates all incoming video inputs into one.</p>';
   if (n.type === 'branch') return '<p class="field-help" style="margin-top:6px">Duplicates input to multiple downstream branches.</p>';
   return '<p class="field-help" style="margin-top:6px">No options for this node.</p>';
@@ -9908,6 +9911,9 @@ function workflowView() {
                   <option value="resize">Resize</option>
                   <option value="mute">Mute audio</option>
                   <option value="watermark">Watermark</option>
+                  <option value="rotate">Rotate</option>
+                  <option value="speed">Speed</option>
+                  <option value="flip">Flip</option>
                 </optgroup>
                 <optgroup label="Output">
                   <option value="output">Output (download)</option>
@@ -10105,6 +10111,29 @@ async function wfRun() {
         const cfg = node.config || {};
         const txt = (cfg.text || 'NuVerter').replace(/'/g, "\\'");
         const args = ['-hide_banner', '-y', '-i', '{in}', '-vf', `drawtext=text='${txt}':fontsize=24:fontcolor=white:x=10:y=10`, '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-c:a', 'copy', '{out}'];
+        const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: extOf(inputName) || 'mp4', args, mime: inputFile.type || 'video/mp4' });
+        const outFile = new File([result.blob], inputName, { type: result.mime });
+        outputs.set(id, { file: outFile, name: inputName });
+      } else if (node.type === 'rotate') {
+        const cfg = node.config || {};
+        const deg = cfg.deg || '90';
+        const vf = deg === '90' ? 'transpose=1' : deg === '270' ? 'transpose=2' : 'transpose=2,transpose=2';
+        const args = ['-hide_banner', '-y', '-i', '{in}', '-vf', vf, '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-c:a', 'copy', '{out}'];
+        const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: extOf(inputName) || 'mp4', args, mime: inputFile.type || 'video/mp4' });
+        const outFile = new File([result.blob], inputName, { type: result.mime });
+        outputs.set(id, { file: outFile, name: inputName });
+      } else if (node.type === 'speed') {
+        const cfg = node.config || {};
+        const factor = Number(cfg.factor) || 1.5;
+        const pts = (1 / factor).toFixed(3);
+        const args = ['-hide_banner', '-y', '-i', '{in}', '-vf', `setpts=${pts}*PTS`, '-r', String(Math.round(30 * factor)), '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-c:a', 'atempo=' + factor, '{out}'];
+        const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: extOf(inputName) || 'mp4', args, mime: inputFile.type || 'video/mp4' });
+        const outFile = new File([result.blob], inputName, { type: result.mime });
+        outputs.set(id, { file: outFile, name: inputName });
+      } else if (node.type === 'flip') {
+        const cfg = node.config || {};
+        const vf = cfg.axis === 'v' ? 'vflip' : 'hflip';
+        const args = ['-hide_banner', '-y', '-i', '{in}', '-vf', vf, '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-c:a', 'copy', '{out}'];
         const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: extOf(inputName) || 'mp4', args, mime: inputFile.type || 'video/mp4' });
         const outFile = new File([result.blob], inputName, { type: result.mime });
         outputs.set(id, { file: outFile, name: inputName });
