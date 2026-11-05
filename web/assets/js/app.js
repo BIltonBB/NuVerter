@@ -2193,7 +2193,6 @@ function scanImageMetadata(blob) {
 async function addConverterFiles(fileList) {
   const files = Array.from(fileList || []).filter((file) => file && file.size > 0);
   if (!files.length) return;
-  pushQueueHistory();
   let unsupported = 0;
   const added = [];
   for (const file of files) {
@@ -2220,6 +2219,10 @@ async function addConverterFiles(fileList) {
   }
   if (unsupported) toast('Some files were skipped', `${unsupported} file type${unsupported === 1 ? ' is' : 's are'} not supported by the local engine.`, 'info');
   if (!added.length) return;
+  state.queueUndo = state.queueUndo || [];
+  state.queueRedo = [];
+  state.queueUndo.push({ type: 'add', items: added.slice() });
+  if (state.queueUndo.length > 50) state.queueUndo.shift();
   renderQueue();
   syncConverterChrome();
   Engine.preload();
@@ -2239,7 +2242,11 @@ async function addConverterFiles(fileList) {
 function removeQueueItem(id) {
   const item = state.queue.find((entry) => entry.id === id);
   if (!item) return;
-  pushQueueHistory();
+  const idx = state.queue.indexOf(item);
+  state.queueUndo = state.queueUndo || [];
+  state.queueRedo = [];
+  state.queueUndo.push({ type: 'remove', item, index: idx });
+  if (state.queueUndo.length > 50) state.queueUndo.shift();
   if (state.currentItemId === id) {
     state.cancelItemId = id;
     state.queueRunning = false;
@@ -2255,7 +2262,13 @@ function clearQueue({ keepDone = false } = {}) {
     state.queueRunning = false;
     Engine.cancel();
   }
-  pushQueueHistory();
+  const removed = state.queue
+    .map((it, i) => ({ item: it, index: i }))
+    .filter(({ item }) => !(keepDone && item.status === 'done'));
+  state.queueUndo = state.queueUndo || [];
+  state.queueRedo = [];
+  state.queueUndo.push({ type: 'clear', removed, keepDone });
+  if (state.queueUndo.length > 50) state.queueUndo.shift();
   state.queue = keepDone ? state.queue.filter((item) => item.status === 'done') : [];
   renderQueue();
   syncConverterChrome();
@@ -2275,20 +2288,57 @@ function pushQueueHistory() {
   if (state.queueUndo.length > 50) state.queueUndo.shift();
 }
 
+function applyQueueCommand(cmd, forward) {
+  if (!cmd) return;
+  if (cmd.type === 'add') {
+    if (forward) {
+      for (const item of cmd.items) {
+        if (!state.queue.some((q) => q.id === item.id)) state.queue.push(item);
+      }
+    } else {
+      const ids = new Set(cmd.items.map((i) => i.id));
+      state.queue = state.queue.filter((q) => !ids.has(q.id));
+    }
+  } else if (cmd.type === 'remove') {
+    if (forward) {
+      state.queue = state.queue.filter((q) => q.id !== cmd.item.id);
+    } else {
+      const idx = Math.max(0, Math.min(cmd.index, state.queue.length));
+      state.queue.splice(idx, 0, cmd.item);
+    }
+  } else if (cmd.type === 'clear') {
+    if (forward) {
+      const ids = new Set(cmd.removed.map((r) => r.item.id));
+      state.queue = state.queue.filter((q) => !ids.has(q.id));
+    } else {
+      // re-insert removed items at original indices
+      const sorted = cmd.removed.slice().sort((a, b) => a.index - b.index);
+      for (const r of sorted) {
+        const idx = Math.max(0, Math.min(r.index, state.queue.length));
+        if (!state.queue.some((q) => q.id === r.item.id)) state.queue.splice(idx, 0, r.item);
+      }
+    }
+  }
+}
+
 function undoQueue() {
   if (!state.queueUndo?.length) return;
+  const cmd = state.queueUndo.pop();
+  applyQueueCommand(cmd, false);
   state.queueRedo = state.queueRedo || [];
-  state.queueRedo.push(cloneQueue(state.queue));
-  state.queue = state.queueUndo.pop();
+  state.queueRedo.push(cmd);
+  if (state.queueRedo.length > 50) state.queueRedo.shift();
   renderQueue();
   syncConverterChrome();
 }
 
 function redoQueue() {
   if (!state.queueRedo?.length) return;
+  const cmd = state.queueRedo.pop();
+  applyQueueCommand(cmd, true);
   state.queueUndo = state.queueUndo || [];
-  state.queueUndo.push(cloneQueue(state.queue));
-  state.queue = state.queueRedo.pop();
+  state.queueUndo.push(cmd);
+  if (state.queueUndo.length > 50) state.queueUndo.shift();
   renderQueue();
   syncConverterChrome();
 }
@@ -10149,7 +10199,7 @@ function renderView() {
   view.classList.add('is-switching');
 
   if (state.tool === 'converter') refreshQueueUI();
-  if (state.tool === 'cropper' && state.cropper.source) initCropStage();
+  if (state.tool === 'cropper' && state.cropper.source) { initCropStage(); requestAnimationFrame(drawCropPreview); }
   if (state.tool === 'extractor' && state.extractor.source) {
     bindExtractorAudio();
     ensureExtractorWave();
@@ -10525,6 +10575,11 @@ function cropperView() {
     <div class="field">
       <div class="field-head"><span class="field-label">${icon('crop')}Crop area</span><span class="field-value">${Math.round(crop.w * 100)}% × ${Math.round(crop.h * 100)}%</span></div>
       <p class="field-help" style="margin-top:0">Drag the frame or its handles in the preview. Everything outside the box is removed.</p>
+    </div>
+    <div class="field">
+      <div class="field-head"><span class="field-label">${icon('eye')}Framing preview</span></div>
+      <canvas id="crop-preview" width="320" height="180" style="width:100%;max-width:320px;height:auto;border:1px solid var(--border);border-radius:8px;background:var(--surface-2)"></canvas>
+      <div style="margin-top:6px"><button class="btn btn-ghost btn-sm" data-action="crop-preview-refresh">${icon('refresh-cw')}<span>Refresh preview</span></button></div>
     </div>
      <div class="field">
        <div class="field-head"><span class="field-label">Final framing preview</span></div>
@@ -11424,6 +11479,32 @@ function updateCropBox() {
   if (summary && source) summary.textContent = `${Math.max(2, Math.round((source.width || 0) * crop.w))} × ${Math.max(2, Math.round((source.height || 0) * crop.h))} px`;
 }
 
+function drawCropPreview() {
+  const canvas = document.getElementById('crop-preview');
+  if (!canvas) return;
+  const data = state.cropper;
+  const source = data.source;
+  if (!source) return;
+  const media = document.querySelector('#crop-frame img, #crop-frame video');
+  if (!media) return;
+  const nw = media.naturalWidth || media.videoWidth || source.width || 0;
+  const nh = media.naturalHeight || media.videoHeight || source.height || 0;
+  if (!nw || !nh) return;
+  const crop = data.crop;
+  const sx = Math.max(0, Math.round(nw * crop.x));
+  const sy = Math.max(0, Math.round(nh * crop.y));
+  const sw = Math.max(2, Math.round(nw * crop.w));
+  const sh = Math.max(2, Math.round(nh * crop.h));
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const scale = Math.min(canvas.width / sw, canvas.height / sh);
+  const dw = Math.round(sw * scale);
+  const dh = Math.round(sh * scale);
+  const dx = Math.round((canvas.width - dw) / 2);
+  const dy = Math.round((canvas.height - dh) / 2);
+  try { ctx.drawImage(media, sx, sy, sw, sh, dx, dy, dw, dh); } catch {}
+}
+
 function initCropStage() {
   const frame = $('#crop-frame');
   if (!frame) return;
@@ -11545,6 +11626,7 @@ function onCropPointerUp() {
   if (!cropDrag) return;
   cropDrag = null;
   syncToolChrome('cropper');
+  requestAnimationFrame(drawCropPreview);
 }
 
 function resetCrop() {
@@ -13559,6 +13641,7 @@ async function handleAction(action, el) {
     case 'reset-crop': resetCrop(); break;
     case 'toggle-crop-grid': state.cropper.showGrid = !state.cropper.showGrid; renderView(); return true;
     case 'toggle-crop-dim': state.cropper.dimOutside = !state.cropper.dimOutside; renderView(); return true;
+    case 'crop-preview-refresh': drawCropPreview(); return true;
     case 'crop-preview': runCropPreview(); return true;
     case 'reset-tool': resetTool(el.dataset.tool || state.tool); break;
     case 'run-compressor': runCompressor(); break;
