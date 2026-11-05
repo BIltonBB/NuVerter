@@ -9850,6 +9850,8 @@ async function reframeExport() {
 
 const WF_NODE_CATEGORIES = { input: ['branch'], process: ['trim','extractAudio','ocr','compress','convert','gif','merge','branch'], output: ['output'] };
 const WF_NODE_LABELS = { input: 'Input', trim: 'Trim', extractAudio: 'Extract audio', ocr: 'OCR text', compress: 'Compress', convert: 'Convert', gif: 'GIF', merge: 'Merge', branch: 'Branch', resize: 'Resize', mute: 'Mute audio', watermark: 'Watermark', rotate: 'Rotate', speed: 'Speed', flip: 'Flip', output: 'Output' };
+const WF_NODE_ICON = { input: 'log-in', trim: 'scissors', extractAudio: 'music', ocr: 'type', compress: 'minimize-2', convert: 'refresh-cw', gif: 'image', merge: 'git-merge', branch: 'git-branch', resize: 'maximize-2', mute: 'volume-x', watermark: 'droplet', rotate: 'rotate-cw', speed: 'zap', flip: 'flip-horizontal', output: 'download' };
+const WF_NODE_COLOR = { input: '#10b981', output: '#3b82f6' }; // processing default accent
 const WF_NODE_IO = { input: { in: null, out: 'file' }, trim: { in: 'file', out: 'file' }, extractAudio: { in: 'file', out: 'file' }, ocr: { in: 'file', out: 'text' }, compress: { in: 'file', out: 'file' }, convert: { in: 'file', out: 'file' }, gif: { in: 'file', out: 'file' }, merge: { in: 'file', out: 'file' }, branch: { in: 'file', out: 'file' }, resize: { in: 'file', out: 'file' }, mute: { in: 'file', out: 'file' }, watermark: { in: 'file', out: 'file' }, rotate: { in: 'file', out: 'file' }, speed: { in: 'file', out: 'file' }, flip: { in: 'file', out: 'file' }, output: { in: 'file', out: null } };
 
 function workflowNodeInspector(data) {
@@ -9885,7 +9887,8 @@ function workflowView() {
     if (!a || !b) return '';
     const x1 = a.x + 150, y1 = a.y + 24;
     const x2 = b.x, y2 = b.y + 24;
-    return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--accent)" stroke-width="2" />`;
+    const cls = data.running ? ' class="wf-edge-flow"' : '';
+    return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--accent)" stroke-width="2"${cls} />`;
   }).join('');
   return `
     ${viewHead({ index: '18', kicker: 'Workflows', title: 'Visual <span class="accent">pipelines.</span>', sub: 'Drag nodes, connect ports, run. Single-chain execution for now.' })}
@@ -9959,18 +9962,21 @@ function workflowView() {
         <div class="stage-card" style="height:100%">
           <div class="stage-head"><div class="stage-head-copy"><strong>Canvas</strong><span>Drag nodes · click output port then input port to connect</span></div></div>
           <div class="stage-body" style="padding:0">
-            <div id="wf-canvas" style="position:relative;width:100%;height:420px;overflow:hidden;background:var(--surface-2);border-radius:8px;cursor:grab;touch-action:none">
+            <div id="wf-canvas" style="position:relative;width:100%;height:460px;overflow:hidden;background:var(--surface-2);border-radius:8px;cursor:grab;touch-action:none;background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);background-size:24px 24px">
               <svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none" id="wf-svg">
                 <defs><marker id="wf-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="var(--accent)" /></marker></defs>
                 ${lines}
               </svg>
-              ${data.nodes.map((n) => `
-                <div class="wf-node" data-node="${n.id}" style="position:absolute;left:${n.x}px;top:${n.y}px;width:150px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:6px 8px;user-select:none;cursor:move;touch-action:none">
-                  <div style="font-weight:600;font-size:12px">${WF_NODE_LABELS[n.type] || n.type}</div>
+              ${data.nodes.map((n) => {
+                const col = WF_NODE_COLOR[n.type] || 'var(--accent)';
+                const ic = WF_NODE_ICON[n.type] ? icon(WF_NODE_ICON[n.type]) : '';
+                return `
+                <div class="wf-node" data-node="${n.id}" style="position:absolute;left:${n.x}px;top:${n.y}px;width:160px;background:var(--surface);border:1px solid ${col};border-left:4px solid ${col};border-radius:8px;padding:6px 8px;user-select:none;cursor:move;touch-action:none;box-shadow:0 2px 8px rgba(0,0,0,.18)">
+                  <div style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:12px">${ic}<span>${WF_NODE_LABELS[n.type] || n.type}</span></div>
                   <div style="font-size:10px;color:var(--text-3);margin-top:2px">${esc(n.status || 'idle')}${n.error ? ' · ' + esc(n.error) : ''}</div>
                   ${(WF_NODE_IO[n.type] || {}).in ? `<div class="wf-port wf-port-in" data-port-in="${n.id}" style="position:absolute;left:-9px;top:17px;width:18px;height:18px;border-radius:50%;background:var(--border);border:2px solid var(--surface);cursor:pointer;touch-action:none"></div>` : ''}
-                  ${(WF_NODE_IO[n.type] || {}).out ? `<div class="wf-port wf-port-out" data-port-out="${n.id}" style="position:absolute;right:-9px;top:17px;width:18px;height:18px;border-radius:50%;background:var(--accent);border:2px solid var(--surface);cursor:pointer;touch-action:none"></div>` : ''}
-                </div>`).join('')}
+                  ${(WF_NODE_IO[n.type] || {}).out ? `<div class="wf-port wf-port-out" data-port-out="${n.id}" style="position:absolute;right:-9px;top:17px;width:18px;height:18px;border-radius:50%;background:${col};border:2px solid var(--surface);cursor:pointer;touch-action:none"></div>` : ''}
+                </div>`; }).join('')}
             </div>
           </div>
         </div>
