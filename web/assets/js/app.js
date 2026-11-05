@@ -4830,20 +4830,44 @@ async function utilWaveformLoad(file) {
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   const buf = await file.arrayBuffer();
   const audioBuf = await audioCtx.decodeAudioData(buf.slice(0));
+  const dur = audioBuf.duration;
+  // Streaming-friendly peak representation: fixed-size buckets so long files
+  // do not keep the full decoded PCM in memory.
+  const TARGET_BUCKETS = 4000;
+  const data = audioBuf.getChannelData(0);
+  const samplesPerBucket = Math.max(1, Math.floor(data.length / TARGET_BUCKETS));
+  const peaks = [];
+  for (let b = 0; b < TARGET_BUCKETS; b++) {
+    const start = b * samplesPerBucket;
+    if (start >= data.length) { peaks.push({ min: 0, max: 0 }); continue; }
+    const end = Math.min(data.length, start + samplesPerBucket);
+    let min = 1, max = -1;
+    for (let i = start; i < end; i++) {
+      const v = data[i];
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    peaks.push({ min, max });
+  }
+  try { audioCtx.close(); } catch {}
   w.url = url;
-  w.audioBuf = audioBuf;
+  w.peaks = peaks;
+  w.duration = dur;
+  w.sampleRate = audioBuf.sampleRate;
+  w.channels = audioBuf.numberOfChannels;
+  w.audioBuf = null; // release full PCM to save memory
   w.start = 0;
-  w.end = audioBuf.duration;
+  w.end = dur;
   w.file = file;
   renderView();
   drawUtilWaveform();
-  toast('Loaded', file.name + ' · ' + audioBuf.duration.toFixed(2) + 's', 'success');
+  toast('Loaded', file.name + ' · ' + dur.toFixed(2) + 's', 'success');
 }
 
 function drawUtilWaveform() {
   const w = state.utilWaveform || {};
   const canvas = document.getElementById('util-wf-canvas');
-  if (!canvas || !w.audioBuf) return;
+  if (!canvas || !w.peaks) return;
   const ctx = canvas.getContext('2d');
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const rect = canvas.getBoundingClientRect();
@@ -4853,23 +4877,19 @@ function drawUtilWaveform() {
   const width = rect.width;
   const height = rect.height;
   ctx.clearRect(0, 0, width, height);
-  const data = w.audioBuf.getChannelData(0);
-  const step = Math.ceil(data.length / width);
+  const peaks = w.peaks;
   const amp = height / 2;
   ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#7c3aed';
   for (let i = 0; i < width; i++) {
-    let min = 1.0, max = -1.0;
-    for (let j = 0; j < step; j++) {
-      const v = data[i * step + j] || 0;
-      if (v < min) min = v;
-      if (v > max) max = v;
-    }
+    const idx = Math.min(peaks.length - 1, Math.floor((i / Math.max(1, width)) * peaks.length));
+    const p = peaks[idx] || { min: 0, max: 0 };
+    const min = p.min, max = p.max;
     ctx.fillRect(i, (1 + min) * amp, 1, Math.max(1, (max - min) * amp));
   }
   // selection overlay
+  const dur = w.duration || 1;
   const start = w.start || 0;
-  const end = w.end || w.audioBuf.duration;
-  const dur = w.audioBuf.duration;
+  const end = w.end || dur;
   const sx = (start / dur) * width;
   const ex = (end / dur) * width;
   ctx.fillStyle = 'rgba(0,0,0,0.25)';
@@ -4920,17 +4940,25 @@ function encodeWav(audioBuf, startSec, endSec) {
 
 async function utilWaveformExport() {
   const w = state.utilWaveform || {};
-  if (!w.audioBuf) { toast('No audio', 'Load a file first.', 'error'); return; }
-  const blob = encodeWav(w.audioBuf, w.start || 0, w.end || w.audioBuf.duration);
-  const url = URL.createObjectURL(blob);
-  const out = document.getElementById('util-wf-out');
-  if (out) out.innerHTML = `<a class="btn btn-secondary btn-sm" href="${url}" download="segment.wav">Download segment.wav</a>`;
-  toast('Exported', 'Segment ready.', 'success');
+  if (!w.file) { toast('No audio', 'Load a file first.', 'error'); return; }
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const buf = await w.file.arrayBuffer();
+    const audioBuf = await audioCtx.decodeAudioData(buf.slice(0));
+    const blob = encodeWav(audioBuf, w.start || 0, w.end || (w.duration || audioBuf.duration));
+    try { audioCtx.close(); } catch {}
+    const url = URL.createObjectURL(blob);
+    const out = document.getElementById('util-wf-out');
+    if (out) out.innerHTML = `<a class="btn btn-secondary btn-sm" href="${url}" download="segment.wav">Download segment.wav</a>`;
+    toast('Exported', 'Segment ready.', 'success');
+  } catch (e) {
+    toast('Export failed', e?.message || 'Unknown error.', 'error');
+  }
 }
 
 function utilWaveformReset() {
   const w = state.utilWaveform || {};
-  if (w.audioBuf) { w.start = 0; w.end = w.audioBuf.duration; drawUtilWaveform(); updateWfLabels(); }
+  if (w.peaks) { w.start = 0; w.end = w.duration || 0; drawUtilWaveform(); updateWfLabels(); }
 }
 
 function updateWfLabels() {
@@ -4949,7 +4977,7 @@ function bindUtilWaveform() {
   let dragStart = null;
   canvas.onpointerdown = (e) => {
     const rect = canvas.getBoundingClientRect();
-    const dur = state.utilWaveform?.audioBuf?.duration || 1;
+    const dur = state.utilWaveform?.duration || 1;
     const t = (e.clientX - rect.left) / rect.width * dur;
     dragStart = t;
     state.utilWaveform.start = t;
@@ -4960,7 +4988,7 @@ function bindUtilWaveform() {
   canvas.onpointermove = (e) => {
     if (dragStart === null) return;
     const rect = canvas.getBoundingClientRect();
-    const dur = state.utilWaveform?.audioBuf?.duration || 1;
+    const dur = state.utilWaveform?.duration || 1;
     const t = Math.max(0, Math.min(dur, (e.clientX - rect.left) / rect.width * dur));
     state.utilWaveform.start = Math.min(dragStart, t);
     state.utilWaveform.end = Math.max(dragStart, t);
@@ -9675,6 +9703,7 @@ function workflowNodeInspector(data) {
   n.config = n.config || {};
   if (n.type === 'trim') return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px"><label>Start (s)<input class="input" data-wfcfg="trim.start" value="' + esc(n.config.start || '') + '" /></label><label>End (s)<input class="input" data-wfcfg="trim.end" value="' + esc(n.config.end || '') + '" /></label></div>';
   if (n.type === 'compress') return '<div style="margin-top:8px"><label>CRF (18-35)<input class="input" data-wfcfg="compress.crf" value="' + esc(n.config.crf || '28') + '" /></label></div>';
+  if (n.type === 'crop') return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px"><label>X<input class="input" data-wfcfg="crop.x" value="' + esc(n.config.x || '0') + '" /></label><label>Y<input class="input" data-wfcfg="crop.y" value="' + esc(n.config.y || '0') + '" /></label><label>W<input class="input" data-wfcfg="crop.w" value="' + esc(n.config.w || '640') + '" /></label><label>H<input class="input" data-wfcfg="crop.h" value="' + esc(n.config.h || '360') + '" /></label></div>';
   if (n.type === 'ocr') return '<div style="margin-top:8px"><label>Language<input class="input" data-wfcfg="ocr.lang" value="' + esc(n.config.lang || 'eng') + '" /></label></div>';
   if (n.type === 'convert') return '<div style="margin-top:8px"><label>Format<select class="select" data-wfcfg="convert.format">' + ['mp4','webm','mp3','wav','png','jpg','webp'].map((f) => '<option value="' + f + '"' + (n.config.format === f ? ' selected' : '') + '>' + f + '</option>').join('') + '</select></label></div>';
   if (n.type === 'gif') return '<p class="field-help" style="margin-top:6px">Converts input to GIF.</p>';
@@ -9714,6 +9743,7 @@ function workflowView() {
                   <option value="extractAudio">Extract audio</option>
                   <option value="ocr">OCR text</option>
                   <option value="compress">Compress</option>
+                  <option value="crop">Crop</option>
                   <option value="convert">Convert</option>
                   <option value="gif">GIF</option>
                   <option value="merge">Merge (concat)</option>
@@ -9851,6 +9881,16 @@ async function wfRun() {
       } else if (node.type === 'compress') {
         const crf = (node.config || {}).crf || '28';
         const args = ['-hide_banner', '-y', '-i', '{in}', '-c:v', 'libx264', '-preset', 'fast', '-crf', String(crf), '-c:a', 'aac', '-b:a', '128k', '{out}'];
+        const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: extOf(inputName) || 'mp4', args, mime: inputFile.type || 'video/mp4' });
+        const outFile = new File([result.blob], inputName, { type: result.mime });
+        outputs.set(id, { file: outFile, name: inputName });
+      } else if (node.type === 'crop') {
+        const cfg = node.config || {};
+        const x = Number(cfg.x) || 0;
+        const y = Number(cfg.y) || 0;
+        const w = Number(cfg.w) || 640;
+        const h = Number(cfg.h) || 360;
+        const args = ['-hide_banner', '-y', '-i', '{in}', '-vf', `crop=${w}:${h}:${x}:${y}`, '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-c:a', 'copy', '{out}'];
         const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: extOf(inputName) || 'mp4', args, mime: inputFile.type || 'video/mp4' });
         const outFile = new File([result.blob], inputName, { type: result.mime });
         outputs.set(id, { file: outFile, name: inputName });
