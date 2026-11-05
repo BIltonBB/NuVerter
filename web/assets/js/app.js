@@ -429,7 +429,7 @@ const state = {
   practical: { tab: 'diff' },
   aiTools: { tab: 'aibg' },
   docSearch: { docs: [], query: '' },
-  workflow: { source: null, nodes: [], edges: [], running: false, pan: { x: 0, y: 0 }, zoom: 1, connectFrom: null, connectPreview: null, selectedNodeId: null, history: [], historyIndex: -1 },
+  workflow: { source: null, nodes: [], edges: [], running: false, pan: { x: 0, y: 0 }, zoom: 1, connectFrom: null, connectTo: null, connectPreview: null, selectedNodeId: null, history: [], historyIndex: -1, settings: { gridBg: true, snapGrid: true } },
   workflows: [],
   aiImage: { model: 'sd-turbo', folderName: '', status: '', busy: false, apiKey: (localStorage.getItem('NuVerter-pollinations-key') || '') },
   audioTools: { tab: 'audioclean' },
@@ -9944,7 +9944,13 @@ function workflowView() {
               <button class="btn btn-secondary btn-sm" data-action="wf-load-saved">Load</button>` : ''}
             </div>
             <div id="wf-out" class="util-out" style="margin-top:8px"></div>
-            <p class="field-help" style="margin-top:8px">How to use: 1) Choose a file. 2) Add nodes. 3) Drag from an output port (right dot) to an input port (left dot) to connect. 4) Drag empty canvas to pan, scroll to zoom. 5) Run. Shortcuts: Ctrl+Z undo, Ctrl+Y redo, Delete removes the selected node.</p>
+            <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px">
+              <div style="font-weight:600;font-size:12px;margin-bottom:6px">Canvas settings</div>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:4px"><input type="checkbox" id="wf-set-gridbg" ${data.settings?.gridBg !== false ? 'checked' : ''} /> Show grid background</label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:4px"><input type="checkbox" id="wf-set-snap" ${data.settings?.snapGrid !== false ? 'checked' : ''} /> Snap nodes to grid</label>
+              <p class="field-help" style="margin-top:6px">Grid background follows pan and zoom.</p>
+            </div>
+            <p class="field-help" style="margin-top:8px">How to use: 1) Choose a file. 2) Add nodes. 3) Drag from an output port (right dot) to an input port (left dot) to connect. Click a port to start/end a connection. 4) Drag empty canvas to pan, scroll to zoom. 5) Run. Shortcuts: Ctrl+Z undo, Ctrl+Y redo, Delete removes the selected node, Esc cancels connection.</p>
             <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
               <div style="font-weight:600;font-size:12px;margin-bottom:6px">Node inspector</div>
               <select id="wf-sel-node" class="select" style="width:100%">
@@ -9968,8 +9974,9 @@ function workflowView() {
         <div class="stage-card" style="height:100%">
           <div class="stage-head"><div class="stage-head-copy"><strong>Canvas</strong><span>Drag to pan · scroll to zoom · drag from an output dot to an input dot to connect</span></div></div>
           <div class="stage-body" style="padding:0">
-            <div id="wf-canvas" style="position:relative;width:100%;height:460px;overflow:hidden;background:var(--surface-2);border-radius:8px;cursor:grab;touch-action:none;background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);background-size:24px 24px">
+            <div id="wf-canvas" style="position:relative;width:100%;height:460px;overflow:hidden;background:var(--surface-2);border-radius:8px;cursor:grab;touch-action:none">
               <div id="wf-viewport" style="position:absolute;inset:0;transform-origin:0 0;transform:translate(${data.pan.x}px,${data.pan.y}px) scale(${data.zoom})">
+                ${(data.settings?.gridBg !== false) ? '<div style="position:absolute;left:0;top:0;width:4000px;height:4000px;pointer-events:none;background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);background-size:24px 24px;opacity:.9"></div>' : ''}
                 <svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none" id="wf-svg">
                   <defs><marker id="wf-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="var(--accent)" /></marker></defs>
                   ${lines}
@@ -10297,14 +10304,20 @@ function bindWorkflow() {
   };
   const canvas = document.getElementById('wf-canvas');
   if (!canvas) return;
+  if (!state.workflow.settings) state.workflow.settings = { gridBg: true, snapGrid: true };
   if (!state.workflow.history?.length) {
     state.workflow.history = [wfSnap()];
     state.workflow.historyIndex = 0;
   }
+  const gridBgCb = document.getElementById('wf-set-gridbg');
+  if (gridBgCb) gridBgCb.onchange = () => { state.workflow.settings = state.workflow.settings || {}; state.workflow.settings.gridBg = !!gridBgCb.checked; renderView(); };
+  const snapCb = document.getElementById('wf-set-snap');
+  if (snapCb) snapCb.onchange = () => { state.workflow.settings = state.workflow.settings || {}; state.workflow.settings.snapGrid = !!snapCb.checked; };
   canvas.tabIndex = 0;
   let draggingNode = null;
   let draggingPort = null;
   let dragMoved = false;
+  let portMoved = false;
   let offset = { x: 0, y: 0 };
   let previewLine = null;
   const canvasPoint = (e) => {
@@ -10357,7 +10370,17 @@ function bindWorkflow() {
     // Ports are children of nodes, so they must be checked before starting a drag.
     const outPort = e.target.closest('[data-port-out]');
     if (outPort) {
+      // If a connection is pending from an input port, finish it now (reverse).
+      if (state.workflow.connectTo) {
+        finishConnection(outPort.dataset.portOut, state.workflow.connectTo);
+        state.workflow.connectTo = null;
+        state.workflow.connectFrom = null;
+        clearPreview();
+        renderView();
+        return;
+      }
       draggingPort = outPort.dataset.portOut;
+      portMoved = false;
       state.workflow.connectFrom = draggingPort;
       startPreview(portCenter(outPort));
       try { canvas.setPointerCapture(e.pointerId); } catch {}
@@ -10366,14 +10389,20 @@ function bindWorkflow() {
     }
     const inPort = e.target.closest('[data-port-in]');
     if (inPort) {
-      if (!state.workflow.connectFrom) {
-        toast('Pick an output first', 'Drag from a colored output port to an input port.', 'info');
+      if (state.workflow.connectFrom) {
+        finishConnection(state.workflow.connectFrom, inPort.dataset.portIn);
+        state.workflow.connectFrom = null;
+        state.workflow.connectTo = null;
+        clearPreview();
+        renderView();
         return;
       }
-      finishConnection(state.workflow.connectFrom, inPort.dataset.portIn);
-      state.workflow.connectFrom = null;
-      clearPreview();
-      renderView();
+      // Start a connection from an input port (finish by clicking an output port).
+      state.workflow.connectTo = inPort.dataset.portIn;
+      portMoved = false;
+      startPreview(portCenter(inPort));
+      try { canvas.setPointerCapture(e.pointerId); } catch {}
+      e.preventDefault();
       return;
     }
     // Drag a node (works with mouse, pen and touch via pointer events).
@@ -10390,6 +10419,16 @@ function bindWorkflow() {
       e.preventDefault();
       return;
     }
+    // Cancel a pending connection on empty-canvas click.
+    if (state.workflow.connectFrom || state.workflow.connectTo) {
+      state.workflow.connectFrom = null;
+      state.workflow.connectTo = null;
+      clearPreview();
+      toast('Connection cancelled', '', 'info');
+      renderView();
+      e.preventDefault();
+      return;
+    }
     // Empty canvas: drag to pan.
     state.workflow._panning = { startX: e.clientX, startY: e.clientY, panX: state.workflow.pan.x, panY: state.workflow.pan.y };
     try { canvas.setPointerCapture(e.pointerId); } catch {}
@@ -10397,6 +10436,14 @@ function bindWorkflow() {
   });
   canvas.addEventListener('pointermove', (e) => {
     if (draggingPort && previewLine) {
+      portMoved = true;
+      const pt = canvasPoint(e);
+      previewLine.setAttribute('x2', pt.x);
+      previewLine.setAttribute('y2', pt.y);
+      return;
+    }
+    if ((state.workflow.connectFrom || state.workflow.connectTo) && previewLine) {
+      portMoved = true;
       const pt = canvasPoint(e);
       previewLine.setAttribute('x2', pt.x);
       previewLine.setAttribute('y2', pt.y);
@@ -10438,19 +10485,51 @@ function bindWorkflow() {
   canvas.addEventListener('pointerup', (e) => {
     if (draggingPort) {
       const inPort = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('[data-port-in]');
-      if (inPort) finishConnection(state.workflow.connectFrom, inPort.dataset.portIn);
+      if (inPort) {
+        finishConnection(state.workflow.connectFrom, inPort.dataset.portIn);
+        state.workflow.connectFrom = null;
+        state.workflow.connectTo = null;
+        clearPreview();
+      } else if (!portMoved) {
+        // Treat as a click: keep the connection pending so the user can click an input port.
+        clearPreview();
+        toast('Now click an input port to connect', '', 'info');
+      } else {
+        state.workflow.connectFrom = null;
+        state.workflow.connectTo = null;
+        clearPreview();
+      }
       draggingPort = null;
-      state.workflow.connectFrom = null;
-      clearPreview();
+      portMoved = false;
+      if (canvas.hasPointerCapture?.(e.pointerId)) { try { canvas.releasePointerCapture(e.pointerId); } catch {} }
+      renderView();
+      return;
+    }
+    // Finish reverse pending connection on click release over an output port handled in pointerdown;
+    // if released over empty canvas while pending, keep pending.
+    if (state.workflow.connectTo && !draggingPort) {
+      const outPort = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('[data-port-out]');
+      if (outPort) {
+        finishConnection(outPort.dataset.portOut, state.workflow.connectTo);
+        state.workflow.connectTo = null;
+        state.workflow.connectFrom = null;
+        clearPreview();
+      } else if (portMoved) {
+        // keep pending on click? if moved but not over port, cancel
+        // keep pending to allow click completion
+      }
+      portMoved = false;
       if (canvas.hasPointerCapture?.(e.pointerId)) { try { canvas.releasePointerCapture(e.pointerId); } catch {} }
       renderView();
       return;
     }
     if (draggingNode) {
-      // snap to grid
-      const snapped = { x: Math.max(0, Math.round(draggingNode.x / 24) * 24), y: Math.max(0, Math.round(draggingNode.y / 24) * 24) };
-      draggingNode.x = snapped.x;
-      draggingNode.y = snapped.y;
+      // snap to grid (optional)
+      if (state.workflow.settings?.snapGrid !== false) {
+        const snapped = { x: Math.max(0, Math.round(draggingNode.x / 24) * 24), y: Math.max(0, Math.round(draggingNode.y / 24) * 24) };
+        draggingNode.x = snapped.x;
+        draggingNode.y = snapped.y;
+      }
       if (dragMoved) wfCommit();
       dragMoved = false;
       draggingNode = null;
@@ -10465,7 +10544,7 @@ function bindWorkflow() {
   });
   canvas.addEventListener('pointercancel', () => {
     draggingNode = null; draggingPort = null; state.workflow._panning = null;
-    state.workflow.connectFrom = null; clearPreview();
+    state.workflow.connectFrom = null; state.workflow.connectTo = null; clearPreview();
   });
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
@@ -10507,7 +10586,17 @@ function bindWorkflow() {
       renderView();
       return;
     }
-    if ((e.key === 'Delete' || e.key === 'Backspace') && state.workflow.selectedNodeId) {
+    if (e.key === 'Escape') {
+    if (state.workflow.connectFrom || state.workflow.connectTo) {
+      e.preventDefault();
+      state.workflow.connectFrom = null;
+      state.workflow.connectTo = null;
+      clearPreview();
+      renderView();
+      return;
+    }
+  }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && state.workflow.selectedNodeId) {
       const id = state.workflow.selectedNodeId;
       e.preventDefault();
       state.workflow.nodes = state.workflow.nodes.filter((n) => n.id !== id);
