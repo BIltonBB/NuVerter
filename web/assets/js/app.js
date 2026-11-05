@@ -2802,29 +2802,56 @@ async function runCompressor() {
   }
   setToolBusy('compressor', true);
   try {
-    const args = buildCompressorArgs(data.source);
     const format = data.settings.format === 'webm' ? 'webm' : 'mp4';
-    const result = await Engine.run({
-      blob: data.source.file,
-      inputName: extOf(data.source.name) || 'mp4',
-      outputName: format,
-      args,
-      mime: FORMATS[format].mime,
-      duration: data.source.duration,
-      onProgress: (value) => updateToolProgress('compressor', value)
-    });
-    const name = outputName(data.source.name, format, '-compressed');
-    const record = await registerOutput({
-      tool: 'compressor',
-      sourceName: data.source.name,
-      sourceSize: data.source.size,
-      blob: result.blob,
-      name,
-      mime: result.mime,
-      meta: { format: FORMATS[format].label, mode: data.settings.mode }
-    });
+    let resultBlob = null;
+    let usedWC = false;
+    // Fast path: WebCodecs for H.264 mp4 sources without filters.
+    const canWC = format === 'mp4' && (state.compressor.settings.resolution === 'source' || !state.compressor.settings.resolution) && !state.compressor.settings.normalize && !state.compressor.settings.denoise && typeof VideoEncoder !== 'undefined';
+    if (canWC) {
+      try {
+        updateToolProgress('compressor', 0.02);
+        resultBlob = await webCodecsCompressVideo(data.source.file, data, (v) => updateToolProgress('compressor', v));
+        usedWC = true;
+      } catch (e) {
+        resultBlob = null;
+      }
+    }
+    let record;
+    if (resultBlob) {
+      const name = outputName(data.source.name, format, '-compressed');
+      record = await registerOutput({
+        tool: 'compressor',
+        sourceName: data.source.name,
+        sourceSize: data.source.size,
+        blob: resultBlob,
+        name,
+        mime: FORMATS[format].mime,
+        meta: { format: FORMATS[format].label, mode: data.settings.mode, engine: 'WebCodecs' }
+      });
+    } else {
+      const args = buildCompressorArgs(data.source);
+      const result = await Engine.run({
+        blob: data.source.file,
+        inputName: extOf(data.source.name) || 'mp4',
+        outputName: format,
+        args,
+        mime: FORMATS[format].mime,
+        duration: data.source.duration,
+        onProgress: (value) => updateToolProgress('compressor', value)
+      });
+      const name = outputName(data.source.name, format, '-compressed');
+      record = await registerOutput({
+        tool: 'compressor',
+        sourceName: data.source.name,
+        sourceSize: data.source.size,
+        blob: result.blob,
+        name,
+        mime: result.mime,
+        meta: { format: FORMATS[format].label, mode: data.settings.mode, engine: 'FFmpeg.wasm' }
+      });
+    }
     data.result = record;
-    toast('Compressed locally', `${formatBytes(data.source.size)} → ${formatBytes(record.size)} (${Math.max(0, Math.round((1 - record.size / data.source.size) * 100))}% smaller).`, 'success');
+    toast('Compressed locally', `${formatBytes(data.source.size)} → ${formatBytes(record.size)} (${Math.max(0, Math.round((1 - record.size / data.source.size) * 100))}% smaller)${usedWC ? ' · WebCodecs' : ''}.`, 'success');
   } catch (error) {
     if (error?.name !== 'AbortError') toast('Compression failed', error.message, 'error');
   } finally {
@@ -3309,7 +3336,7 @@ function converterPanes() {
       <div class="field">
         <div class="field-head"><span class="field-label">Rename template</span></div>
         <input type="text" value="${esc(conv.renameTemplate || '')}" data-field="converter.renameTemplate" class="input" style="width:100%" placeholder="{name}_NuVerter_{resolution}" />
-        <p class="field-help">Tokens: {original_name}/{name}, {original_ext}/{ext}, {format}, {index}, {resolution}, {date}, {width}, {height}. Duplicate output names get -2, -3� automatically. Leave empty for default.</p>
+        <p class="field-help">Tokens: {original_name}/{name}, {original_ext}/{ext}, {format}, {index}, {resolution}, {date}, {width}, {height}. Duplicate output names get -2, -3� automatically. Leave empty for default.</p>
       </div>
       <div class="switch-row">
         <div class="switch-copy"><strong>Strip metadata</strong><small>Remove EXIF/GPS/camera data from outputs. Images are verified after export; video uses FFmpeg -map_metadata -1.</small></div>
@@ -5833,6 +5860,195 @@ async function runWebCodecsFrameExtract() {
   if (out) out.textContent = lines.join('\n');
 }
 
+async function webCodecsCompressVideo(file, data, onProgress) {
+  if (typeof VideoDecoder === 'undefined' || typeof VideoEncoder === 'undefined') throw new Error('WebCodecs not supported');
+  if (!window.MP4Box) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'vendor/mp4box/mp4box.all.min.js';
+      s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+  const { Muxer, ArrayBufferTarget } = await import('vendor/mp4-muxer/mp4-muxer.mjs');
+
+  const settings = data.settings;
+  const buf = await file.arrayBuffer();
+  buf.fileStart = 0;
+  const mp4box = window.MP4Box.createFile();
+  const info = await new Promise((resolve, reject) => {
+    mp4box.onReady = (i) => resolve(i);
+    mp4box.onError = (e) => reject(e);
+    mp4box.appendBuffer(buf);
+    mp4box.flush();
+  });
+
+  const vtrack = (info.tracks || []).find(t => t.video);
+  if (!vtrack) throw new Error('No video track');
+  if (!/^avc/i.test(vtrack.codec || '')) throw new Error('Source video codec not H.264 (' + vtrack.codec + ')');
+
+  const atrack = (info.tracks || []).find(t => t.audio);
+  const audioIsAac = !!atrack && /^mp4a/i.test(atrack.codec || '');
+  const mute = !!settings.mute;
+
+  // AVC description
+  let description;
+  try {
+    const traks = mp4box.moov?.traks || [];
+    const trak = traks.find(t => (t.tkhd && t.tkhd.track_ID === vtrack.id)) || traks[0];
+    const entry = trak.mdia.minf.stbl.stsd.entries[0];
+    const box = entry.avcC;
+    if (box) {
+      const spsList = (box.SPS || []).map(s => (s && s.nalu) ? s.nalu : s);
+      const ppsList = (box.PPS || []).map(s => (s && s.nalu) ? s.nalu : s);
+      let size = 6 + 1 + 1;
+      for (const sps of spsList) size += 2 + sps.length;
+      for (const pps of ppsList) size += 2 + pps.length;
+      const bufDesc = new Uint8Array(size);
+      let o = 0;
+      bufDesc[o++] = box.configurationVersion || 1;
+      bufDesc[o++] = box.AVCProfileIndication;
+      bufDesc[o++] = box.profile_compatibility;
+      bufDesc[o++] = box.AVCLevelIndication;
+      bufDesc[o++] = 0xff;
+      bufDesc[o++] = 0xe0 | (spsList.length & 0x1f);
+      for (const sps of spsList) { bufDesc[o++] = (sps.length >> 8) & 0xff; bufDesc[o++] = sps.length & 0xff; bufDesc.set(sps, o); o += sps.length; }
+      bufDesc[o++] = ppsList.length & 0xff;
+      for (const pps of ppsList) { bufDesc[o++] = (pps.length >> 8) & 0xff; bufDesc[o++] = pps.length & 0xff; bufDesc.set(pps, o); o += pps.length; }
+      description = bufDesc;
+    }
+  } catch (e) {}
+
+  // extract samples
+  const samplesByTrack = new Map();
+  mp4box.onSamples = (id, ref, samps) => {
+    if (!samplesByTrack.has(id)) samplesByTrack.set(id, []);
+    samplesByTrack.get(id).push(...samps);
+  };
+  mp4box.setExtractionOptions(vtrack.id, null, { nbSamples: 100000 });
+  if (atrack && audioIsAac && !mute) mp4box.setExtractionOptions(atrack.id, null, { nbSamples: 100000 });
+  mp4box.start();
+  let lastCount = -1, stable = 0, guard = 0;
+  while (stable < 6 && guard < 100) {
+    await new Promise(r => setTimeout(r, 100));
+    guard++;
+    const total = [...samplesByTrack.values()].reduce((a,b)=>a+b.length,0);
+    if (total === lastCount) stable++; else { stable = 0; lastCount = total; }
+  }
+
+  const videoSamples = samplesByTrack.get(vtrack.id) || [];
+  const audioSamples = (atrack && audioIsAac && !mute) ? (samplesByTrack.get(atrack.id) || []) : [];
+  if (!videoSamples.length) throw new Error('No video samples extracted');
+
+  const timescale = videoSamples[0].timescale || vtrack.timescale || 1;
+  const duration = Math.max(1, Number(data.source?.duration) || ((videoSamples[videoSamples.length-1].cts + videoSamples[videoSamples.length-1].duration) / timescale));
+
+  let audioKbps = mute ? 0 : (Number(settings.audioBitrate) || 128);
+  let bitrate;
+  if (settings.mode === 'size') {
+    const targetMB = Math.max(0.1, Number(settings.targetMB) || 8);
+    const totalKbps = (targetMB * 8192) / duration;
+    bitrate = Math.max(120, Math.min(50000, Math.floor(totalKbps - audioKbps))) * 1000;
+  } else {
+    const sourceKbps = data.source.duration > 0 ? (data.source.size * 8) / data.source.duration / 1000 : 2000;
+    const factor = settings.quality === 'high' ? 0.85 : settings.quality === 'low' ? 0.45 : 0.65;
+    const srcVideoKbps = Math.max(0, sourceKbps - audioKbps);
+    bitrate = Math.max(140, Math.min(50000, Math.round(srcVideoKbps * factor))) * 1000;
+  }
+
+  const width = vtrack.video.width;
+  const height = vtrack.video.height;
+  const framerate = vtrack.video.frame_rate || 30;
+
+  const encoderConfig = { codec: 'avc1.42E01E', width, height, bitrate, framerate };
+  const encSupport = await VideoEncoder.isConfigSupported(encoderConfig);
+  if (!encSupport.supported) throw new Error('VideoEncoder config not supported');
+
+  const decCfg = { codec: vtrack.codec, codedWidth: width, codedHeight: height };
+  if (description) decCfg.description = description;
+  const decSupport = await VideoDecoder.isConfigSupported(decCfg);
+  if (!decSupport.supported) throw new Error('VideoDecoder config not supported');
+
+  // decode
+  const decoded = [];
+  const decoderErrors = [];
+  const dec = new VideoDecoder({
+    output: (frame) => { decoded.push(frame); },
+    error: (e) => decoderErrors.push(e?.message || String(e))
+  });
+  dec.configure(decCfg);
+  for (const s of videoSamples) {
+    const ts = (s.cts / timescale) * 1e6;
+    const chunk = new EncodedVideoChunk({
+      type: s.is_sync ? 'key' : 'delta',
+      timestamp: ts,
+      duration: (s.duration / timescale) * 1e6,
+      data: s.data
+    });
+    dec.decode(chunk);
+  }
+  await Promise.race([dec.flush(), new Promise((_,rej)=>setTimeout(()=>rej(new Error('decode flush timeout')), 30000))]);
+  if (decoderErrors.length) throw new Error('Decode errors: ' + decoderErrors.join(' | '));
+  dec.close();
+
+  // encode
+  const videoChunks = [];
+  const enc = new VideoEncoder({
+    output: (chunk, meta) => { videoChunks.push({ chunk, meta }); },
+    error: (e) => { throw e; }
+  });
+  enc.configure(encoderConfig);
+  let n = 0;
+  for (let i = 0; i < decoded.length; i++) {
+    const frame = decoded[i];
+    const key = !!videoSamples[i]?.is_sync;
+    enc.encode(frame, { keyFrame: key || (i % 60 === 0) });
+    try { frame.close(); } catch {}
+    n++;
+    if (onProgress) onProgress(Math.min(0.9, n / decoded.length * 0.9));
+  }
+  await enc.flush();
+  enc.close();
+
+  // mux
+  const target = new ArrayBufferTarget();
+  const muxerOptions = {
+    target,
+    video: { codec: 'avc', width, height, frameRate: framerate },
+    fastStart: 'in-memory'
+  };
+  if (audioSamples.length) {
+    const ch = atrack.channel_count || (atrack.audio && atrack.audio.channel_count) || 2;
+    const sr = atrack.sample_rate || (atrack.audio && atrack.audio.sample_rate) || 44100;
+    muxerOptions.audio = { codec: 'aac', numberOfChannels: ch, sampleRate: sr };
+  }
+  const muxer = new Muxer(muxerOptions);
+
+  for (const { chunk, meta } of videoChunks) {
+    muxer.addVideoChunk(chunk, meta);
+  }
+
+  if (audioSamples.length) {
+    const ats = audioSamples[0].timescale || (atrack.timescale) || 1;
+    for (const s of audioSamples) {
+      const ts = (s.cts / ats) * 1e6;
+      const dur = (s.duration / ats) * 1e6;
+      const encChunk = new EncodedAudioChunk({
+        type: 'key',
+        timestamp: ts,
+        duration: dur,
+        data: s.data
+      });
+      muxer.addAudioChunk(encChunk);
+    }
+  }
+
+  muxer.finalize();
+  if (onProgress) onProgress(1);
+  const buffer = target.buffer;
+  return new Blob([buffer], { type: 'video/mp4' });
+}
+
 function luhn(digits) {
   let sum = 0;
   let parity = digits.length % 2;
@@ -6841,17 +7057,25 @@ function utilAiModelsBody() {
       <div class="stage-head"><div class="stage-head-copy"><strong>Local models</strong><span>Known models and caches</span></div></div>
       <div class="stage-body">
         <div class="settings-list">
-          <div class="settings-item"><div class="settings-item-copy"><strong>AI image (sd-turbo)</strong><small>Folder: ${esc(state.aiImage.folderName || 'not selected')} · ~1-2 GB on disk</small></div>
+          <div class="settings-item"><div class="settings-item-copy"><strong>AI image (sd-turbo)</strong><small>Folder: ${esc(state.aiImage.folderName || 'not selected')} · ~1-2 GB on disk · est. 2-4 GB RAM</small></div>
             <button class="btn btn-ghost btn-sm" data-action="ai-image-forget">Clear selection</button></div>
-          <div class="settings-item"><div class="settings-item-copy"><strong>Background removal</strong><small>Xenova/segformer-b0 (tiny) · cached by browser</small></div><span class="mono">auto</span></div>
-          <div class="settings-item"><div class="settings-item-copy"><strong>Upscaler</strong><small>Xenova/swin2SR (tiny) · cached by browser</small></div><span class="mono">auto</span></div>
-          <div class="settings-item"><div class="settings-item-copy"><strong>OCR</strong><small>tesseract.js · cached by browser</small></div><span class="mono">auto</span></div>
-          <div class="settings-item"><div class="settings-item-copy"><strong>Embeddings / TTS / Whisper</strong><small>Xenova transformers · cached by browser</small></div><span class="mono">auto</span></div>
-          <div class="settings-item"><div class="settings-item-copy"><strong>AI chat (WebLLM)</strong><small>Model: ${esc(state.aiChat.model || 'tiny')} · cached by browser</small></div><span class="mono">auto</span></div>
+          <div class="settings-item"><div class="settings-item-copy"><strong>Background removal</strong><small>Xenova/segformer-b0 (tiny) · ~50 MB · est. 0.2 GB RAM</small></div><button class="btn btn-ghost btn-sm" data-action="ai-models-clear-one" data-model="segformer">Clear cache</button></div>
+          <div class="settings-item"><div class="settings-item-copy"><strong>Upscaler</strong><small>Xenova/swin2SR (tiny) · ~30 MB · est. 0.2 GB RAM</small></div><button class="btn btn-ghost btn-sm" data-action="ai-models-clear-one" data-model="swin2sr">Clear cache</button></div>
+          <div class="settings-item"><div class="settings-item-copy"><strong>OCR</strong><small>tesseract.js · ~10 MB · est. 0.1 GB RAM</small></div><button class="btn btn-ghost btn-sm" data-action="ai-models-clear-one" data-model="tesseract">Clear cache</button></div>
+          <div class="settings-item"><div class="settings-item-copy"><strong>Embeddings / TTS / Whisper</strong><small>Xenova transformers · ~50-200 MB · est. 0.5 GB RAM</small></div><button class="btn btn-ghost btn-sm" data-action="ai-models-clear-one" data-model="xenova">Clear cache</button></div>
+          <div class="settings-item"><div class="settings-item-copy"><strong>AI chat (WebLLM)</strong><small>Model: ${esc(state.aiChat.model || 'tiny')} · ~1-2 GB · est. 2-4 GB RAM</small></div>
+            <select class="select" data-field="aiChat.model" style="max-width:120px">
+              <option value="tiny" ${state.aiChat.model === 'tiny' ? 'selected' : ''}>Tiny</option>
+              <option value="small" ${state.aiChat.model === 'small' ? 'selected' : ''}>Small</option>
+              <option value="medium" ${state.aiChat.model === 'medium' ? 'selected' : ''}>Medium</option>
+            </select>
+          </div>
         </div>
         <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" data-action="ai-models-refresh">${icon('refresh-cw')}Refresh cache status</button>
           <button class="btn btn-danger btn-sm" data-action="ai-models-clear-cache">Clear all AI caches</button>
         </div>
+        <div id="ai-models-cache" class="util-out" style="margin-top:8px">Click refresh to inspect caches.</div>
         <div id="ai-models-out" class="util-out"></div>
       </div>
     </div>
@@ -9515,7 +9739,7 @@ function workflowView() {
             <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
               <div style="font-weight:600;font-size:12px;margin-bottom:6px">Node inspector</div>
               <select id="wf-sel-node" class="select" style="width:100%">
-                <option value="">Select a node�</option>
+                <option value="">Select a node�</option>
                 ${data.nodes.map((n) => `<option value="${esc(n.id)}" ${data.selectedNodeId === n.id ? 'selected' : ''}>${esc(WF_NODE_LABELS[n.type] || n.type)} (${esc(n.id)})</option>`).join('')}
               </select>
               ${workflowNodeInspector(data)}
@@ -12841,9 +13065,61 @@ async function handleExtraAction(action, el) {
         }
         const out = document.getElementById('ai-models-out');
         if (out) out.innerHTML = '<span style="color:var(--success)">AI caches cleared. Models will re-download on next use.</span>';
+        const cacheEl = document.getElementById('ai-models-cache');
+        if (cacheEl) cacheEl.textContent = 'Caches cleared.';
         toast('Caches cleared', 'AI caches cleared.', 'success');
       } catch (e) {
         toast('Clear failed', e?.message || 'Unknown error.', 'error');
+      }
+      return true;
+    }
+    case 'ai-models-clear-one': {
+      const hint = String(el?.dataset?.model || '').toLowerCase();
+      try {
+        if (window.caches) {
+          const keys = await caches.keys();
+          const matching = keys.filter((k) => k.toLowerCase().includes(hint));
+          await Promise.all(matching.map((k) => caches.delete(k)));
+        }
+        const out = document.getElementById('ai-models-out');
+        if (out) out.innerHTML = `<span style="color:var(--success)">Cleared caches matching "${esc(hint)}".</span>`;
+        toast('Cache cleared', `Cleared ${hint} caches.`, 'success');
+        await handleExtraAction('ai-models-refresh', el);
+      } catch (e) {
+        toast('Clear failed', e?.message || 'Unknown error.', 'error');
+      }
+      return true;
+    }
+    case 'ai-models-refresh': {
+      try {
+        const cacheEl = document.getElementById('ai-models-cache');
+        if (!window.caches) { if (cacheEl) cacheEl.textContent = 'Cache API unavailable.'; return true; }
+        const keys = await caches.keys();
+        const lines = [];
+        let total = 0;
+        for (const k of keys) {
+          try {
+            const cache = await caches.open(k);
+            const reqs = await cache.keys();
+            let size = 0;
+            for (const r of reqs) {
+              try { const resp = await cache.match(r); const b = await resp.blob(); size += b.size; } catch {}
+            }
+            total += size;
+            lines.push(`${k}: ${reqs.length} entries · ${formatBytes(size)}`);
+          } catch {
+            lines.push(`${k}: (unreadable)`);
+          }
+        }
+        if (cacheEl) cacheEl.textContent = lines.length ? lines.join('\\n') + `\\nTotal: ${formatBytes(total)}` : 'No caches found.';
+        const storageEl = document.getElementById('ai-models-storage');
+        if (storageEl && navigator.storage?.estimate) {
+          const est = await navigator.storage.estimate();
+          storageEl.textContent = (est.usage ? (est.usage/1048576).toFixed(1) + ' MB' : 'unknown') + ' / ' + (est.quota ? (est.quota/1073741824).toFixed(1) + ' GB' : 'unknown');
+        }
+      } catch (e) {
+        const cacheEl = document.getElementById('ai-models-cache');
+        if (cacheEl) cacheEl.textContent = 'Cache inspection failed: ' + (e?.message || e);
       }
       return true;
     }
