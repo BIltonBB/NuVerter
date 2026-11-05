@@ -1,0 +1,12 @@
+{
+  "name": "nuverter-web",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node web/server.cjs",
+    "check": "node --check web/assets/js/app.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

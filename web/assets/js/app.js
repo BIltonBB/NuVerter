@@ -22,7 +22,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
    the ad slot. Leave '' to keep the placeholder.
    ---------------------------------------------------------------- */
 const PAYMENT_URL = 'https://sociabuzz.com/biltonb/shop';
-const APP_DOWNLOAD_URL = 'NuVerter-Tauri-Portable.zip'; // Tauri portable build (35 MB)
+const APP_DOWNLOAD_URL = 'https://github.com/BIltonBB/NuVerter/releases/latest'; // Desktop app (versioned release assets)
 const AD_SNIPPET = '';
 
 function icon(name, cls = '') {

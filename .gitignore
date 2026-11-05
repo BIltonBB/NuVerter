@@ -1,12 +1,11 @@
-# Tauri updater private key (keep secret)
-tauri/src-tauri/.tauri/updater.key
+# Desktop bundle (published via GitHub Releases, not Pages)
+web/NuVerter-Tauri-Portable.zip
 
 # Build artifacts
-node_modules/
-desktop/node_modules/
-dist/
-tauri/src-tauri/target/
-*.pdb
-web/downloads/
-# Notes (local only)
-ZNotes/
+bin/
+obj/
+*.user
+
+# OS
+.DS_Store
+Thumbs.db
