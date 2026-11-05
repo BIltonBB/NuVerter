@@ -9884,7 +9884,7 @@ function workflowView() {
     if (!a || !b) return '';
     const x1 = a.x + 150, y1 = a.y + 24;
     const x2 = b.x, y2 = b.y + 24;
-    return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--accent)" stroke-width="2" marker-end="url(#wf-arrow)" />`;
+    return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--accent)" stroke-width="2" />`;
   }).join('');
   return `
     ${viewHead({ index: '18', kicker: 'Workflows', title: 'Visual <span class="accent">pipelines.</span>', sub: 'Drag nodes, connect ports, run. Single-chain execution for now.' })}
