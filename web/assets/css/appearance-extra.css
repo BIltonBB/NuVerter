@@ -13,6 +13,7 @@ body.has-bg-gradient .ambient { opacity: .35; }
 .modal, .stage-card { backdrop-filter: blur(var(--backdrop-blur, 0px)); }
 .stage-card, .panel { opacity: var(--panel-opacity, 1); }
 *, *::before, *::after { transition-duration: calc(var(--anim-scale, 1) * 150ms) !important; }
+.wf-node, #wf-svg, #wf-svg line { transition: none !important; }
 .reduce-motion *, .reduce-motion *::before, .reduce-motion *::after { transition-duration: 0ms !important; }
 
 .tauri-native { background: transparent !important; }
