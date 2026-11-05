@@ -429,7 +429,7 @@ const state = {
   practical: { tab: 'diff' },
   aiTools: { tab: 'aibg' },
   docSearch: { docs: [], query: '' },
-  workflow: { source: null, nodes: [], edges: [], running: false, pan: { x: 0, y: 0 }, zoom: 1, connectFrom: null, selectedNodeId: null },
+  workflow: { source: null, nodes: [], edges: [], running: false, pan: { x: 0, y: 0 }, zoom: 1, connectFrom: null, connectPreview: null, selectedNodeId: null, history: [], historyIndex: -1 },
   workflows: [],
   aiImage: { model: 'sd-turbo', folderName: '', status: '', busy: false, apiKey: (localStorage.getItem('NuVerter-pollinations-key') || '') },
   audioTools: { tab: 'audioclean' },
@@ -9850,7 +9850,7 @@ async function reframeExport() {
 
 const WF_NODE_CATEGORIES = { input: ['branch'], process: ['trim','extractAudio','ocr','compress','convert','gif','merge','branch'], output: ['output'] };
 const WF_NODE_LABELS = { input: 'Input', trim: 'Trim', extractAudio: 'Extract audio', ocr: 'OCR text', compress: 'Compress', convert: 'Convert', gif: 'GIF', merge: 'Merge', branch: 'Branch', resize: 'Resize', mute: 'Mute audio', watermark: 'Watermark', rotate: 'Rotate', speed: 'Speed', flip: 'Flip', output: 'Output' };
-const WF_NODE_ICON = { input: 'log-in', trim: 'scissors', extractAudio: 'music', ocr: 'type', compress: 'minimize-2', convert: 'refresh-cw', gif: 'image', merge: 'git-merge', branch: 'git-branch', resize: 'maximize-2', mute: 'volume-x', watermark: 'droplet', rotate: 'rotate-cw', speed: 'zap', flip: 'flip-horizontal', output: 'download' };
+const WF_NODE_ICON = { input: 'log-in', trim: 'scissors', extractAudio: 'music', ocr: 'type', compress: 'minimize-2', convert: 'refresh-cw', gif: 'images', merge: 'link', branch: 'repeat', resize: 'maximize', mute: 'volume-x', watermark: 'star', rotate: 'rotate-3d', speed: 'zap', flip: 'repeat', output: 'download' };
 const WF_NODE_COLOR = { input: '#10b981', output: '#3b82f6' }; // processing default accent
 const WF_NODE_IO = { input: { in: null, out: 'file' }, trim: { in: 'file', out: 'file' }, extractAudio: { in: 'file', out: 'file' }, ocr: { in: 'file', out: 'text' }, compress: { in: 'file', out: 'file' }, convert: { in: 'file', out: 'file' }, gif: { in: 'file', out: 'file' }, merge: { in: 'file', out: 'file' }, branch: { in: 'file', out: 'file' }, resize: { in: 'file', out: 'file' }, mute: { in: 'file', out: 'file' }, watermark: { in: 'file', out: 'file' }, rotate: { in: 'file', out: 'file' }, speed: { in: 'file', out: 'file' }, flip: { in: 'file', out: 'file' }, output: { in: 'file', out: null } };
 
@@ -9885,8 +9885,8 @@ function workflowView() {
     const a = data.nodes.find((n) => n.id === e.from);
     const b = data.nodes.find((n) => n.id === e.to);
     if (!a || !b) return '';
-    const x1 = a.x + 150, y1 = a.y + 24;
-    const x2 = b.x, y2 = b.y + 24;
+    const x1 = a.x + 160, y1 = a.y + 26;
+    const x2 = b.x, y2 = b.y + 26;
     const cls = data.running ? ' class="wf-edge-flow"' : '';
     return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--accent)" stroke-width="2"${cls} />`;
   }).join('');
@@ -9928,6 +9928,12 @@ function workflowView() {
               </select>
               <button class="btn btn-secondary btn-sm" data-action="wf-add-node">Add node</button>
             </div>
+            <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+              <button class="btn btn-ghost btn-sm" data-action="wf-undo" title="Undo (Ctrl+Z)">${icon('undo-2')} Undo</button>
+              <button class="btn btn-ghost btn-sm" data-action="wf-redo" title="Redo (Ctrl+Y)">${icon('refresh-cw')} Redo</button>
+              <button class="btn btn-ghost btn-sm" data-action="wf-auto-layout" title="Auto-arrange nodes">${icon('layout-grid')} Auto-layout</button>
+              <button class="btn btn-ghost btn-sm" data-action="wf-duplicate-node" title="Duplicate selected node">${icon('copy')} Duplicate</button>
+            </div>
             <div style="margin-top:10px;display:flex;gap:6px">
               <button class="btn btn-primary btn-sm" data-action="wf-run" ${src && data.nodes.length && !data.running ? '' : 'disabled'}>${icon('play')}Run</button>
               <button class="btn btn-ghost btn-sm" data-action="wf-clear">Clear</button>
@@ -9938,7 +9944,7 @@ function workflowView() {
               <button class="btn btn-secondary btn-sm" data-action="wf-load-saved">Load</button>` : ''}
             </div>
             <div id="wf-out" class="util-out" style="margin-top:8px"></div>
-            <p class="field-help" style="margin-top:8px">How to use: 1) Choose a file. 2) Add nodes (Process/Output). 3) Drag nodes to arrange. 4) Click an output port (colored dot) then an input port to connect. 5) Click Run. Nodes are color-grouped by category; Output nodes produce a download link.</p>
+            <p class="field-help" style="margin-top:8px">How to use: 1) Choose a file. 2) Add nodes. 3) Drag from an output port (right dot) to an input port (left dot) to connect. 4) Drag empty canvas to pan, scroll to zoom. 5) Run. Shortcuts: Ctrl+Z undo, Ctrl+Y redo, Delete removes the selected node.</p>
             <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
               <div style="font-weight:600;font-size:12px;margin-bottom:6px">Node inspector</div>
               <select id="wf-sel-node" class="select" style="width:100%">
@@ -9960,24 +9966,51 @@ function workflowView() {
       </section>
       <section class="area-queue" style="min-height:420px">
         <div class="stage-card" style="height:100%">
-          <div class="stage-head"><div class="stage-head-copy"><strong>Canvas</strong><span>Drag nodes · click output port then input port to connect</span></div></div>
+          <div class="stage-head"><div class="stage-head-copy"><strong>Canvas</strong><span>Drag to pan · scroll to zoom · drag from an output dot to an input dot to connect</span></div></div>
           <div class="stage-body" style="padding:0">
             <div id="wf-canvas" style="position:relative;width:100%;height:460px;overflow:hidden;background:var(--surface-2);border-radius:8px;cursor:grab;touch-action:none;background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);background-size:24px 24px">
-              <svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none" id="wf-svg">
-                <defs><marker id="wf-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="var(--accent)" /></marker></defs>
-                ${lines}
-              </svg>
-              ${data.nodes.map((n) => {
+              <div id="wf-viewport" style="position:absolute;inset:0;transform-origin:0 0;transform:translate(${data.pan.x}px,${data.pan.y}px) scale(${data.zoom})">
+                <svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none" id="wf-svg">
+                  <defs><marker id="wf-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="var(--accent)" /></marker></defs>
+                  ${lines}
+                </svg>
+                ${data.nodes.map((n) => {
                 const col = WF_NODE_COLOR[n.type] || 'var(--accent)';
                 const ic = WF_NODE_ICON[n.type] ? icon(WF_NODE_ICON[n.type]) : '';
+                const isSel = data.selectedNodeId === n.id;
                 return `
-                <div class="wf-node" data-node="${n.id}" style="position:absolute;left:${n.x}px;top:${n.y}px;width:160px;background:var(--surface);border:1px solid ${col};border-left:4px solid ${col};border-radius:8px;padding:6px 8px;user-select:none;cursor:move;touch-action:none;box-shadow:0 2px 8px rgba(0,0,0,.18)">
+                <div class="wf-node${isSel ? ' is-selected' : ''}" data-node="${n.id}" style="position:absolute;left:${n.x}px;top:${n.y}px;width:160px;background:var(--surface);border:1px solid ${col};border-left:4px solid ${col};border-radius:8px;padding:6px 8px;user-select:none;cursor:move;touch-action:none;box-shadow:${isSel ? '0 0 0 2px ' + col + ', 0 6px 18px rgba(0,0,0,.28)' : '0 2px 8px rgba(0,0,0,.18)'}">${n.status === 'running' ? '<span class="wf-node-pulse"></span>' : ''}
                   <div style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:12px">${ic}<span>${WF_NODE_LABELS[n.type] || n.type}</span></div>
-                  <div style="font-size:10px;color:var(--text-3);margin-top:2px">${esc(n.status || 'idle')}${n.error ? ' · ' + esc(n.error) : ''}</div>
+                  <div style="display:flex;align-items:center;gap:4px;font-size:10px;color:${n.status === 'done' ? '#10b981' : n.status === 'error' ? '#ef4444' : n.status === 'running' ? 'var(--accent)' : 'var(--text-3)'};margin-top:2px"><span style="width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block;flex:none"></span><span>${esc(n.status || 'idle')}${n.error ? ' · ' + esc(n.error) : ''}</span></div>
                   ${(WF_NODE_IO[n.type] || {}).in ? `<div class="wf-port wf-port-in" data-port-in="${n.id}" style="position:absolute;left:-9px;top:17px;width:18px;height:18px;border-radius:50%;background:var(--border);border:2px solid var(--surface);cursor:pointer;touch-action:none"></div>` : ''}
                   ${(WF_NODE_IO[n.type] || {}).out ? `<div class="wf-port wf-port-out" data-port-out="${n.id}" style="position:absolute;right:-9px;top:17px;width:18px;height:18px;border-radius:50%;background:${col};border:2px solid var(--surface);cursor:pointer;touch-action:none"></div>` : ''}
                 </div>`; }).join('')}
-            </div>
+                ${data.connectPreview ? `<svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"><line x1="${data.connectPreview.fromX}" y1="${data.connectPreview.fromY}" x2="${data.connectPreview.x}" y2="${data.connectPreview.y}" stroke="var(--accent)" stroke-width="2" stroke-dasharray="4 4" /></svg>` : ''}
+              </div>
+              <div style="position:absolute;top:8px;left:8px;display:flex;gap:8px;align-items:center;font-size:11px;color:var(--text-3);background:color-mix(in srgb, var(--surface) 85%, transparent);padding:3px 8px;border-radius:6px;border:1px solid var(--border)">
+                <span>${data.nodes.length} node${data.nodes.length === 1 ? '' : 's'}</span>
+                <span>·</span>
+                <span>${data.edges.length} link${data.edges.length === 1 ? '' : 's'}</span>
+                <span>·</span>
+                <span>${Math.round(zoom * 100)}%</span>
+              </div>
+              <div style="position:absolute;bottom:8px;right:8px;display:flex;gap:4px">
+                <button class="btn btn-ghost btn-sm" data-action="wf-zoom-in" title="Zoom in">+</button>
+                <button class="btn btn-ghost btn-sm" data-action="wf-zoom-out" title="Zoom out">-</button>
+                <button class="btn btn-ghost btn-sm" data-action="wf-zoom-reset" title="Reset view">1:1</button>
+              </div>
+              ${data.nodes.length ? (() => {
+                const minX = Math.min(...data.nodes.map((n) => n.x));
+                const minY = Math.min(...data.nodes.map((n) => n.y));
+                const maxX = Math.max(...data.nodes.map((n) => n.x + 160));
+                const maxY = Math.max(...data.nodes.map((n) => n.y + 60));
+                const spanX = Math.max(1, maxX - minX);
+                const spanY = Math.max(1, maxY - minY);
+                const scale = Math.min(116 / spanX, 66 / spanY);
+                return `<div style="position:absolute;left:8px;bottom:8px;width:124px;height:74px;background:color-mix(in srgb, var(--surface) 88%, transparent);border:1px solid var(--border);border-radius:6px;overflow:hidden;pointer-events:none">
+                  ${data.nodes.map((n) => `<div style="position:absolute;left:${4 + (n.x - minX) * scale}px;top:${4 + (n.y - minY) * scale}px;width:${Math.max(6, 160 * scale)}px;height:${Math.max(4, 24 * scale)}px;border-radius:2px;background:${WF_NODE_COLOR[n.type] || 'var(--accent)'};opacity:.85"></div>`).join('')}
+                </div>`;
+              })() : ''}
           </div>
         </div>
       </section>
@@ -10182,6 +10215,80 @@ async function wfRun() {
   }
 }
 
+function wfSnap() {
+  return JSON.stringify({
+    nodes: state.workflow.nodes,
+    edges: state.workflow.edges,
+    selectedNodeId: state.workflow.selectedNodeId
+  });
+}
+function wfRestore(snapshot) {
+  try {
+    const s = JSON.parse(snapshot);
+    state.workflow.nodes = s.nodes || [];
+    state.workflow.edges = s.edges || [];
+    state.workflow.selectedNodeId = s.selectedNodeId || null;
+    state.workflow.connectFrom = null;
+    state.workflow.connectPreview = null;
+    renderView();
+  } catch {}
+}
+function wfCommit() {
+  const wf = state.workflow;
+  wf.history = wf.history || [];
+  if (!wf.history.length) wf.history = [wfSnap()];
+  wf.history.splice((wf.historyIndex ?? -1) + 1);
+  wf.history.push(wfSnap());
+  if (wf.history.length > 60) wf.history.shift();
+  wf.historyIndex = wf.history.length - 1;
+}
+function wfUndo() {
+  const wf = state.workflow;
+  if (!wf.history?.length || wf.historyIndex <= 0) return;
+  wf.historyIndex -= 1;
+  wfRestore(wf.history[wf.historyIndex]);
+}
+function wfRedo() {
+  const wf = state.workflow;
+  if (!wf.history?.length || wf.historyIndex >= wf.history.length - 1) return;
+  wf.historyIndex += 1;
+  wfRestore(wf.history[wf.historyIndex]);
+}
+function wfAutoLayout() {
+  const nodes = state.workflow.nodes;
+  const edges = state.workflow.edges;
+  if (!nodes.length) return;
+  const incoming = new Map(nodes.map((n) => [n.id, 0]));
+  edges.forEach((e) => { if (incoming.has(e.to)) incoming.set(e.to, incoming.get(e.to) + 1); });
+  const layers = [];
+  const placed = new Set();
+  let current = nodes.filter((n) => (incoming.get(n.id) || 0) === 0).map((n) => n.id);
+  if (!current.length) current = [nodes[0].id];
+  while (current.length && placed.size < nodes.length) {
+    const layer = current.filter((id) => !placed.has(id));
+    if (!layer.length) break;
+    layers.push(layer);
+    layer.forEach((id) => placed.add(id));
+    const next = [];
+    edges.filter((e) => layer.includes(e.from)).forEach((e) => {
+      if (!placed.has(e.to) && !next.includes(e.to)) next.push(e.to);
+    });
+    current = next;
+  }
+  nodes.forEach((n) => { if (!placed.has(n.id)) { layers.push([n.id]); placed.add(n.id); } });
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  layers.forEach((layer, li) => {
+    layer.forEach((id, ni) => {
+      const node = byId.get(id);
+      if (!node) return;
+      node.x = 40 + li * 220;
+      node.y = 40 + ni * 110;
+    });
+  });
+  wfCommit();
+  renderView();
+}
+
 function bindWorkflow() {
   const fileInput = document.getElementById('wf-file');
   if (fileInput) fileInput.onchange = (e) => {
@@ -10190,37 +10297,82 @@ function bindWorkflow() {
   };
   const canvas = document.getElementById('wf-canvas');
   if (!canvas) return;
+  if (!state.workflow.history?.length) {
+    state.workflow.history = [wfSnap()];
+    state.workflow.historyIndex = 0;
+  }
+  canvas.tabIndex = 0;
   let draggingNode = null;
+  let draggingPort = null;
+  let dragMoved = false;
   let offset = { x: 0, y: 0 };
+  let previewLine = null;
+  const canvasPoint = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const z = state.workflow.zoom || 1;
+    const p = state.workflow.pan || { x: 0, y: 0 };
+    return { x: (e.clientX - rect.left - p.x) / z, y: (e.clientY - rect.top - p.y) / z };
+  };
+  const portCenter = (portEl) => {
+    const r = portEl.getBoundingClientRect();
+    const cr = canvas.getBoundingClientRect();
+    const z = state.workflow.zoom || 1;
+    const p = state.workflow.pan || { x: 0, y: 0 };
+    return { x: (r.left + r.width / 2 - cr.left - p.x) / z, y: (r.top + r.height / 2 - cr.top - p.y) / z };
+  };
+  const startPreview = (pt) => {
+    const vp = document.getElementById('wf-viewport');
+    if (!vp) return;
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('style', 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:5');
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', pt.x); line.setAttribute('y1', pt.y);
+    line.setAttribute('x2', pt.x); line.setAttribute('y2', pt.y);
+    line.setAttribute('stroke', 'var(--accent)');
+    line.setAttribute('stroke-width', '2');
+    line.setAttribute('stroke-dasharray', '5 5');
+    svg.appendChild(line);
+    vp.appendChild(svg);
+    previewLine = line;
+  };
+  const clearPreview = () => {
+    if (previewLine && previewLine.parentNode?.parentNode) previewLine.parentNode.parentNode.removeChild(previewLine.parentNode);
+    previewLine = null;
+  };
+  const finishConnection = (from, to) => {
+    if (!from || !to || from === to) return;
+    const fromNode = state.workflow.nodes.find((n) => n.id === from);
+    const toNode = state.workflow.nodes.find((n) => n.id === to);
+    const fromType = fromNode ? (WF_NODE_IO[fromNode.type] || {}).out : null;
+    const toType = toNode ? (WF_NODE_IO[toNode.type] || {}).in : null;
+    if (fromType && toType && fromType !== toType) {
+      toast('Incompatible ports', fromType + ' cannot connect to ' + toType + '.', 'warning');
+      return;
+    }
+    if (state.workflow.edges.some((edge) => edge.from === from && edge.to === to)) return;
+    state.workflow.edges.push({ from, to });
+    wfCommit();
+  };
   canvas.addEventListener('pointerdown', (e) => {
     // Ports are children of nodes, so they must be checked before starting a drag.
     const outPort = e.target.closest('[data-port-out]');
     if (outPort) {
-      state.workflow.connectFrom = outPort.dataset.portOut;
-      toast('Port selected', 'Now tap the input port of another node.', 'info');
+      draggingPort = outPort.dataset.portOut;
+      state.workflow.connectFrom = draggingPort;
+      startPreview(portCenter(outPort));
+      try { canvas.setPointerCapture(e.pointerId); } catch {}
+      e.preventDefault();
       return;
     }
     const inPort = e.target.closest('[data-port-in]');
     if (inPort) {
       if (!state.workflow.connectFrom) {
-        toast('Pick an output first', 'Tap a colored output port, then an input port.', 'info');
+        toast('Pick an output first', 'Drag from a colored output port to an input port.', 'info');
         return;
       }
-      const from = state.workflow.connectFrom;
-      const to = inPort.dataset.portIn;
-      const fromNode = state.workflow.nodes.find((n) => n.id === from);
-      const toNode = state.workflow.nodes.find((n) => n.id === to);
-      const fromType = fromNode ? (WF_NODE_IO[fromNode.type] || {}).out : null;
-      const toType = toNode ? (WF_NODE_IO[toNode.type] || {}).in : null;
-      if (fromType && toType && fromType !== toType) {
-        toast('Incompatible ports', fromType + ' cannot connect to ' + toType + '.', 'warning');
-        state.workflow.connectFrom = null;
-        return;
-      }
-      if (from !== to && !state.workflow.edges.some((edge) => edge.from === from && edge.to === to)) {
-        state.workflow.edges.push({ from, to });
-      }
+      finishConnection(state.workflow.connectFrom, inPort.dataset.portIn);
       state.workflow.connectFrom = null;
+      clearPreview();
       renderView();
       return;
     }
@@ -10231,42 +10383,142 @@ function bindWorkflow() {
       const node = state.workflow.nodes.find((n) => n.id === id);
       if (!node) return;
       draggingNode = node;
-      const rect = canvas.getBoundingClientRect();
-      offset = { x: e.clientX - rect.left - node.x, y: e.clientY - rect.top - node.y };
+      state.workflow.selectedNodeId = id;
+      const pt = canvasPoint(e);
+      offset = { x: pt.x - node.x, y: pt.y - node.y };
       try { canvas.setPointerCapture(e.pointerId); } catch {}
       e.preventDefault();
+      return;
     }
+    // Empty canvas: drag to pan.
+    state.workflow._panning = { startX: e.clientX, startY: e.clientY, panX: state.workflow.pan.x, panY: state.workflow.pan.y };
+    try { canvas.setPointerCapture(e.pointerId); } catch {}
+    e.preventDefault();
   });
   canvas.addEventListener('pointermove', (e) => {
-    if (!draggingNode) return;
-    const rect = canvas.getBoundingClientRect();
-    draggingNode.x = Math.max(0, e.clientX - rect.left - offset.x);
-    draggingNode.y = Math.max(0, e.clientY - rect.top - offset.y);
-    const el = canvas.querySelector(`[data-node="${draggingNode.id}"]`);
-    if (el) { el.style.left = draggingNode.x + 'px'; el.style.top = draggingNode.y + 'px'; }
-    // update svg lines in place (keeps defs intact and stays in sync with node movement)
-    const svg = document.getElementById('wf-svg');
-    if (svg) {
-      const svgLines = svg.querySelectorAll('line');
-      state.workflow.edges.forEach((ed, idx) => {
-        const a = state.workflow.nodes.find((n) => n.id === ed.from);
-        const b = state.workflow.nodes.find((n) => n.id === ed.to);
-        const line = svgLines[idx];
-        if (a && b && line) {
-          line.setAttribute('x1', a.x + 150);
-          line.setAttribute('y1', a.y + 24);
-          line.setAttribute('x2', b.x);
-          line.setAttribute('y2', b.y + 24);
-        }
-      });
+    if (draggingPort && previewLine) {
+      const pt = canvasPoint(e);
+      previewLine.setAttribute('x2', pt.x);
+      previewLine.setAttribute('y2', pt.y);
+      return;
+    }
+    if (draggingNode) {
+      const pt = canvasPoint(e);
+      dragMoved = true;
+      draggingNode.x = Math.max(0, Math.round(pt.x - offset.x));
+      draggingNode.y = Math.max(0, Math.round(pt.y - offset.y));
+      const el = canvas.querySelector(`[data-node="${draggingNode.id}"]`);
+      if (el) { el.style.left = draggingNode.x + 'px'; el.style.top = draggingNode.y + 'px'; }
+      // update svg lines in place (keeps defs intact and stays in sync with node movement)
+      const svg = document.getElementById('wf-svg');
+      if (svg) {
+        const svgLines = svg.querySelectorAll('line');
+        state.workflow.edges.forEach((ed, idx) => {
+          const a = state.workflow.nodes.find((n) => n.id === ed.from);
+          const b = state.workflow.nodes.find((n) => n.id === ed.to);
+          const line = svgLines[idx];
+          if (a && b && line) {
+            line.setAttribute('x1', a.x + 160);
+            line.setAttribute('y1', a.y + 26);
+            line.setAttribute('x2', b.x);
+            line.setAttribute('y2', b.y + 26);
+          }
+        });
+      }
+      return;
+    }
+    if (state.workflow._panning) {
+      const p = state.workflow._panning;
+      state.workflow.pan.x = p.panX + (e.clientX - p.startX);
+      state.workflow.pan.y = p.panY + (e.clientY - p.startY);
+      const vpEl = document.getElementById('wf-viewport');
+      if (vpEl) vpEl.style.transform = `translate(${state.workflow.pan.x}px,${state.workflow.pan.y}px) scale(${state.workflow.zoom})`;
     }
   });
   canvas.addEventListener('pointerup', (e) => {
-    draggingNode = null;
-    if (canvas.hasPointerCapture?.(e.pointerId)) { try { canvas.releasePointerCapture(e.pointerId); } catch {} }
+    if (draggingPort) {
+      const inPort = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('[data-port-in]');
+      if (inPort) finishConnection(state.workflow.connectFrom, inPort.dataset.portIn);
+      draggingPort = null;
+      state.workflow.connectFrom = null;
+      clearPreview();
+      if (canvas.hasPointerCapture?.(e.pointerId)) { try { canvas.releasePointerCapture(e.pointerId); } catch {} }
+      renderView();
+      return;
+    }
+    if (draggingNode) {
+      // snap to grid
+      const snapped = { x: Math.max(0, Math.round(draggingNode.x / 24) * 24), y: Math.max(0, Math.round(draggingNode.y / 24) * 24) };
+      draggingNode.x = snapped.x;
+      draggingNode.y = snapped.y;
+      if (dragMoved) wfCommit();
+      dragMoved = false;
+      draggingNode = null;
+      if (canvas.hasPointerCapture?.(e.pointerId)) { try { canvas.releasePointerCapture(e.pointerId); } catch {} }
+      renderView();
+      return;
+    }
+    if (state.workflow._panning) {
+      state.workflow._panning = null;
+      if (canvas.hasPointerCapture?.(e.pointerId)) { try { canvas.releasePointerCapture(e.pointerId); } catch {} }
+    }
   });
-  canvas.addEventListener('pointercancel', () => { draggingNode = null; });
-  // node selection
+  canvas.addEventListener('pointercancel', () => {
+    draggingNode = null; draggingPort = null; state.workflow._panning = null;
+    state.workflow.connectFrom = null; clearPreview();
+  });
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const oldZoom = state.workflow.zoom || 1;
+    const next = Math.max(0.4, Math.min(2, oldZoom + (e.deltaY > 0 ? -0.1 : 0.1)));
+    if (next === oldZoom) return;
+    // zoom around cursor
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    const p = state.workflow.pan;
+    p.x = px - ((px - p.x) / oldZoom) * next;
+    p.y = py - ((py - p.y) / oldZoom) * next;
+    state.workflow.zoom = next;
+    const vpEl = document.getElementById('wf-viewport');
+    if (vpEl) vpEl.style.transform = `translate(${p.x}px,${p.y}px) scale(${next})`;
+  }, { passive: false });
+  // keyboard shortcuts
+  if (window.__wfKeyHandler) document.removeEventListener('keydown', window.__wfKeyHandler);
+  const onWfKey = (e) => {
+    if (state.tool !== 'workflow') return;
+    const tag = (e.target?.tagName || '').toLowerCase();
+    if (['input', 'textarea', 'select'].includes(tag)) return;
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      if (e.shiftKey) wfRedo(); else wfUndo();
+      return;
+    }
+    if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); wfRedo(); return; }
+    if (mod && e.key.toLowerCase() === 'd') {
+      const src = state.workflow.nodes.find((n) => n.id === state.workflow.selectedNodeId);
+      if (!src) return;
+      e.preventDefault();
+      const id = 'n' + Math.random().toString(36).slice(2, 8);
+      state.workflow.nodes.push({ id, type: src.type, x: src.x + 30, y: src.y + 30, status: 'idle', config: JSON.parse(JSON.stringify(src.config || {})) });
+      state.workflow.selectedNodeId = id;
+      wfCommit();
+      renderView();
+      return;
+    }
+    if ((e.key === 'Delete' || e.key === 'Backspace') && state.workflow.selectedNodeId) {
+      const id = state.workflow.selectedNodeId;
+      e.preventDefault();
+      state.workflow.nodes = state.workflow.nodes.filter((n) => n.id !== id);
+      state.workflow.edges = state.workflow.edges.filter((ed) => ed.from !== id && ed.to !== id);
+      state.workflow.selectedNodeId = null;
+      wfCommit();
+      renderView();
+    }
+  };
+  window.__wfKeyHandler = onWfKey;
+  document.addEventListener('keydown', onWfKey);
   const sel = document.getElementById('wf-sel-node');
   if (sel) {
     sel.onchange = () => { state.workflow.selectedNodeId = sel.value || null; renderView(); };
@@ -13493,7 +13745,40 @@ async function handleExtraAction(action, el) {
       const n = state.workflow.nodes.length;
       state.workflow.nodes.push({ id, type, x: 40 + (n % 3) * 180, y: 40 + Math.floor(n / 3) * 100, status: 'idle', config: {} });
       state.workflow.selectedNodeId = id;
+      wfCommit();
       renderView();
+      return true;
+    }
+    case 'wf-duplicate-node': {
+      const src = state.workflow.nodes.find((n) => n.id === state.workflow.selectedNodeId);
+      if (!src) { toast('Select a node', 'Pick a node to duplicate first.', 'info'); return true; }
+      const id = 'n' + Math.random().toString(36).slice(2, 8);
+      state.workflow.nodes.push({ id, type: src.type, x: src.x + 30, y: src.y + 30, status: 'idle', config: JSON.parse(JSON.stringify(src.config || {})) });
+      state.workflow.selectedNodeId = id;
+      wfCommit();
+      renderView();
+      return true;
+    }
+    case 'wf-auto-layout': {
+      wfAutoLayout();
+      return true;
+    }
+    case 'wf-undo': {
+      wfUndo();
+      return true;
+    }
+    case 'wf-redo': {
+      wfRedo();
+      return true;
+    }
+    case 'wf-zoom-in':
+    case 'wf-zoom-out':
+    case 'wf-zoom-reset': {
+      const wf = state.workflow;
+      if (el.dataset.action === 'wf-zoom-reset') { wf.zoom = 1; wf.pan = { x: 0, y: 0 }; }
+      else wf.zoom = Math.max(0.4, Math.min(2, (wf.zoom || 1) + (el.dataset.action === 'wf-zoom-in' ? 0.1 : -0.1)));
+      const vpEl = document.getElementById('wf-viewport');
+      if (vpEl) vpEl.style.transform = `translate(${wf.pan.x}px,${wf.pan.y}px) scale(${wf.zoom})`;
       return true;
     }
     case 'wf-delete-node': {
@@ -13502,6 +13787,7 @@ async function handleExtraAction(action, el) {
         state.workflow.nodes = state.workflow.nodes.filter((n) => n.id !== id);
         state.workflow.edges = state.workflow.edges.filter((e) => e.from !== id && e.to !== id);
         state.workflow.selectedNodeId = null;
+        wfCommit();
         renderView();
       }
       return true;
@@ -13510,6 +13796,7 @@ async function handleExtraAction(action, el) {
       const idx = Number(el?.dataset?.edge);
       if (!Number.isNaN(idx) && idx >= 0 && idx < state.workflow.edges.length) {
         state.workflow.edges.splice(idx, 1);
+        wfCommit();
         renderView();
       }
       return true;
@@ -13518,6 +13805,7 @@ async function handleExtraAction(action, el) {
       state.workflow.nodes = [];
       state.workflow.edges = [];
       state.workflow.connectFrom = null;
+      wfCommit();
       renderView();
       return true;
     }
@@ -13551,6 +13839,7 @@ try { await idbWorkflowsSave(state.workflows); } catch {}
             state.workflow.nodes = Array.isArray(j.nodes) ? j.nodes : [];
             state.workflow.edges = Array.isArray(j.edges) ? j.edges : [];
             state.workflow.connectFrom = null;
+            wfCommit();
             renderView();
             toast('Imported', 'Workflow loaded.', 'success');
           } catch (e) { toast('Import failed', e?.message || 'Bad JSON.', 'error'); }
