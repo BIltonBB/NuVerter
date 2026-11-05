@@ -487,7 +487,8 @@ const state = {
     inpaint: { active: false, size: 20, mask: null },
     onnxModelUrl: '',
     onnxPreset: 'generic-256',
-    onnxUseWebGPU: false
+    onnxUseWebGPU: false,
+    layers: []
   },
   videoEditor: {
     source: null, result: null, busy: false,
@@ -2136,6 +2137,23 @@ async function updateConverterSizeEstimate() {
   el.textContent = '~' + formatBytes(est) + ' (approx.)';
 }
 
+async function scanVideoMetadata(blob) {
+  // Lightweight check: look for common metadata atoms in the container bytes.
+  try {
+    const ab = await blob.arrayBuffer();
+    const bytes = new Uint8Array(ab);
+    const found = [];
+    const targets = ['udta', 'ilst', 'meta'];
+    for (let i = 0; i < bytes.length - 4; i++) {
+      const s = String.fromCharCode(bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]);
+      if (targets.includes(s) && !found.includes(s)) found.push(s);
+    }
+    return { ok: found.length === 0, found };
+  } catch {
+    return { ok: true, found: [] };
+  }
+}
+
 function scanImageMetadata(blob) {
   const found = [];
   return blob.arrayBuffer().then((ab) => {
@@ -2476,6 +2494,12 @@ async function processOneQueueItem(item, counters) {
       } finally {
         releaseEngineLock();
       }
+    }
+    if (item.kind === 'video' && state.converter.stripMetadata && result?.blob) {
+      try {
+        const v = await scanVideoMetadata(result.blob);
+        if (!v.ok) toast('Metadata may remain', `Could not fully strip metadata (${v.found.join(', ')}) from ${item.name}.`, 'warning');
+      } catch {}
     }
     if (!state.queue.includes(item)) return;
     if (!state.queueRunning) return;
@@ -8303,6 +8327,17 @@ function imageEditorView() {
       </section>
       <section class="area-queue">
         <div class="stage-card">
+          <div class="stage-head"><div class="stage-head-copy"><strong>Layers</strong><span>Non-destructive overlays</span></div></div>
+          <div class="stage-body">
+            <div style="display:flex;gap:6px;margin-bottom:8px">
+              <button class="btn btn-secondary btn-sm" data-action="ie-add-text-layer">+ Text layer</button>
+            </div>
+            <div id="ie-layers">
+              ${(data.layers || []).map((l, i) => `<div class="settings-item"><div class="settings-item-copy"><strong>${esc(l.text || 'Text')}</strong><small>x:${l.x} y:${l.y} · opacity ${l.opacity}%</small></div><button class="btn btn-ghost btn-sm" data-action="ie-remove-layer" data-idx="${i}">Remove</button></div>`).join('') || '<p class="field-help">No layers.</p>'}
+            </div>
+          </div>
+        </div>
+        <div class="stage-card">
           <div class="stage-head"><div class="stage-head-copy"><strong>History</strong><span>Undo / redo</span></div></div>
           <div class="stage-body">
             <div style="display:flex;gap:6px;margin-bottom:10px">
@@ -8360,11 +8395,23 @@ function imageEditorRender() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(img, 0, 0);
   ctx.filter = 'none';
+  // composite non-destructive text layers
+  for (const layer of (data.layers || [])) {
+    if (layer.visible === false) continue;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, (layer.opacity || 100) / 100));
+    if (layer.type === 'text') {
+      ctx.font = `${layer.size || 24}px sans-serif`;
+      ctx.fillStyle = layer.color || '#ffffff';
+      ctx.fillText(layer.text || '', Number(layer.x) || 0, Number(layer.y) || 0);
+    }
+    ctx.restore();
+  }
 }
 
 function imageEditorPushHistory() {
   const data = state.imageEditor;
-  const snap = JSON.stringify(data.adjustments);
+  const snap = JSON.stringify({ adjustments: data.adjustments, layers: data.layers || [] });
   if (data.historyIndex < data.history.length - 1) data.history = data.history.slice(0, data.historyIndex + 1);
   data.history.push(snap);
   if (data.history.length > 40) { data.history.shift(); }
@@ -8376,7 +8423,9 @@ function imageEditorUndo() {
   const data = state.imageEditor;
   if (data.historyIndex <= 0) return;
   data.historyIndex--;
-  data.adjustments = JSON.parse(data.history[data.historyIndex]);
+  const snap = JSON.parse(data.history[data.historyIndex]);
+  data.adjustments = snap.adjustments || data.adjustments;
+  data.layers = snap.layers || [];
   renderView();
   imageEditorRender();
 }
@@ -8385,7 +8434,9 @@ function imageEditorRedo() {
   const data = state.imageEditor;
   if (data.historyIndex >= data.history.length - 1) return;
   data.historyIndex++;
-  data.adjustments = JSON.parse(data.history[data.historyIndex]);
+  const snap = JSON.parse(data.history[data.historyIndex]);
+  data.adjustments = snap.adjustments || data.adjustments;
+  data.layers = snap.layers || [];
   renderView();
   imageEditorRender();
 }
@@ -8393,6 +8444,7 @@ function imageEditorRedo() {
 function imageEditorReset() {
   const data = state.imageEditor;
   data.adjustments = { brightness: 100, contrast: 100, saturation: 100, hue: 0, blur: 0, sepia: 0, invert: 0, grayscale: 0 };
+  data.layers = [];
   imageEditorPushHistory();
   renderView();
   imageEditorRender();
@@ -9392,6 +9444,12 @@ async function videoEditorExport() {
     const name = data.source.name.replace(/\.[^.]+$/, '') + '-edited.' + built.fmt;
     const record = await registerOutput({ tool: 'videoeditor', sourceName: data.source.name, sourceSize: data.source.size, blob: result.blob, name, mime: result.mime || (built.fmt === 'webm' ? 'video/webm' : 'video/mp4') });
     data.result = record;
+    if (data.settings.stripMetadata) {
+      try {
+        const v = await scanVideoMetadata(result.blob);
+        if (!v.ok) toast('Metadata may remain', `Could not fully strip metadata (${v.found.join(', ')}) from ${name}.`, 'warning');
+      } catch {}
+    }
     const out = document.getElementById('ve-out');
     if (out) out.innerHTML = `<a class="btn btn-secondary btn-sm" href="${record.url}" download="${esc(name)}">${icon('download')}Download ${esc(name)}</a>`;
     toast('Exported', name, 'success');
@@ -13474,6 +13532,22 @@ async function handleAction(action, el) {
     case 'cmd-go': { const t = el?.dataset?.tool; if (t && TOOLS[t]) { closeModal(); setTool(t); } break; }
     case 'ie-undo': imageEditorUndo(); return true;
     case 'ie-redo': imageEditorRedo(); return true;
+    case 'ie-add-text-layer': {
+      const data = state.imageEditor;
+      if (!data.source) return true;
+      data.layers = data.layers || [];
+      data.layers.push({ type: 'text', text: 'Text', x: 20, y: 40, size: 24, color: '#ffffff', opacity: 100, visible: true });
+      imageEditorPushHistory();
+      imageEditorRender();
+      renderView();
+      return true;
+    }
+    case 'ie-remove-layer': {
+      const data = state.imageEditor;
+      const idx = Number(el?.dataset?.idx);
+      if (!isNaN(idx) && data.layers) { data.layers.splice(idx, 1); imageEditorPushHistory(); imageEditorRender(); renderView(); }
+      return true;
+    }
     case 'ie-reset': imageEditorReset(); return true;
     case 'ie-export': await imageEditorExport(); return true;
     case 'ie-inpaint-apply': await imageEditorInpaintApply(); return true;
