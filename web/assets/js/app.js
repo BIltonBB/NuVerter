@@ -14826,13 +14826,39 @@ function utilTextPaper() {
     });
     words.forEach((w) => {
       ctx.font = (w.b || bold ? 'bold ' : '') + (w.i ? 'italic ' : '') + size + 'px ' + font;
-      const ww = ctx.measureText(w.t).width;
+      let ww = ctx.measureText(w.t).width;
       if (w.space) {
         if (current.length && currentW + ww > maxWidth) {
           linesOut.push(current); current = []; currentW = 0;
         } else {
           if (current.length) { current.push(w); currentW += ww; }
         }
+        return;
+      }
+      if (ww > maxWidth) {
+        const chunks = [];
+        let chunk = '';
+        let chunkW = 0;
+        for (const ch of w.t) {
+          ctx.font = (w.b || bold ? 'bold ' : '') + (w.i ? 'italic ' : '') + size + 'px ' + font;
+          const cw = ctx.measureText(ch).width;
+          if (chunk && chunkW + cw > maxWidth) {
+            chunks.push({ t: chunk, b: w.b, i: w.i, space: false });
+            chunk = ch; chunkW = cw;
+          } else {
+            chunk += ch; chunkW += cw;
+          }
+        }
+        if (chunk) chunks.push({ t: chunk, b: w.b, i: w.i, space: false });
+        chunks.forEach((ch) => {
+          ctx.font = (ch.b || bold ? 'bold ' : '') + (ch.i ? 'italic ' : '') + size + 'px ' + font;
+          const cw = ctx.measureText(ch.t).width;
+          if (current.length && currentW + cw > maxWidth) {
+            linesOut.push(current); current = [ch]; currentW = cw;
+          } else {
+            current.push(ch); currentW += cw;
+          }
+        });
         return;
       }
       if (current.length && currentW + ww > maxWidth) {
@@ -14995,7 +15021,7 @@ function utilTextPaperBody() {
     <div class="stage-card">
       <div class="stage-head"><div class="stage-head-copy"><strong>Text to paper</strong><span>Render text on a paper page with margins, fonts and colors</span></div></div>
       <div class="stage-body">
-        <textarea data-util="tp-text" class="input" rows="8" placeholder="Your text here" style="width:100%"></textarea>
+        <textarea data-util="tp-text" class="input aichat-textarea" rows="1" placeholder="Your text here" style="width:100%"></textarea>
         <div class="field" style="margin-top:10px">
           <div class="field-head"><span class="field-label">Paper size</span></div>
           <select data-util="tp-size" class="select">
