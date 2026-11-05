@@ -10253,6 +10253,7 @@ function bindReframe() {
 function renderView() {
   const view = $('#view');
   if (!view) return;
+  if (window.__TAURI__) document.body.classList.add('tauri-native');
   if (state.tool === 'audiotools') state.utilities.tab = state.utilities.tab || 'audioclean';
   if (state.tool === 'practical') state.utilities.tab = state.utilities.tab || 'textimage';
   let html = '';
