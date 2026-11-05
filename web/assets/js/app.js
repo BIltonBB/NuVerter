@@ -4209,7 +4209,7 @@ function utilitiesView() {
       <div class="util-tab-group">
         <span class="util-tab-group-label">Text</span>
         <div class="util-tabs segmented" role="tablist">
-          ${['hash','textimage'].map((t) => `<button data-action="util-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${t === 'hash' ? 'File hash' : 'Text card'}</button>`).join('')}
+          ${['hash','textimage','textpaper'].map((t) => `<button data-action="util-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${t === 'hash' ? 'File hash' : t === 'textimage' ? 'Text card' : 'Text to paper'}</button>`).join('')}
         </div>
       </div>
     </div>
@@ -4217,6 +4217,7 @@ function utilitiesView() {
       ${tab === 'frames' ? utilFramesBody() :
         tab === 'spritesheet' ? utilSpritesheetBody() :
         tab === 'textimage' ? utilTextImageBody() :
+        tab === 'textpaper' ? utilTextPaperBody() :
         tab === 'trimmer' ? utilTrimmerBody() :
         tab === 'hash' ? utilHashBody() :
         tab === 'watermark' ? utilWatermarkBody() :
@@ -13632,6 +13633,7 @@ async function handleExtraAction(action, el) {
     case 'util-extract-frames': await utilExtractFrames(); return true;
     case 'util-make-sheet': await utilMakeSheet(); return true;
     case 'util-text-image': utilTextImage(); return true;
+    case 'util-text-paper': utilTextPaper(); return true;
     case 'util-trimmer': await utilTrimmer(); return true;
     case 'util-hash': await utilHash(); return true;
     case 'util-hash-copy': { const h = el?.dataset?.hash || ''; if (h) { try { await navigator.clipboard.writeText(h); toast('Copied', 'Hash copied.', 'success'); } catch {} } return true; }
@@ -14209,6 +14211,7 @@ async function handleAction(action, el) {
     case 'pay-method': state.payMethod = el.dataset.method; refreshPlansModal(); break;
     case 'open-checkout': if (PAYMENT_URL) window.open(PAYMENT_URL, '_blank', 'noopener'); else toast('Payment not configured', 'Set PAYMENT_URL in app.js.', 'error'); break;
     case 'donate': if (PAYMENT_URL) window.open(PAYMENT_URL, '_blank', 'noopener'); else toast('Not configured', 'Set PAYMENT_URL in app.js.', 'error'); break;
+    case 'suggest': window.open('https://tally.so/r/Ge6YlQ', '_blank', 'noopener'); break;
     case 'demo-unlock': await demoUnlock(); break;
     case 'deactivate-premium': await deactivatePremium(); break;
     case 'set-theme': setThemeByMode(el.dataset.mode); break;
@@ -14734,6 +14737,139 @@ function utilTextImage() {
     out.append(img, a);
   }
   toast('Text card ready', 'Download it below.', 'success');
+}
+
+function utilTextPaper() {
+  const val = (k, d) => { const el = document.querySelector('[data-util="' + k + '"]'); return el ? el.value : d; };
+  const text = val('tp-text', '');
+  if (!text.trim()) { toast('No text', 'Type something first.', 'error'); return; }
+  const sizeSel = val('tp-size', 'a4');
+  let W = 794, H = 1123;
+  if (sizeSel === 'a4') { W = 794; H = 1123; }
+  else if (sizeSel === 'letter') { W = 816; H = 1056; }
+  else if (sizeSel === 'a5') { W = 559; H = 794; }
+  else { W = Number(val('tp-cw', 794)); H = Number(val('tp-ch', 1123)); }
+  const margin = Number(val('tp-margin', 64));
+  const gap = Number(val('tp-gap', 6));
+  const font = val('tp-font', 'Georgia, serif');
+  const fontSize = Number(val('tp-fontsize', 16)) || 16;
+  const lh = Number(val('tp-lh', 1.6)) || 1.6;
+  const tcolor = val('tp-tcolor', '#1f2937');
+  const pcolor = val('tp-pcolor', '#ffffff');
+  const shadow = val('tp-shadow', 'soft');
+  const watermark = val('tp-watermark', '');
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  // paper
+  ctx.fillStyle = pcolor;
+  ctx.fillRect(0, 0, W, H);
+  // subtle paper texture
+  ctx.fillStyle = 'rgba(0,0,0,0.02)';
+  for (let i = 0; i < 2000; i++) {
+    const x = Math.random() * W;
+    const y = Math.random() * H;
+    ctx.fillRect(x, y, 1, 1);
+  }
+  // text
+  const fontCss = fontSize + 'px ' + font;
+  ctx.font = fontCss;
+  ctx.fillStyle = tcolor;
+  ctx.textBaseline = 'top';
+  const maxW = W - margin * 2;
+  const paragraphs = text.split(/\n/);
+  let y = margin;
+  const lineH = fontSize * lh;
+  paragraphs.forEach((para, pi) => {
+    const words = para.split(/\s+/).filter(Boolean);
+    let line = '';
+    const lines = [];
+    for (const word of words) {
+      const test = line ? line + ' ' + word : word;
+      if (ctx.measureText(test).width > maxW && line) { lines.push(line); line = word; } else line = test;
+    }
+    if (line) lines.push(line);
+    lines.forEach((l) => {
+      ctx.fillText(l, margin, y);
+      y += lineH;
+    });
+    if (pi < paragraphs.length - 1) y += gap;
+  });
+  if (watermark) {
+    ctx.save();
+    ctx.globalAlpha = 0.08;
+    ctx.font = (fontSize * 2) + 'px ' + font;
+    ctx.fillStyle = tcolor;
+    ctx.translate(W / 2, H / 2);
+    ctx.rotate(-Math.PI / 6);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(watermark, 0, 0);
+    ctx.restore();
+  }
+  const url = canvas.toDataURL('image/png');
+  const out = document.getElementById('util-tp-out');
+  if (out) {
+    out.innerHTML = '';
+    // preview with checkerboard + shadow
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:inline-block;padding:16px;background:repeating-conic-gradient(#d1d5db 0% 25%, #f9fafb 0% 50%) 50% / 20px 20px;border-radius:8px;';
+    const img = document.createElement('img');
+    img.src = url;
+    img.style.cssText = 'max-width:100%;box-shadow:' + (shadow === 'hard' ? '8px 8px 0 rgba(0,0,0,.35)' : shadow === 'soft' ? '0 10px 30px rgba(0,0,0,.25)' : 'none') + ';';
+    wrap.appendChild(img);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'text-to-paper.png'; a.className = 'btn btn-secondary btn-sm'; a.textContent = 'Download PNG';
+    a.style.marginTop = '8px';
+    out.append(wrap, document.createElement('br'), a);
+  }
+  toast('Paper ready', 'Download it below.', 'success');
+}
+
+function utilTextPaperBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Text to paper</strong><span>Render text on a paper page with margins, fonts and colors</span></div></div>
+      <div class="stage-body">
+        <textarea data-util="tp-text" class="input" rows="8" placeholder="Your text here" style="width:100%"></textarea>
+        <div class="field" style="margin-top:10px">
+          <div class="field-head"><span class="field-label">Paper size</span></div>
+          <select data-util="tp-size" class="select">
+            <option value="a4">A4 (210×297mm)</option>
+            <option value="letter">Letter (8.5×11in)</option>
+            <option value="a5">A5</option>
+            <option value="custom">Custom px</option>
+          </select>
+        </div>
+        <div class="field"><div class="field-head"><span class="field-label">Custom width (px)</span></div><input type="number" min="200" max="2000" value="794" data-util="tp-cw" class="input" style="width:80px" /></div>
+        <div class="field"><div class="field-head"><span class="field-label">Custom height (px)</span></div><input type="number" min="200" max="3000" value="1123" data-util="tp-ch" class="input" style="width:80px" /></div>
+        <div class="field"><div class="field-head"><span class="field-label">Margin (px)</span></div><input type="number" min="0" max="200" value="64" data-util="tp-margin" class="input" style="width:80px" /></div>
+        <div class="field"><div class="field-head"><span class="field-label">Line gap (px)</span></div><input type="number" min="0" max="60" value="6" data-util="tp-gap" class="input" style="width:80px" /></div>
+        <div class="field"><div class="field-head"><span class="field-label">Font family</span></div>
+          <select data-util="tp-font" class="select">
+            <option value="Inter, sans-serif">Inter</option>
+            <option value="Georgia, serif">Serif</option>
+            <option value="monospace">Monospace</option>
+            <option value="system-ui, sans-serif">System</option>
+          </select>
+        </div>
+        <div class="field"><div class="field-head"><span class="field-label">Font size</span></div><input type="number" min="8" max="72" value="16" data-util="tp-fontsize" class="input" style="width:80px" /></div>
+        <div class="field"><div class="field-head"><span class="field-label">Line height</span></div><input type="number" min="1" max="3" step="0.1" value="1.6" data-util="tp-lh" class="input" style="width:80px" /></div>
+        <div class="field"><div class="field-head"><span class="field-label">Text color</span></div><input type="color" value="#1f2937" data-util="tp-tcolor" /></div>
+        <div class="field"><div class="field-head"><span class="field-label">Paper color</span></div><input type="color" value="#ffffff" data-util="tp-pcolor" /></div>
+        <div class="field"><div class="field-head"><span class="field-label">Shadow</span></div>
+          <select data-util="tp-shadow" class="select">
+            <option value="soft" selected>Soft</option>
+            <option value="hard">Hard</option>
+            <option value="none">None</option>
+          </select>
+        </div>
+        <div class="field"><div class="field-head"><span class="field-label">Watermark</span></div><input type="text" value="" data-util="tp-watermark" class="input" style="width:180px" placeholder="Optional" /></div>
+        <div style="margin-top:12px"><button class="btn btn-primary btn-sm" data-action="util-text-paper">Render paper</button></div>
+        <div id="util-tp-out" class="util-out" style="margin-top:10px"></div>
+      </div>
+    </div>`;
 }
 
 const AI_CHAT_TOOLS = [
