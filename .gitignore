@@ -9,3 +9,6 @@ obj/
 # OS
 .DS_Store
 Thumbs.db
+
+# Rust/Tauri build
+tauri/src-tauri/target/

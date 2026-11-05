@@ -13171,7 +13171,13 @@ async function openDesktopAppInfo() {
       toast('Download started', asset.name + ' is downloading.', 'success');
       return;
     }
-  } catch (e) {}
+    // No release asset found: send user to the latest release page.
+    window.open(APP_DOWNLOAD_URL, '_blank', 'noopener');
+    toast('Opening releases', 'Pick the latest desktop build from GitHub Releases.', 'info');
+    return;
+  } catch (e) {
+    window.open(APP_DOWNLOAD_URL, '_blank', 'noopener');
+  }
   openModal({
     title: 'Get the desktop app',
     subtitle: 'Same UI, native shell, auto-update.',
