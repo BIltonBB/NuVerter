@@ -9849,8 +9849,8 @@ async function reframeExport() {
 }
 
 const WF_NODE_CATEGORIES = { input: ['branch'], process: ['trim','extractAudio','ocr','compress','convert','gif','merge','branch'], output: ['output'] };
-const WF_NODE_LABELS = { trim: 'Trim', extractAudio: 'Extract audio', ocr: 'OCR text', compress: 'Compress', convert: 'Convert', gif: 'GIF', merge: 'Merge', branch: 'Branch', output: 'Output' };
-const WF_NODE_IO = { trim: { in: 'file', out: 'file' }, extractAudio: { in: 'file', out: 'file' }, ocr: { in: 'file', out: 'text' }, compress: { in: 'file', out: 'file' }, convert: { in: 'file', out: 'file' }, gif: { in: 'file', out: 'file' }, merge: { in: 'file', out: 'file' }, branch: { in: 'file', out: 'file' }, output: { in: 'file', out: null } };
+const WF_NODE_LABELS = { trim: 'Trim', extractAudio: 'Extract audio', ocr: 'OCR text', compress: 'Compress', convert: 'Convert', gif: 'GIF', merge: 'Merge', branch: 'Branch', output: 'Output', resize: 'Resize', mute: 'Mute audio', watermark: 'Watermark' };
+const WF_NODE_IO = { trim: { in: 'file', out: 'file' }, extractAudio: { in: 'file', out: 'file' }, ocr: { in: 'file', out: 'text' }, compress: { in: 'file', out: 'file' }, convert: { in: 'file', out: 'file' }, gif: { in: 'file', out: 'file' }, merge: { in: 'file', out: 'file' }, branch: { in: 'file', out: 'file' }, output: { in: 'file', out: null }, resize: { in: 'file', out: 'file' }, mute: { in: 'file', out: 'file' }, watermark: { in: 'file', out: 'file' } };
 
 function workflowNodeInspector(data) {
   const n = data.nodes.find((x) => x.id === data.selectedNodeId);
@@ -9862,6 +9862,8 @@ function workflowNodeInspector(data) {
   if (n.type === 'ocr') return '<div style="margin-top:8px"><label>Language<input class="input" data-wfcfg="ocr.lang" value="' + esc(n.config.lang || 'eng') + '" /></label></div>';
   if (n.type === 'convert') return '<div style="margin-top:8px"><label>Format<select class="select" data-wfcfg="convert.format">' + ['mp4','webm','mp3','wav','png','jpg','webp'].map((f) => '<option value="' + f + '"' + (n.config.format === f ? ' selected' : '') + '>' + f + '</option>').join('') + '</select></label></div>';
   if (n.type === 'gif') return '<p class="field-help" style="margin-top:6px">Converts input to GIF.</p>';
+  if (n.type === 'resize') return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px"><label>Width<input class="input" data-wfcfg="resize.w" value="' + esc(n.config.w || '1280') + '" /></label><label>Height<input class="input" data-wfcfg="resize.h" value="' + esc(n.config.h || '720') + '" /></label></div>';
+  if (n.type === 'watermark') return '<div style="margin-top:8px"><label>Text<input class="input" data-wfcfg="watermark.text" value="' + esc(n.config.text || 'NuVerter') + '" /></label></div>';
   if (n.type === 'merge') return '<p class="field-help" style="margin-top:6px">Concatenates all incoming video inputs into one.</p>';
   if (n.type === 'branch') return '<p class="field-help" style="margin-top:6px">Duplicates input to multiple downstream branches.</p>';
   return '<p class="field-help" style="margin-top:6px">No options for this node.</p>';
@@ -9903,6 +9905,9 @@ function workflowView() {
                   <option value="gif">GIF</option>
                   <option value="merge">Merge (concat)</option>
                   <option value="branch">Branch (fan-out)</option>
+                  <option value="resize">Resize</option>
+                  <option value="mute">Mute audio</option>
+                  <option value="watermark">Watermark</option>
                 </optgroup>
                 <optgroup label="Output">
                   <option value="output">Output (download)</option>
@@ -10083,6 +10088,26 @@ async function wfRun() {
           const outFile = new File([result.blob], outName, { type: result.mime });
           outputs.set(id, { file: outFile, name: outName });
         }
+      } else if (node.type === 'resize') {
+        const cfg = node.config || {};
+        const w = Number(cfg.w) || 1280;
+        const h = Number(cfg.h) || 720;
+        const args = ['-hide_banner', '-y', '-i', '{in}', '-vf', `scale=${w}:${h}`, '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-c:a', 'copy', '{out}'];
+        const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: extOf(inputName) || 'mp4', args, mime: inputFile.type || 'video/mp4' });
+        const outFile = new File([result.blob], inputName, { type: result.mime });
+        outputs.set(id, { file: outFile, name: inputName });
+      } else if (node.type === 'mute') {
+        const args = ['-hide_banner', '-y', '-i', '{in}', '-c:v', 'copy', '-an', '{out}'];
+        const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: extOf(inputName) || 'mp4', args, mime: inputFile.type || 'video/mp4' });
+        const outFile = new File([result.blob], inputName, { type: result.mime });
+        outputs.set(id, { file: outFile, name: inputName });
+      } else if (node.type === 'watermark') {
+        const cfg = node.config || {};
+        const txt = (cfg.text || 'NuVerter').replace(/'/g, "\\'");
+        const args = ['-hide_banner', '-y', '-i', '{in}', '-vf', `drawtext=text='${txt}':fontsize=24:fontcolor=white:x=10:y=10`, '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-c:a', 'copy', '{out}'];
+        const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: extOf(inputName) || 'mp4', args, mime: inputFile.type || 'video/mp4' });
+        const outFile = new File([result.blob], inputName, { type: result.mime });
+        outputs.set(id, { file: outFile, name: inputName });
       } else if (node.type === 'output') {
         outputs.set(id, { file: inputFile, name: inputName });
         node.text = inputName;
@@ -10178,22 +10203,21 @@ function bindWorkflow() {
     draggingNode.y = Math.max(0, e.clientY - rect.top - offset.y);
     const el = canvas.querySelector(`[data-node="${draggingNode.id}"]`);
     if (el) { el.style.left = draggingNode.x + 'px'; el.style.top = draggingNode.y + 'px'; }
-    // update svg lines
+    // update svg lines in place (keeps defs intact and stays in sync with node movement)
     const svg = document.getElementById('wf-svg');
     if (svg) {
-      const lines = state.workflow.edges.map((ed) => {
+      const svgLines = svg.querySelectorAll('line');
+      state.workflow.edges.forEach((ed, idx) => {
         const a = state.workflow.nodes.find((n) => n.id === ed.from);
         const b = state.workflow.nodes.find((n) => n.id === ed.to);
-        if (!a || !b) return '';
-        return `<line x1="${a.x + 150}" y1="${a.y + 24}" x2="${b.x}" y2="${b.y + 24}" stroke="var(--accent)" stroke-width="2" />`;
-      }).join('');
-      // keep defs
-      const defs = svg.querySelector('defs');
-      svg.innerHTML = '';
-      if (defs) svg.appendChild(defs);
-      const parser = new DOMParser();
-      const frag = parser.parseFromString('<svg xmlns="http://www.w3.org/2000/svg">' + lines + '</svg>', 'image/svg+xml');
-      Array.from(frag.documentElement.childNodes).forEach((c) => svg.appendChild(document.importNode(c, true)));
+        const line = svgLines[idx];
+        if (a && b && line) {
+          line.setAttribute('x1', a.x + 150);
+          line.setAttribute('y1', a.y + 24);
+          line.setAttribute('x2', b.x);
+          line.setAttribute('y2', b.y + 24);
+        }
+      });
     }
   });
   canvas.addEventListener('pointerup', (e) => {
