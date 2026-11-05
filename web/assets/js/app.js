@@ -13490,6 +13490,8 @@ function handleToggle(el) {
 
 function enhanceTextareas() {
   document.querySelectorAll('textarea').forEach((ta) => {
+    ta.classList.add('aichat-textarea');
+    if (!ta.getAttribute('rows')) ta.setAttribute('rows', '1');
     if (ta.dataset.enhancedTa === '1') return;
     ta.dataset.enhancedTa = '1';
     const grow = () => {
@@ -15001,7 +15003,7 @@ function utilTextPaper() {
       wrap.appendChild(label);
       const a = document.createElement('a');
       a.href = url; a.download = 'text-to-paper-' + (pi + 1) + '.png'; a.className = 'btn btn-secondary btn-sm'; a.textContent = 'Download page ' + (pi + 1);
-      a.style.cssText = 'display:block;margin:8px auto 0;';
+      a.style.cssText = 'margin:8px auto 0;display:inline-flex;';
       wrap.appendChild(a);
       out.appendChild(wrap);
     });
