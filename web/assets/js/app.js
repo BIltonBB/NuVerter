@@ -94,6 +94,17 @@ function outputName(source, ext, suffix = '') {
   return safeName(`${baseName(source)}${suffix}.${ext}`);
 }
 
+function estimateOutputSize(item, plan) {
+  if (!item || !plan || !plan.target) return null;
+  const src = Number(item.size) || 0;
+  if (!src) return null;
+  const quality = state.converter.quality || 'balanced';
+  const q = quality === 'compact' ? 0.35 : quality === 'best' ? 0.9 : 0.6;
+  if (item.kind === 'image') return Math.round(src * q);
+  if (item.kind === 'audio') return Math.round(src * (quality === 'compact' ? 0.5 : quality === 'best' ? 0.85 : 0.7));
+  // video: rough heuristic
+  return Math.round(src * (quality === 'compact' ? 0.3 : quality === 'best' ? 0.7 : 0.5));
+}
 function applyRenameTemplate(item, target, template) {
   const tpl = (template || '').trim();
   if (!tpl) return outputName(item.name, target.ext, extOf(item.name) === target.ext ? '-converted' : '');
@@ -3689,6 +3700,7 @@ function queueRow(item, index) {
     `<span>${formatBytes(item.size)}</span>`,
     item.duration ? `<span>${formatDuration(item.duration)}</span>` : '',
     item.width ? `<span>${item.width}×${item.height}</span>` : '',
+    (plan && plan.compatible) ? `<span class="faint" title="Estimated output size">≈ ${formatBytes(estimateOutputSize(item, plan))}</span>` : '',
     ghost ? '<span class="faint">slot ' + (index + 1) + '</span>' : ''
   ].filter(Boolean).join('<span class="sep"></span>');
   return `
@@ -12582,6 +12594,12 @@ function settingsBody() {
         <div class="settings-item"><div class="settings-item-copy"><strong>Latest release</strong><small>GitHub</small></div><span class="mono" data-latest-release>checking…</span></div>
       </div>
       ${isTauri ? '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn btn-secondary btn-sm" data-action="check-update">Check for updates</button><button class="btn btn-danger btn-sm" data-action="uninstall-app">Uninstall NuVerter</button></div>' : ''}
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-title">${icon('activity')}Usage (local)</div>
+      <div class="settings-list">
+        ${(() => { const u = getUsage(); const files = u.files || 0; const bytes = u.bytes || 0; return `<div class="settings-item"><div class="settings-item-copy"><strong>Files processed</strong><small>On this device</small></div><span class="mono">${files}</span></div><div class="settings-item"><div class="settings-item-copy"><strong>Bytes processed</strong><small>Approximate</small></div><span class="mono">${formatBytes(bytes)}</span></div>`; })()}
+      </div>
     </div>
     <div class="modal-section">
       <div class="modal-section-title">${icon('sun')}Theme mode</div>
