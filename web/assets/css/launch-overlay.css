@@ -1,18 +1,19 @@
-/* Launch overlay */
+/* Launch overlay — major app picker */
 .launch-overlay { position: fixed; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center; padding: 24px; }
 .launch-overlay[hidden] { display: none; }
-.launch-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.45); backdrop-filter: blur(18px) saturate(1.2); -webkit-backdrop-filter: blur(18px) saturate(1.2); }
-.launch-panel { position: relative; width: min(960px, 100%); max-height: 90vh; overflow: auto; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 20px; box-shadow: var(--shadow-lg); padding: 24px; }
-.launch-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
-.launch-kicker { font-size: 10px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; color: var(--text-4); margin: 0 0 4px; }
-.launch-head h2 { margin: 0 0 4px; font-size: 26px; font-weight: 800; letter-spacing: -.02em; }
-.launch-sub { margin: 0; color: var(--text-3); font-size: 13px; }
-.launch-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-@media (max-width: 900px) { .launch-grid { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 480px) { .launch-grid { grid-template-columns: 1fr; } }
-.launch-card { display: flex; flex-direction: column; gap: 8px; padding: 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-2); cursor: pointer; transition: transform .18s ease, border-color .18s ease, background .18s ease; text-align: left; }
-.launch-card:hover { transform: translateY(-2px); border-color: var(--accent); background: var(--surface-3); }
-.launch-card .launch-icon { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: var(--accent-soft); color: var(--accent); }
-.launch-card .launch-icon svg { width: 18px; height: 18px; }
-.launch-card strong { font-size: 14px; font-weight: 700; }
-.launch-card span { font-size: 11px; color: var(--text-3); line-height: 1.4; }
+.launch-backdrop { position: absolute; inset: 0; background: radial-gradient(1200px 600px at 50% -10%, rgba(124,58,237,.35), transparent 60%), rgba(8,8,12,.72); backdrop-filter: blur(24px) saturate(1.4); -webkit-backdrop-filter: blur(24px) saturate(1.4); }
+.launch-panel { position: relative; width: min(1080px, 100%); max-height: 92vh; overflow: auto; background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02)); border: 1px solid rgba(255,255,255,.12); border-radius: 28px; box-shadow: 0 40px 120px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.08); padding: 32px; backdrop-filter: blur(20px); }
+.launch-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 28px; }
+.launch-kicker { font-size: 11px; font-weight: 800; letter-spacing: .22em; text-transform: uppercase; color: var(--accent); margin: 0 0 6px; }
+.launch-head h2 { margin: 0 0 6px; font-size: 34px; font-weight: 900; letter-spacing: -.03em; line-height: 1.05; }
+.launch-sub { margin: 0; color: var(--text-2); font-size: 14px; max-width: 520px; }
+.launch-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+@media (max-width: 640px) { .launch-grid { grid-template-columns: 1fr; } }
+.launch-card { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 26px; border: 1px solid rgba(255,255,255,.10); border-radius: 20px; background: linear-gradient(160deg, rgba(255,255,255,.08), rgba(255,255,255,.02)); cursor: pointer; text-align: left; overflow: hidden; transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease; min-height: 150px; }
+.launch-card::before { content: ''; position: absolute; inset: 0; background: radial-gradient(400px 200px at 0% 0%, var(--accent-soft), transparent 70%); opacity: 0; transition: opacity .22s ease; pointer-events: none; }
+.launch-card:hover { transform: translateY(-4px); border-color: var(--accent); box-shadow: 0 20px 50px rgba(0,0,0,.35); }
+.launch-card:hover::before { opacity: 1; }
+.launch-card .launch-icon { width: 52px; height: 52px; border-radius: 14px; display: flex; align-items: center; justify-content: center; background: var(--accent-soft); color: var(--accent); position: relative; z-index: 1; }
+.launch-card .launch-icon svg { width: 26px; height: 26px; }
+.launch-card strong { font-size: 20px; font-weight: 800; letter-spacing: -.01em; position: relative; z-index: 1; }
+.launch-card span { font-size: 13px; color: var(--text-2); line-height: 1.5; position: relative; z-index: 1; }
