@@ -22,6 +22,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
    the ad slot. Leave '' to keep the placeholder.
    ---------------------------------------------------------------- */
 const PAYMENT_URL = 'https://sociabuzz.com/biltonb/shop';
+const APP_VERSION = '1.1.1';
 const APP_DOWNLOAD_URL = 'https://github.com/BIltonBB/NuVerter/releases/latest'; // Desktop app (versioned release assets)
 const AD_SNIPPET = '';
 
@@ -12568,9 +12569,19 @@ async function deactivatePremium() {
 /* ---------- settings modal ---------- */
 function settingsBody() {
   const stats = historyStats();
+  const tauri = window.__TAURI__ || window.__TAURI_INTERNALS__;
+  const isTauri = !!(tauri?.core?.invoke || tauri?.invoke);
   const storagePct = clamp((stats.bytes / MAX_HISTORY_BYTES) * 100, 0, 100);
   const protocol = location.protocol === 'file:' ? 'file:// (engine blocked)' : location.origin;
   return `
+    <div class="modal-section">
+      <div class="modal-section-title">${icon('info')}App version</div>
+      <div class="settings-list">
+        <div class="settings-item"><div class="settings-item-copy"><strong>Installed version</strong><small>Compiled binary</small></div><span class="mono" id="app-version-label">${APP_VERSION}</span></div>
+        <div class="settings-item"><div class="settings-item-copy"><strong>Latest release</strong><small>GitHub</small></div><span class="mono" id="latest-release-label">checking…</span></div>
+      </div>
+      ${isTauri ? '<div style="display:flex;gap:6px;margin-top:8px"><button class="btn btn-secondary btn-sm" data-action="check-update">Check for updates</button></div>' : ''}
+    </div>
     <div class="modal-section">
       <div class="modal-section-title">${icon('sun')}Theme mode</div>
       <div class="theme-options">
@@ -12894,6 +12905,17 @@ function openSettings() {
     footer: `<button class="btn btn-primary" data-action="close-modal">Done</button>`
   });
   syncLatestReleaseLabel();
+  (async () => {
+    try {
+      const tauri = window.__TAURI__ || window.__TAURI_INTERNALS__;
+      const inv = tauri?.core?.invoke || tauri?.invoke;
+      if (typeof inv === 'function') {
+        const v = await inv.call(tauri?.core || tauri, 'get_app_version');
+        const el = document.getElementById('app-version-label');
+        if (el && v) el.textContent = 'v' + v;
+      }
+    } catch {}
+  })();
 }
 
 function resetPreferences() {
@@ -14019,6 +14041,49 @@ async function handleAction(action, el) {
      case 'install-pwa': installPwa(); break;
     case 'privacy': openPrivacy(); break;
     case 'settings': openSettings(); break;
+    case 'check-update': {
+      (async () => {
+        try {
+          const tauri = window.__TAURI__ || window.__TAURI_INTERNALS__;
+          const inv = tauri?.core?.invoke || tauri?.invoke;
+          if (typeof inv !== 'function') { toast('Not available', 'Updates are only available in the desktop app.', 'info'); return; }
+          const newVersion = await inv.call(tauri?.core || tauri, 'check_update');
+          if (newVersion) {
+            const modal = document.createElement('div');
+            modal.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);backdrop-filter:blur(4px)';
+            modal.innerHTML = '<div style="background:var(--surface);border:1px solid var(--border-strong);border-radius:16px;padding:24px;max-width:360px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.4)">' +
+              '<h3 style="margin:0 0 8px;font-size:18px">Update available</h3>' +
+              '<p style="margin:0 0 16px;font-size:13px;color:var(--text-2)">NuVerter ' + newVersion + ' is available. Update now?</p>' +
+              '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+              '<button class="btn btn-ghost" id="upd-no">Not now</button>' +
+              '<button class="btn btn-primary" id="upd-yes">Update</button>' +
+              '</div></div>';
+            document.body.appendChild(modal);
+            modal.querySelector('#upd-no').onclick = () => {
+              modal.remove();
+              if (document.getElementById('upd-badge')) return;
+              const badge = document.createElement('button');
+              badge.id = 'upd-badge';
+              badge.title = 'Update available: ' + newVersion;
+              badge.textContent = '^';
+              badge.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:9999;width:40px;height:40px;border-radius:50%;border:1px solid var(--border-strong);background:var(--accent);color:#fff;font-size:18px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.3)';
+              badge.onclick = async () => { badge.disabled = true; badge.textContent = '...'; try { await inv.call(tauri?.core || tauri, 'install_update'); } catch (e) { badge.remove(); } };
+              document.body.appendChild(badge);
+            };
+            modal.querySelector('#upd-yes').onclick = async () => {
+              const btn = modal.querySelector('#upd-yes');
+              if (btn) { btn.disabled = true; btn.textContent = 'Updating...'; }
+              try { await inv.call(tauri?.core || tauri, 'install_update'); } catch (e) { modal.remove(); }
+            };
+          } else {
+            toast('Up to date', 'You are running the latest version.', 'success');
+          }
+        } catch (e) {
+          toast('Update check failed', e?.message || 'Could not check for updates.', 'error');
+        }
+      })();
+      return true;
+    }
     case 'help': openHelp(); break;
     case 'advertise': openAdvertise(); break;
     case 'open-plans': openPlans(el.dataset.plan || null); break;
@@ -14771,18 +14836,18 @@ bindEvents();
         const badge = document.createElement('button');
         badge.id = 'upd-badge';
         badge.title = 'Update available: ' + newVersion;
-        badge.textContent = '↑';
+        badge.textContent = '^';
         badge.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:9999;width:40px;height:40px;border-radius:50%;border:1px solid var(--border-strong);background:var(--accent);color:#fff;font-size:18px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.3)';
         badge.onclick = async () => {
           badge.disabled = true;
-          badge.textContent = '…';
+          badge.textContent = '^';
           try { await tauri.core.invoke('install_update'); } catch (e) { badge.remove(); }
         };
         document.body.appendChild(badge);
       };
       modal.querySelector('#upd-yes').onclick = async () => {
         const btn = modal.querySelector('#upd-yes');
-        if (btn) { btn.disabled = true; btn.textContent = 'Updating…'; }
+        if (btn) { btn.disabled = true; btn.textContent = 'Updating...'; }
         try { await tauri.core.invoke('install_update'); } catch (e) { cleanup(); }
       };
     }
