@@ -14764,7 +14764,22 @@ bindEvents();
         '</div></div>';
       document.body.appendChild(modal);
       const cleanup = () => modal.remove();
-      modal.querySelector('#upd-no').onclick = cleanup;
+      modal.querySelector('#upd-no').onclick = () => {
+        cleanup();
+        // keep a subtle circular badge so the user can update later
+        if (document.getElementById('upd-badge')) return;
+        const badge = document.createElement('button');
+        badge.id = 'upd-badge';
+        badge.title = 'Update available: ' + newVersion;
+        badge.textContent = '↑';
+        badge.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:9999;width:40px;height:40px;border-radius:50%;border:1px solid var(--border-strong);background:var(--accent);color:#fff;font-size:18px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.3)';
+        badge.onclick = async () => {
+          badge.disabled = true;
+          badge.textContent = '…';
+          try { await tauri.core.invoke('install_update'); } catch (e) { badge.remove(); }
+        };
+        document.body.appendChild(badge);
+      };
       modal.querySelector('#upd-yes').onclick = async () => {
         const btn = modal.querySelector('#upd-yes');
         if (btn) { btn.disabled = true; btn.textContent = 'Updating…'; }
