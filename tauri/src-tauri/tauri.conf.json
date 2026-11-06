@@ -1,6 +1,6 @@
 {
   "productName": "NuVerter",
-  "version": "1.0.9",
+  "version": "1.1.21",
   "identifier": "com.nuverter.studio",
   "build": {
     "frontendDist": "../../web",
@@ -15,7 +15,8 @@
         "title": "NuVerter",
         "width": 1280,
         "height": 820,
-        "resizable": true
+        "resizable": true,
+        "transparent": true
       }
     ],
     "security": {
@@ -39,17 +40,13 @@
     ],
     "windows": {
       "nsis": {
+        "template": "installer.nsi",
         "installerIcon": "icons/icon.ico",
         "uninstallerIcon": "icons/icon.ico",
         "headerImage": "icons/header.bmp",
         "sidebarImage": "icons/sidebar.bmp",
-        "uninstallerHeaderImage": "icons/header.bmp",
         "installMode": "both",
-        "displayLanguageSelector": false,
-        "customLanguageFiles": {
-          "English": "languages/English.nsh"
-        },
-        "template": "installer.nsi"
+        "displayLanguageSelector": false
       }
     }
   },
