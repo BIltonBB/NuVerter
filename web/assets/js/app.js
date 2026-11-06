@@ -12577,6 +12577,7 @@ function settingsBody() {
     <div class="modal-section">
       <div class="modal-section-title">${icon('info')}Updates</div>
       <div class="settings-list">
+        <div class="settings-item"><div class="settings-item-copy"><strong>Installed version</strong><small>This build</small></div><span class="mono" id="app-version-label">${APP_VERSION}</span></div>
         <div class="settings-item"><div class="settings-item-copy"><strong>Latest release</strong><small>GitHub</small></div><span class="mono" id="latest-release-label">checking…</span></div>
       </div>
       ${isTauri ? '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn btn-secondary btn-sm" data-action="check-update">Check for updates</button><button class="btn btn-danger btn-sm" data-action="uninstall-app">Uninstall NuVerter</button></div>' : ''}
