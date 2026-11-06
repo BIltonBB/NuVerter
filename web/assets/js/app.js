@@ -14611,14 +14611,10 @@ function bindEvents() {
   }
   // ---- Launch overlay (category selector) ----
   const LAUNCH_GROUPS = [
-    { key: 'convert', label: 'Convert', tool: 'converter', desc: 'Universal converter, compressor, cropper, extractor', icon: 'repeat' },
-    { key: 'create', label: 'Create', tool: 'gif', desc: 'GIF maker, screen recorder, subtitles', icon: 'film' },
-    { key: 'edit', label: 'Edit', tool: 'imageditor', desc: 'Image & video editor, auto reframe, workflows', icon: 'sliders-horizontal' },
-    { key: 'audio', label: 'Audio', tool: 'audiotools', desc: 'Audio tools, waveform, silence trim, TTS', icon: 'music' },
-    { key: 'documents', label: 'Documents', tool: 'pdftools', desc: 'PDF tools, OCR', icon: 'file' },
-    { key: 'developer', label: 'Developer', tool: 'devtools', desc: 'Dev tools, utilities, practical helpers', icon: 'command' },
-    { key: 'ai', label: 'AI', tool: 'aitools', desc: 'AI tools, chat, background, upscale', icon: 'sparkles' },
-    { key: 'library', label: 'Library', tool: 'history', desc: 'Session history', icon: 'history' }
+    { key: 'media', label: 'Media Studio', tool: 'converter', desc: 'Convert, compress, crop, GIF, screen record, image & video edit, audio tools', icon: 'film' },
+    { key: 'documents', label: 'Documents', tool: 'pdftools', desc: 'PDF merge, split, convert, OCR', icon: 'file' },
+    { key: 'ai', label: 'AI Lab', tool: 'aitools', desc: 'AI tools, chat, background removal, upscale, embeddings', icon: 'sparkles' },
+    { key: 'developer', label: 'Developer Tools', tool: 'devtools', desc: 'Dev tools, utilities, practical helpers, hashing', icon: 'command' }
   ];
   function renderLaunchGrid() {
     const grid = document.getElementById('launch-grid');
@@ -14745,6 +14741,11 @@ function bindEvents() {
     if (mod && event.key.toLowerCase() === 'k') {
       event.preventDefault();
       openCommandPalette();
+      return;
+    }
+    if (mod && event.key.toLowerCase() === 'l') {
+      event.preventDefault();
+      window.openLaunchOverlay?.();
       return;
     }
     if (!typing && !mod && event.key === '?') {
