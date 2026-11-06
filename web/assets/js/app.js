@@ -4206,12 +4206,13 @@ function utilitiesView() {
       const currentLabel = labels[tab] || 'Frames';
       return `
       <div class="util-combo" style="position:relative;margin:0 0 14px">
-        <input type="search" id="util-combo-q" class="input" style="width:100%" placeholder="Search tools…" value="${esc(currentLabel)}" autocomplete="off"
+        <input type="search" id="util-combo-q" class="input" style="width:100%;padding-right:32px" placeholder="Search tools…" value="${esc(currentLabel)}" autocomplete="off"
           onfocus="var l=document.getElementById('util-combo-list'); if(l){l.hidden=false;} this.select();"
           onblur="setTimeout(function(){var l=document.getElementById('util-combo-list'); if(l) l.hidden=true;},160)"
           oninput="var q=this.value.toLowerCase(); document.querySelectorAll('#util-combo-list .util-combo-opt').forEach(function(o){ o.style.display = (o.dataset.label.toLowerCase().includes(q)) ? '' : 'none'; }); document.querySelectorAll('#util-combo-list .util-combo-group').forEach(function(g){ var vis=g.querySelector('.util-combo-opt:not([style*=\\'display: none\\'])'); g.style.display = vis ? '' : 'none'; });"
           onkeydown="if(event.key==='Escape'){this.blur();var l=document.getElementById('util-combo-list'); if(l) l.hidden=true;} if(event.key==='Enter'){var v=document.querySelector('#util-combo-list .util-combo-opt:not([style*=&quot;display: none&quot;])'); if(v){v.click();}}"
         />
+        <svg class="icon" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;opacity:.6;width:14px;height:14px"><use href="#i-chevron-down" /></svg>
         <div id="util-combo-list" class="util-combo-list" hidden style="position:absolute;z-index:30;left:0;right:0;top:calc(100% + 4px);max-height:300px;overflow:auto;border:1px solid var(--border);border-radius:10px;background:var(--surface);box-shadow:var(--shadow-lg);padding:6px">
           ${groups.map((g) => `<div class="util-combo-group" style="margin-bottom:6px">
             <div style="font-size:10.5px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;padding:4px 8px">${esc(g.name)}</div>
@@ -14411,6 +14412,12 @@ function bindEvents() {
 
   $('#nav-scrim')?.addEventListener('click', closeNav);
 
+  // close utilities combobox on outside click
+  document.addEventListener('click', (e) => {
+    const q = document.getElementById('util-combo-q');
+    const list = document.getElementById('util-combo-list');
+    if (q && list && !q.contains(e.target) && !list.contains(e.target)) list.hidden = true;
+  });
   const navSearch = document.getElementById('nav-search');
   const navResults = document.getElementById('nav-search-results');
   const utilSubTools = [
