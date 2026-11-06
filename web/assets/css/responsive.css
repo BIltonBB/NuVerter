@@ -335,6 +335,25 @@
   .btn-primary:hover:not(:disabled) { transform: none; }
 }
 
+/* ---------- mobile text hardening (UX overhaul Phase 1) ---------- */
+@media (max-width: 720px) {
+  html, body { font-size: 14px; }
+  .eyebrow, .nav-index, .nav-count, .stage-meta, .trust-row, .ad-copy, .ad-label,
+  .settings-summary, .result-card .mono, .queue-meta .eta { font-size: 12px !important; }
+  .field-label, .field-value, .stage-head-copy span, .crumbs, .view-sub { font-size: 12.5px; }
+  .btn, .nav-item, .format-chip, .queue-run { min-height: 36px; }
+  input.input, select.select, textarea.input { max-width: 100%; box-sizing: border-box; }
+  .util-tabs button, .settings-tabs button { white-space: nowrap; }
+  .stage-head-copy strong, .view-title { word-break: break-word; }
+  /* prevent horizontal scroll on small viewports */
+  .workspace, .tool-grid, .tool-layout, .stage-card, .stage-body { max-width: 100%; overflow-x: hidden; }
+}
+
+@media (max-width: 480px) {
+  html, body { font-size: 14px; }
+  .view-title { font-size: 20px; }
+}
+
 /* ---------- subtitle editor responsive ---------- */
 @media (max-width: 1180px) {
   .sub-layout { grid-template-columns: minmax(0, 1fr); }
