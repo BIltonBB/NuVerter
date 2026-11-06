@@ -424,7 +424,7 @@ const state = {
   utilWaveform: {},
   pdfTools: { tab: 'merge', busy: false },
   pdfRedact: { file: null, pdf: null, numPages: 0, page: 1, rects: {}, rendering: false },
-  aiChat: { model: 'uncensored-tiny', messages: [], busy: false, webSearch: false, pendingImage: null, debug: false, lastDebug: null },
+  aiChat: { model: 'uncensored-tiny', messages: [], busy: false, webSearch: false, pendingImage: null, attachments: [], debug: false, lastDebug: null },
   devTools: { tab: 'json' },
   practical: { tab: 'diff' },
   aiTools: { tab: 'aibg' },
@@ -7758,9 +7758,13 @@ function aiChatView() {
       <section class="aichat-main">
         <div class="aichat-log" id="ai-chat-log">${msgs || '<div class="aichat-empty">' + aiEmptyState('No messages yet', 'Say hello, or ask for a story.', 'sparkles') + '</div>'}</div>
         ${state.aiChat?.pendingImage ? '<div class="aichat-pending"><img src="' + esc(state.aiChat.pendingImage) + '" alt="pending" /><button class="btn btn-ghost btn-sm" data-action="ai-chat-clear-image">Remove image</button></div>' : ''}
+        ${(state.aiChat?.attachments || []).length ? '<div class="aichat-attachments" style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0">' + (state.aiChat.attachments || []).map((a, i) => '<span class="pill" style="display:inline-flex;align-items:center;gap:4px">' + esc(a.name) + ' <button class="btn btn-ghost btn-sm" data-action="ai-chat-remove-attachment" data-idx="' + i + '" style="padding:0 4px">✕</button></span>').join('') + '</div>' : ''}
+        <div class="aichat-drop" data-aichat-drop style="border:1px dashed var(--border);border-radius:8px;padding:6px;text-align:center;font-size:11px;color:var(--text-3);margin-bottom:6px" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="event.preventDefault();this.style.borderColor='var(--border)'; if(window.__aichatDrop) window.__aichatDrop(event.dataTransfer.files);">Drop files here (images, PDF, txt)</div>
         <div class="aichat-input">
           <button class="btn btn-ghost btn-sm" data-action="ai-chat-attach-image" title="Attach image (Vision model)">${icon('image')}</button>
+          <button class="btn btn-ghost btn-sm" data-action="ai-chat-attach-file" title="Attach file">${icon('file')}</button>
           <input type="file" id="ai-chat-image-input" accept="image/*" hidden />
+          <input type="file" id="ai-chat-file-input" accept="image/*,application/pdf,text/*,video/*,audio/*" multiple hidden />
           <textarea id="ai-chat-input" class="input aichat-textarea" rows="1" placeholder="Ask something, attach an image, or ask for a story…"></textarea>
           <button class="btn btn-primary" data-action="ai-chat-send" ${busy}>${icon('arrow-up')}</button>
         </div>
@@ -13818,6 +13822,8 @@ async function handleExtraAction(action, el) {
     case 'ai-chat-toggle-search': state.aiChat.webSearch = !state.aiChat.webSearch; saveAiChat(); renderView(); return true;
     case 'ai-chat-toggle-debug': state.aiChat.debug = !state.aiChat.debug; renderView(); return true;
     case 'ai-chat-attach-image': { const fi = document.getElementById('ai-chat-image-input'); if (fi) fi.click(); return true; }
+    case 'ai-chat-attach-file': { const fi = document.getElementById('ai-chat-file-input'); if (fi) fi.click(); return true; }
+    case 'ai-chat-remove-attachment': { const idx = Number(el.dataset.idx); if (!isNaN(idx) && state.aiChat.attachments) { state.aiChat.attachments.splice(idx, 1); renderView(); } return true; }
     case 'ai-chat-clear-image': state.aiChat.pendingImage = null; renderView(); return true;
     case 'ai-chat-model':
       state.aiChat.model = el.dataset.model || 'micro';
@@ -14418,6 +14424,39 @@ function bindEvents() {
     const list = document.getElementById('util-combo-list');
     if (q && list && !q.contains(e.target) && !list.contains(e.target)) list.hidden = true;
   });
+  // AI chat file input handling
+  const aiFileInput = document.getElementById('ai-chat-file-input');
+  if (aiFileInput) {
+    aiFileInput.addEventListener('change', async (e) => {
+      const files = Array.from(e.target.files || []);
+      for (const f of files) {
+        const att = { name: f.name, type: f.type, file: f };
+        if (f.type.startsWith('image/')) {
+          const r = new FileReader();
+          r.onload = () => { att.dataUrl = r.result; if (!state.aiChat.pendingImage) state.aiChat.pendingImage = r.result; renderView(); };
+          r.readAsDataURL(f);
+        }
+        state.aiChat.attachments = state.aiChat.attachments || [];
+        state.aiChat.attachments.push(att);
+      }
+      renderView();
+      aiFileInput.value = '';
+    });
+  }
+  // global drag-drop handler for AI chat
+  window.__aichatDrop = async (files) => {
+    state.aiChat.attachments = state.aiChat.attachments || [];
+    for (const f of Array.from(files || [])) {
+      const att = { name: f.name, type: f.type, file: f };
+      if (f.type.startsWith('image/')) {
+        const r = new FileReader();
+        r.onload = () => { att.dataUrl = r.result; if (!state.aiChat.pendingImage) state.aiChat.pendingImage = r.result; renderView(); };
+        r.readAsDataURL(f);
+      }
+      state.aiChat.attachments.push(att);
+    }
+    renderView();
+  };
   const navSearch = document.getElementById('nav-search');
   const navResults = document.getElementById('nav-search-results');
   const utilSubTools = [
@@ -15278,11 +15317,38 @@ async function fetchUrlText(url) {
 async function aiChatSend() {
   if (state.aiChat.busy) return;
   const input = document.getElementById('ai-chat-input');
-  const text = (input?.value || '').trim();
-  if (!text) return;
-  state.aiChat.messages.push({ role: 'user', text: text, image: state.aiChat.pendingImage || null });
+  let text = (input?.value || '').trim();
+  const atts = state.aiChat.attachments || [];
+  // extract text from attached text/pdf files
+  const textBits = [];
+  for (const a of atts) {
+    if (a.type === 'application/pdf' || (a.name || '').toLowerCase().endsWith('.pdf')) {
+      try {
+        const pdfjs = await getPdfJs();
+        const ab = await a.file.arrayBuffer();
+        const doc = await pdfjs.getDocument({ data: ab }).promise;
+        let txt = '';
+        for (let i = 1; i <= Math.min(doc.numPages, 20); i++) {
+          const page = await doc.getPage(i);
+          const content = await page.getTextContent();
+          txt += content.items.map((it) => it.str).join(' ') + '\\n';
+        }
+        textBits.push('--- ' + a.name + ' ---\\n' + txt.slice(0, 8000));
+      } catch {}
+    } else if (a.type.startsWith('text/') || /\.(txt|md|json|csv)$/i.test(a.name || '')) {
+      try { textBits.push('--- ' + a.name + ' ---\\n' + (await a.file.text()).slice(0, 8000)); } catch {}
+    }
+  }
+  if (textBits.length) text = (text ? text + '\\n\\n' : '') + textBits.join('\\n\\n');
+  if (!text && !state.aiChat.pendingImage && !atts.length) return;
+  if (atts.length && !state.aiChat.pendingImage) {
+    const img = atts.find((a) => (a.type || '').startsWith('image/') && a.dataUrl);
+    if (img) state.aiChat.pendingImage = img.dataUrl;
+  }
+  state.aiChat.messages.push({ role: 'user', text: text || '(attached files)', image: state.aiChat.pendingImage || null });
   if (input) input.value = '';
   state.aiChat.pendingImage = null;
+  state.aiChat.attachments = [];
   autoGrowAiChatInput();
   saveAiChat();
   state.aiChat.busy = true;
