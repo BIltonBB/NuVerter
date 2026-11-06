@@ -9143,7 +9143,7 @@ function videoEditorView() {
     <div class="stage-card" style="margin-top:12px">
       <div class="stage-head"><div class="stage-head-copy"><strong>Timeline</strong><span>Multi-track · drag clips · click to scrub</span></div></div>
       <div class="stage-body" style="padding:8px">
-        <div id="ve-timeline" style="position:relative;height:120px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer">
+        <div id="ve-timeline" style="position:relative;height:180px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer">
           <div id="ve-timeline-ruler" style="position:absolute;top:0;left:0;right:0;height:18px;background:var(--surface-3);border-bottom:1px solid var(--border);font-size:10px;color:var(--text-3)"></div>
           <div id="ve-track-video" style="position:absolute;top:18px;left:0;right:0;height:24px;background:rgba(124,58,237,0.12)"></div>
           <div id="ve-track-overlays" style="position:absolute;top:44px;left:0;right:0;height:24px"></div>
@@ -14446,6 +14446,14 @@ function handleClick(event) {
       }
       return;
     }
+    if (action === 'launch-open') { window.openLaunchOverlay?.(); return; }
+    if (action === 'launch-close') { window.closeLaunchOverlay?.(true); return; }
+    if (action === 'launch-pick') {
+      const t = actionEl.dataset.tool;
+      if (t && TOOLS[t]) setTool(t);
+      window.closeLaunchOverlay?.(true);
+      return;
+    }
     if (action.startsWith('sub-')) { handleSubtitleAction(action, actionEl); return; }
     handleAction(action, actionEl).catch((error) => {
       toast('Something went wrong', error?.message || 'The action could not complete.', 'error');
@@ -14601,6 +14609,52 @@ function bindEvents() {
       }
     });
   }
+  // ---- Launch overlay (category selector) ----
+  const LAUNCH_GROUPS = [
+    { key: 'convert', label: 'Convert', tool: 'converter', desc: 'Universal converter, compressor, cropper, extractor', icon: 'repeat' },
+    { key: 'create', label: 'Create', tool: 'gif', desc: 'GIF maker, screen recorder, subtitles', icon: 'film' },
+    { key: 'edit', label: 'Edit', tool: 'imageditor', desc: 'Image & video editor, auto reframe, workflows', icon: 'sliders-horizontal' },
+    { key: 'audio', label: 'Audio', tool: 'audiotools', desc: 'Audio tools, waveform, silence trim, TTS', icon: 'music' },
+    { key: 'documents', label: 'Documents', tool: 'pdftools', desc: 'PDF tools, OCR', icon: 'file' },
+    { key: 'developer', label: 'Developer', tool: 'devtools', desc: 'Dev tools, utilities, practical helpers', icon: 'command' },
+    { key: 'ai', label: 'AI', tool: 'aitools', desc: 'AI tools, chat, background, upscale', icon: 'sparkles' },
+    { key: 'library', label: 'Library', tool: 'history', desc: 'Session history', icon: 'history' }
+  ];
+  function renderLaunchGrid() {
+    const grid = document.getElementById('launch-grid');
+    if (!grid) return;
+    grid.innerHTML = LAUNCH_GROUPS.map((g) => `
+      <button type="button" class="launch-card" data-action="launch-pick" data-launch-group="${g.key}" data-tool="${g.tool}">
+        <span class="launch-icon">${icon(g.icon)}</span>
+        <strong>${esc(g.label)}</strong>
+        <span>${esc(g.desc)}</span>
+      </button>
+    `).join('');
+  }
+  function openLaunchOverlay() {
+    renderLaunchGrid();
+    const ov = document.getElementById('launch-overlay');
+    if (ov) ov.hidden = false;
+  }
+  function closeLaunchOverlay(markLaunched) {
+    const ov = document.getElementById('launch-overlay');
+    if (ov) ov.hidden = true;
+    if (markLaunched !== false) {
+      try { localStorage.setItem('NuVerter-launched', '1'); } catch {}
+    }
+  }
+  // first-run
+  try {
+    if (localStorage.getItem('NuVerter-launched') !== '1') {
+      // delay to allow app render
+      setTimeout(() => openLaunchOverlay(), 400);
+    }
+  } catch {}
+  renderLaunchGrid();
+  window.openLaunchOverlay = openLaunchOverlay;
+  window.closeLaunchOverlay = closeLaunchOverlay;
+  window.renderLaunchGrid = renderLaunchGrid;
+
   // restore collapsed nav groups
   try {
     const saved = JSON.parse(localStorage.getItem('NuVerter-nav-collapsed') || '[]');
