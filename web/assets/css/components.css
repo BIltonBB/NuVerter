@@ -875,3 +875,10 @@ body.nav-open .nav-scrim { opacity: 1; visibility: visible; }
 .custom-select-option { padding: 7px 9px; border-radius: var(--ctrl-radius-sm); cursor: pointer; font-size: 12px; }
 .custom-select-option:hover { background: var(--surface-hover); }
 .custom-select-option.is-selected { background: var(--accent-soft); color: var(--accent-text); }
+
+/* nav group collapse */
+.nav-group.is-collapsed .nav-item { display: none; }
+.nav-group .nav-label { cursor: pointer; user-select: none; display: flex; align-items: center; justify-content: space-between; }
+.nav-group-chev { font-size: 10px; transition: transform .2s; }
+.nav-group.is-collapsed .nav-group-chev { transform: rotate(-90deg); }
+

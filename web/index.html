@@ -657,8 +657,8 @@
           <input id="nav-search" type="search" placeholder="Search tools &amp; categories…" aria-label="Search tools and categories" autocomplete="off" />
         </div>
         <nav class="nav">
-          <div class="nav-group">
-            <p class="nav-label">Workspace</p>
+          <div class="nav-group" data-navgroup="convert">
+            <p class="nav-label" data-action="nav-group-toggle">Convert <span class="nav-group-chev">▾</span></p>
             <button class="nav-item is-active" data-tool="converter">
               <svg class="icon"><use href="#i-repeat" /></svg>
               <span>Universal Converter</span>
@@ -681,8 +681,8 @@
             </button>
           </div>
 
-          <div class="nav-group">
-            <p class="nav-label">Create</p>
+          <div class="nav-group" data-navgroup="create">
+            <p class="nav-label" data-action="nav-group-toggle">Create <span class="nav-group-chev">▾</span></p>
             <button class="nav-item" data-tool="gif">
               <svg class="icon"><use href="#i-film" /></svg>
               <span>GIF Maker</span>
@@ -690,25 +690,15 @@
             <button class="nav-item" data-tool="recorder">
               <svg class="icon"><use href="#i-screen-share" /></svg>
               <span>Screen Recorder</span>
-              <!-- <span class="nav-new">New</span> archived for reuse -->
             </button>
             <button class="nav-item" data-tool="subtitles">
               <svg class="icon"><use href="#i-file" /></svg>
               <span>Subtitle Editor</span>
-              <!-- <span class="nav-new">New</span> archived for reuse -->
             </button>
-           </div>
+          </div>
 
-           <div class="nav-group">
-             <p class="nav-label">Tools</p>
-             <button class="nav-item" data-tool="utilities">
-              <svg class="icon"><use href="#i-sliders-horizontal" /></svg>
-              <span>Utilities</span>
-            </button>
-            <button class="nav-item" data-tool="devtools">
-              <svg class="icon"><use href="#i-command" /></svg>
-              <span>Dev Tools</span>
-            </button>
+          <div class="nav-group" data-navgroup="edit">
+            <p class="nav-label" data-action="nav-group-toggle">Edit <span class="nav-group-chev">▾</span></p>
             <button class="nav-item" data-tool="imageditor">
               <svg class="icon"><use href="#i-sliders-horizontal" /></svg>
               <span>Image Editor</span>
@@ -725,14 +715,50 @@
               <svg class="icon"><use href="#i-repeat" /></svg>
               <span>Workflows</span>
             </button>
+          </div>
+
+          <div class="nav-group" data-navgroup="audio">
+            <p class="nav-label" data-action="nav-group-toggle">Audio <span class="nav-group-chev">▾</span></p>
+            <button class="nav-item" data-tool="audiotools">
+              <svg class="icon"><use href="#i-music" /></svg>
+              <span>Audio Tools</span>
+            </button>
+            <button class="nav-item" data-tool="utilities">
+              <svg class="icon"><use href="#i-activity" /></svg>
+              <span>Waveform</span>
+            </button>
+          </div>
+
+          <div class="nav-group" data-navgroup="documents">
+            <p class="nav-label" data-action="nav-group-toggle">Documents <span class="nav-group-chev">▾</span></p>
+            <button class="nav-item" data-tool="pdftools">
+              <svg class="icon"><use href="#i-file" /></svg>
+              <span>PDF Tools</span>
+            </button>
+            <button class="nav-item" data-tool="aitools">
+              <svg class="icon"><use href="#i-scan" /></svg>
+              <span>OCR</span>
+            </button>
+          </div>
+
+          <div class="nav-group" data-navgroup="developer">
+            <p class="nav-label" data-action="nav-group-toggle">Developer <span class="nav-group-chev">▾</span></p>
+            <button class="nav-item" data-tool="devtools">
+              <svg class="icon"><use href="#i-command" /></svg>
+              <span>Dev Tools</span>
+            </button>
+            <button class="nav-item" data-tool="utilities">
+              <svg class="icon"><use href="#i-sliders-horizontal" /></svg>
+              <span>Utilities</span>
+            </button>
             <button class="nav-item" data-tool="practical">
               <svg class="icon"><use href="#i-wand-sparkles" /></svg>
               <span>Practical</span>
             </button>
-           </div>
+          </div>
 
-           <div class="nav-group">
-             <p class="nav-label">AI</p>
+          <div class="nav-group" data-navgroup="ai">
+            <p class="nav-label" data-action="nav-group-toggle">AI <span class="nav-group-chev">▾</span></p>
             <button class="nav-item" data-tool="aitools">
               <svg class="icon"><use href="#i-sparkles" /></svg>
               <span>AI Tools</span>
@@ -740,25 +766,11 @@
             <button class="nav-item" data-tool="aichat">
               <svg class="icon"><use href="#i-cpu" /></svg>
               <span>AI Chat</span>
-              <!-- <span class="nav-new">New</span> archived for reuse -->
-            </button>
-           </div>
-
-           <div class="nav-group">
-             <p class="nav-label">More</p>
-            <button class="nav-item" data-tool="audiotools">
-              <svg class="icon"><use href="#i-music" /></svg>
-              <span>Audio Tools</span>
-            </button>
-            <button class="nav-item" data-tool="pdftools">
-              <svg class="icon"><use href="#i-file" /></svg>
-              <span>PDF Tools</span>
-              <!-- <span class="nav-new">New</span> archived for reuse -->
             </button>
           </div>
 
-          <div class="nav-group">
-            <p class="nav-label">Library</p>
+          <div class="nav-group" data-navgroup="library">
+            <p class="nav-label" data-action="nav-group-toggle">Library <span class="nav-group-chev">▾</span></p>
             <button class="nav-item" data-tool="history">
               <svg class="icon"><use href="#i-history" /></svg>
               <span>Session History</span>
@@ -954,7 +966,7 @@
       }, 50);
     })();
   </script>
-  <script type="module" src="assets/js/app.js?v=183"></script>
+  <script type="module" src="assets/js/app.js?v=184"></script>
   <script>
     // Clear legacy (non-COI) service workers / PWA caches, but keep coi-serviceworker.
     if ('serviceWorker' in navigator) {

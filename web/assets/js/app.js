@@ -4187,29 +4187,35 @@ function utilitiesView() {
   const tab = data.tab || 'frames';
   return `
     ${viewHead({ index: '09', kicker: 'Utilities', title: 'Small tools. <span class="accent">Big help.</span>', sub: 'Frames, spritesheets, text, audio, AI and dev helpers — all local.' })}
+    <div class="util-search-row" style="margin:0 0 10px">
+      <input type="search" class="input" placeholder="Search tools…" style="width:100%;max-width:320px" oninput="document.querySelectorAll('.util-tabs button').forEach(function(b){b.style.display=b.textContent.toLowerCase().includes(this.value.toLowerCase())?'':'none'}.bind(this))" />
+      <div class="util-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+        ${['All','Media','Audio','AI','Text'].map((c) => `<button type="button" class="btn btn-ghost btn-sm" data-util-chip="${c}" onclick="var g=this.dataset.utilChip;document.querySelectorAll('.util-tab-group').forEach(function(gr){var lab=gr.querySelector('.util-tab-group-label').textContent;gr.style.display=(g==='All'||lab===g)?'':'none'})">${c}</button>`).join('')}
+      </div>
+    </div>
     <div class="util-tab-groups">
       <div class="util-tab-group">
         <span class="util-tab-group-label">Media</span>
         <div class="util-tabs segmented" role="tablist">
-          ${['frames','spritesheet','slicer','textimage','trimmer','watermark','upscale','pdf','chroma','fileinfo','palette','favicon','vector'].map((t) => `<button data-action="util-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${t === 'frames' ? 'Frames' : t === 'spritesheet' ? 'Spritesheet' : t === 'slicer' ? 'Slice sheet' : t === 'textimage' ? 'Text card' : t === 'trimmer' ? 'Trimmer' : t === 'watermark' ? 'Watermark' : t === 'upscale' ? 'Upscale' : t === 'pdf' ? 'PDF' : t === 'chroma' ? 'Chroma key' : t === 'palette' ? 'Palette' : t === 'favicon' ? 'Favicon' : t === 'vector' ? 'Vectorize' : 'File info'}</button>`).join('')}
+          ${['frames','spritesheet','slicer','textimage','trimmer','watermark','upscale','pdf','chroma','fileinfo','palette','favicon','vector'].map((t) => `<button data-action="util-tab" data-tab="${t}" class="util-tab ${tab === t ? 'is-active' : ''}">${t === 'frames' ? 'Frames' : t === 'spritesheet' ? 'Spritesheet' : t === 'slicer' ? 'Slice sheet' : t === 'textimage' ? 'Text card' : t === 'trimmer' ? 'Trimmer' : t === 'watermark' ? 'Watermark' : t === 'upscale' ? 'Upscale' : t === 'pdf' ? 'PDF' : t === 'chroma' ? 'Chroma key' : t === 'palette' ? 'Palette' : t === 'favicon' ? 'Favicon' : t === 'vector' ? 'Vectorize' : 'File info'}</button>`).join('')}
         </div>
       </div>
       <div class="util-tab-group">
         <span class="util-tab-group-label">Audio</span>
         <div class="util-tabs segmented" role="tablist">
-          ${['audioclean','silencetrim','waveform','tts'].map((t) => `<button data-action="util-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${t === 'audioclean' ? 'Audio clean' : t === 'silencetrim' ? 'Silence trim' : t === 'waveform' ? 'Waveform' : 'TTS'}</button>`).join('')}
+          ${['audioclean','silencetrim','waveform','tts'].map((t) => `<button data-action="util-tab" data-tab="${t}" class="util-tab ${tab === t ? 'is-active' : ''}">${t === 'audioclean' ? 'Audio clean' : t === 'silencetrim' ? 'Silence trim' : t === 'waveform' ? 'Waveform' : 'TTS'}</button>`).join('')}
         </div>
       </div>
       <div class="util-tab-group">
         <span class="util-tab-group-label">AI</span>
         <div class="util-tabs segmented" role="tablist">
-          ${['ocr','aibg','aiup','emb'].map((t) => `<button data-action="util-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${t === 'ocr' ? 'OCR' : t === 'aibg' ? 'AI BG' : t === 'aiup' ? 'AI Upscale' : 'Embeddings'}</button>`).join('')}
+          ${['ocr','aibg','aiup','emb'].map((t) => `<button data-action="util-tab" data-tab="${t}" class="util-tab ${tab === t ? 'is-active' : ''}">${t === 'ocr' ? 'OCR' : t === 'aibg' ? 'AI BG' : t === 'aiup' ? 'AI Upscale' : 'Embeddings'}</button>`).join('')}
         </div>
       </div>
       <div class="util-tab-group">
         <span class="util-tab-group-label">Text</span>
         <div class="util-tabs segmented" role="tablist">
-          ${['hash','textimage','textpaper'].map((t) => `<button data-action="util-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${t === 'hash' ? 'File hash' : t === 'textimage' ? 'Text card' : 'Text to paper'}</button>`).join('')}
+          ${['hash','textpaper'].map((t) => `<button data-action="util-tab" data-tab="${t}" class="util-tab ${tab === t ? 'is-active' : ''}">${t === 'hash' ? 'File hash' : 'Text to paper'}</button>`).join('')}
         </div>
       </div>
     </div>
@@ -8996,8 +9002,8 @@ function videoEditorView() {
 </div>` : ''}
           </div>
         </div>
-        <div class="stage-card" style="margin-top:12px">
-          <div class="stage-head"><div class="stage-head-copy"><strong>Adjustments</strong><span>Video filters</span></div></div>
+        <details class="stage-card" style="margin-top:12px" open>
+          <summary class="stage-head" style="cursor:pointer;list-style:none"><div class="stage-head-copy"><strong>Adjustments</strong><span>Video filters</span></div></summary>
           <div class="stage-body">
             ${[['brightness','Brightness',50,150,1],['contrast','Contrast',50,150,1],['saturation','Saturation',0,200,1],['hue','Hue',-180,180,1]].map(([k,l,min,max,step]) => `
               <div class="field">
@@ -9005,9 +9011,9 @@ function videoEditorView() {
                 <input type="range" min="${min}" max="${max}" step="${step}" value="${a[k]}" data-ve="${k}" />
               </div>`).join('')}
           </div>
-        </div>
-        <div class="stage-card" style="margin-top:12px">
-          <div class="stage-head"><div class="stage-head-copy"><strong>Text overlay</strong><span>Burn text into the video</span></div></div>
+        </details>
+        <details class="stage-card" style="margin-top:12px">
+          <summary class="stage-head" style="cursor:pointer;list-style:none"><div class="stage-head-copy"><strong>Text overlay</strong><span>Burn text into the video</span></div></summary>
           <div class="stage-body">
             <input type="text" value="${esc(data.text)}" data-ve="text" class="input" style="width:100%" placeholder="watermark text (optional)" />
             <div class="field" style="margin-top:8px">
@@ -9027,18 +9033,14 @@ function videoEditorView() {
               </select>
             </div>
           </div>
-        </div>
-        <div class="stage-card" style="margin-top:12px">
-          <div class="stage-head"><div class="stage-head-copy"><strong>Layers / Overlays</strong><span>Multiple text layers with timing</span></div></div>
+        </details>
+        <details class="stage-card" style="margin-top:12px">
+          <summary class="stage-head" style="cursor:pointer;list-style:none"><div class="stage-head-copy"><strong>Layers / Overlays</strong><span>Multiple text layers with timing</span></div></summary>
           <div class="stage-body">
             <button class="btn btn-secondary btn-sm" data-action="ve-add-overlay">+ Add text layer</button>
             <div id="ve-overlays" style="margin-top:10px"></div>
-            <div style="margin-top:10px">
-              <strong style="font-size:12px">Timeline</strong>
-              <div id="ve-timeline" style="position:relative;height:28px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;margin-top:4px;overflow:hidden"></div>
-            </div>
           </div>
-        </div>
+        </details>
       </section>
       <section class="area-queue">
         <div class="stage-card">
@@ -14323,6 +14325,14 @@ function handleClick(event) {
   if (actionEl) {
     if (actionEl.tagName === 'A') event.preventDefault();
     const action = actionEl.dataset.action || '';
+    if (action === 'nav-group-toggle') {
+      const group = actionEl.closest('.nav-group');
+      if (group) {
+        group.classList.toggle('is-collapsed');
+        try { localStorage.setItem('NuVerter-nav-collapsed', JSON.stringify(Array.from(document.querySelectorAll('.nav-group.is-collapsed')).map((g) => g.dataset.navgroup))); } catch {}
+      }
+      return;
+    }
     if (action.startsWith('sub-')) { handleSubtitleAction(action, actionEl); return; }
     handleAction(action, actionEl).catch((error) => {
       toast('Something went wrong', error?.message || 'The action could not complete.', 'error');
@@ -14408,9 +14418,20 @@ function bindEvents() {
           if (show) any = true;
         });
         group.style.display = (q && !any) ? 'none' : '';
+        // while searching, expand groups
+        if (q) group.classList.remove('is-collapsed');
       });
     });
   }
+  // restore collapsed nav groups
+  try {
+    const saved = JSON.parse(localStorage.getItem('NuVerter-nav-collapsed') || '[]');
+    if (Array.isArray(saved)) {
+      document.querySelectorAll('.nav-group[data-navgroup]').forEach((g) => {
+        if (saved.includes(g.dataset.navgroup)) g.classList.add('is-collapsed');
+      });
+    }
+  } catch {}
 
   ['dragenter', 'dragover'].forEach((type) => {
     document.addEventListener(type, (event) => {
