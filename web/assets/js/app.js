@@ -424,7 +424,7 @@ const state = {
   utilWaveform: {},
   pdfTools: { tab: 'merge', busy: false },
   pdfRedact: { file: null, pdf: null, numPages: 0, page: 1, rects: {}, rendering: false },
-  aiChat: { model: 'uncensored-tiny', messages: [], busy: false, webSearch: false, pendingImage: null, attachments: [], debug: false, lastDebug: null },
+  aiChat: { model: 'uncensored-tiny', messages: [], busy: false, webSearch: false, pendingImage: null, attachments: [], modelCategory: 'normal', debug: false, lastDebug: null },
   devTools: { tab: 'json' },
   practical: { tab: 'diff' },
   aiTools: { tab: 'aibg' },
@@ -7753,28 +7753,23 @@ function aiChatView() {
             ${icon('chevron-down')}
           </button>
           <div class="aichat-dropdown-menu" id="ai-chat-model-menu" hidden>
+            <div style="display:flex;gap:4px;padding:4px 4px 8px">
+              <button type="button" class="btn btn-ghost btn-sm" data-action="ai-chat-cat" data-cat="normal" style="${(state.aiChat?.modelCategory||'normal')==='normal'?'background:var(--accent-soft)':''}">Normal</button>
+              <button type="button" class="btn btn-ghost btn-sm" data-action="ai-chat-cat" data-cat="tool" style="${(state.aiChat?.modelCategory||'normal')==='tool'?'background:var(--accent-soft)':''}">Tool Calling</button>
+            </div>
             ${(() => {
-              const cats = [];
-              const seenCat = new Set();
-              tiers.forEach((t) => {
-                const c = t.category || 'normal';
-                if (!seenCat.has(c)) { seenCat.add(c); cats.push(c); }
+              const cat = state.aiChat?.modelCategory || 'normal';
+              const groups = [];
+              const seen = new Set();
+              tiers.filter((t) => (t.category || 'normal') === cat).forEach((t) => {
+                const g = t.group || 'Other';
+                if (!seen.has(g)) { seen.add(g); groups.push(g); }
               });
-              return cats.map((cat) => {
-                const catLabel = cat === 'tool' ? 'Tool Calling' : 'Normal';
-                const groups = [];
-                const seen = new Set();
-                tiers.filter((t) => (t.category || 'normal') === cat).forEach((t) => {
-                  const g = t.group || 'Other';
-                  if (!seen.has(g)) { seen.add(g); groups.push(g); }
-                });
-                return '<div class="aichat-category-label" style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;padding:8px 4px 2px">' + esc(catLabel) + '</div>' +
-                  groups.map((g) => '<div class="aichat-group-label">' + esc(g) + '</div>' +
-                    tiers.filter((t) => (t.category || 'normal') === cat && (t.group || 'Other') === g).map((t) =>
-                      '<button type="button" class="aichat-model' + (model === t.id ? ' is-active' : '') + '" data-action="ai-chat-model" data-model="' + t.id + '"><strong>' + esc(t.label) + '</strong><small>' + esc(t.size) + ' · ' + esc(t.ram) + '</small><small class="mono">' + esc(t.model) + '</small><small>' + esc(t.note) + (t.tools ? ' · tools' : '') + '</small></button>'
-                    ).join('')
-                  ).join('');
-              }).join('');
+              return groups.map((g) => '<div class="aichat-group-label">' + esc(g) + '</div>' +
+                tiers.filter((t) => (t.category || 'normal') === cat && (t.group || 'Other') === g).map((t) =>
+                  '<button type="button" class="aichat-model' + (model === t.id ? ' is-active' : '') + '" data-action="ai-chat-model" data-model="' + t.id + '"><strong>' + esc(t.label) + '</strong><small>' + esc(t.size) + ' · ' + esc(t.ram) + '</small><small class="mono">' + esc(t.model) + '</small><small>' + esc(t.note) + (t.tools ? ' · tools' : '') + '</small></button>'
+                ).join('')
+              ).join('');
             })()}
           </div>
         </div>
@@ -13860,6 +13855,12 @@ async function handleExtraAction(action, el) {
       saveAiChat();
       renderView();
       return true;
+     case 'ai-chat-cat':
+       state.aiChat.modelCategory = el.dataset.cat || 'normal';
+       renderView();
+       const mmenu2 = document.getElementById('ai-chat-model-menu');
+       if (mmenu2) mmenu2.hidden = false;
+       return true;
     case 'ai-chat-toggle-models': {
       const menu = document.getElementById('ai-chat-model-menu');
       if (menu) menu.hidden = !menu.hidden;
@@ -14752,8 +14753,23 @@ bindEvents();
     if (!tauri?.core?.invoke) return;
     const newVersion = await tauri.core.invoke('check_update');
     if (newVersion) {
-      const ok = confirm('NuVerter ' + newVersion + ' is available. Update now?');
-      if (ok) await tauri.core.invoke('install_update');
+      const modal = document.createElement('div');
+      modal.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);backdrop-filter:blur(4px)';
+      modal.innerHTML = '<div style="background:var(--surface);border:1px solid var(--border-strong);border-radius:16px;padding:24px;max-width:360px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.4)">' +
+        '<h3 style="margin:0 0 8px;font-size:18px">Update available</h3>' +
+        '<p style="margin:0 0 16px;font-size:13px;color:var(--text-2)">NuVerter ' + newVersion + ' is available. Update now?</p>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+        '<button class="btn btn-ghost" id="upd-no">Not now</button>' +
+        '<button class="btn btn-primary" id="upd-yes">Update</button>' +
+        '</div></div>';
+      document.body.appendChild(modal);
+      const cleanup = () => modal.remove();
+      modal.querySelector('#upd-no').onclick = cleanup;
+      modal.querySelector('#upd-yes').onclick = async () => {
+        const btn = modal.querySelector('#upd-yes');
+        if (btn) { btn.disabled = true; btn.textContent = 'Updating…'; }
+        try { await tauri.core.invoke('install_update'); } catch (e) { cleanup(); }
+      };
     }
   } catch {}
 })();
