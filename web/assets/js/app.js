@@ -9019,7 +9019,7 @@ function videoEditorView() {
   const source = data.source;
   return `
     ${viewHead({ index: '16', kicker: 'Video editor', title: 'Non-destructive <span class="accent">video edits.</span>', sub: 'Adjust, overlay text, trim and crop. Original is never modified.' })}
-    <div class="ve-shell" style="display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px;align-items:start">
+    <div class="ve-shell" style="display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:12px;align-items:start">
       <div class="ve-left">
         <div class="stage-card">
           <div class="stage-head"><div class="stage-head-copy"><strong>Preview</strong><span>Live output</span></div></div>
@@ -9144,7 +9144,7 @@ function videoEditorView() {
     <div class="stage-card" style="margin-top:12px;position:sticky;bottom:8px;z-index:5;box-shadow:0 -8px 24px rgba(0,0,0,.25)">
       <div class="stage-head"><div class="stage-head-copy"><strong>Timeline</strong><span>Multi-track · drag clips · click to scrub</span></div></div>
       <div class="stage-body" style="padding:8px">
-        <div id="ve-timeline" style="position:relative;height:180px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer">
+        <div id="ve-timeline" style="position:relative;height:220px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer">
           <div id="ve-timeline-ruler" style="position:absolute;top:0;left:0;right:0;height:18px;background:var(--surface-3);border-bottom:1px solid var(--border);font-size:10px;color:var(--text-3)"></div>
           <div id="ve-track-video" style="position:absolute;top:18px;left:0;right:0;height:24px;background:rgba(124,58,237,0.12)"></div>
           <div id="ve-track-overlays" style="position:absolute;top:44px;left:0;right:0;height:24px"></div>
