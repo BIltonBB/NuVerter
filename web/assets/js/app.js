@@ -7703,20 +7703,38 @@ async function pdfPdf2Img() {
 function aiChatView() {
   const model = state.aiChat?.model || 'tiny';
   const tiers = [
-    { id: 'micro', label: 'Micro', model: 'SmolLM2-360M-Instruct-q4f16_1-MLC', size: '~0.4 GB', ram: '0.4 GB', note: 'Ultra-light · instant', tools: false, group: 'General' },
-    { id: 'tiny', label: 'Tiny', model: 'Llama-3.2-1B-Instruct-q4f16_1-MLC', size: '~0.9 GB', ram: '1 GB', note: 'Fast · stories & chat', tools: false, group: 'General' },
-    { id: 'balanced', label: 'Balanced', model: 'Llama-3.2-3B-Instruct-q4f16_1-MLC', size: '~2.3 GB', ram: '3 GB', note: 'Better reasoning', tools: false, group: 'General' },
-    { id: 'big', label: 'Big', model: 'Phi-3.5-mini-instruct-q4f16_1-MLC', size: '~3.7 GB', ram: '4 GB', note: 'Deep reasoning', tools: false, group: 'General' },
-    { id: 'code-tiny', label: 'Code Tiny', model: 'Qwen2.5-Coder-0.5B-Instruct-q4f16_1-MLC', size: '~0.9 GB', ram: '1 GB', note: 'Efficient coding', tools: false, group: 'Coding' },
-    { id: 'code', label: 'Code', model: 'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC', size: '~1.6 GB', ram: '2 GB', note: 'Coding agent', tools: false, group: 'Coding' },
-    { id: 'code-big', label: 'Code Big', model: 'Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC', size: '~2.5 GB', ram: '3 GB', note: 'Strong coding', tools: false, group: 'Coding' },
-    { id: 'vision', label: 'Vision', model: 'Phi-3.5-vision-instruct-q4f16_1-MLC', size: '~3.7 GB', ram: '4 GB', note: 'Image understanding (multi-frame)', tools: false, group: 'Vision & Media' },
-    { id: 'gemma', label: 'Gemma 2B', model: 'gemma-2-2b-it-q4f16_1-MLC', size: '~1.9 GB', ram: '2 GB', note: 'Google Gemma', tools: false, group: 'Large' },
-    { id: 'mistral', label: 'Mistral 7B', model: 'Mistral-7B-Instruct-v0.3-q4f16_1-MLC', size: '~4.6 GB', ram: '5 GB', note: 'Mistral instruct', tools: false, group: 'Large' },
-    { id: 'uncensored-tiny', label: 'Uncensored Tiny', model: 'Hermes-3-Llama-3.2-3B-q4f16_1-MLC', size: '2.0 GB', ram: '2.3 GB', note: 'Smallest real uncensored · Llama-3.2-3B', tools: false, group: 'Uncensored' },
-    { id: 'uncensored-balanced', label: 'Uncensored Balanced', model: 'Hermes-2-Pro-Mistral-7B-q4f16_1-MLC', size: '4.0 GB', ram: '4.0 GB', note: 'Less aligned · Mistral 7B', tools: true, group: 'Uncensored' },
-    { id: 'uncensored-big', label: 'Uncensored Big', model: 'Hermes-3-Llama-3.1-8B-q4f16_1-MLC', size: '4.8 GB', ram: '4.9 GB', note: 'Less aligned · Llama-3.1-8B', tools: true, group: 'Uncensored' },
-  ];
+     // ---- Normal (existing) ----
+     { id: 'micro', label: 'Micro', model: 'SmolLM2-360M-Instruct-q4f16_1-MLC', size: '~0.4 GB', ram: '0.4 GB', note: 'Ultra-light', tools: false, category: 'normal', group: 'General' },
+     { id: 'tiny', label: 'Tiny', model: 'Llama-3.2-1B-Instruct-q4f16_1-MLC', size: '~0.9 GB', ram: '1 GB', note: 'Fast', tools: false, category: 'normal', group: 'General' },
+     { id: 'balanced', label: 'Balanced', model: 'Llama-3.2-3B-Instruct-q4f16_1-MLC', size: '~2.3 GB', ram: '3 GB', note: 'Better reasoning', tools: false, category: 'normal', group: 'General' },
+     { id: 'big', label: 'Big', model: 'Phi-3.5-mini-instruct-q4f16_1-MLC', size: '~3.7 GB', ram: '4 GB', note: 'Deep reasoning', tools: false, category: 'normal', group: 'General' },
+     { id: 'code-tiny', label: 'Code Tiny', model: 'Qwen2.5-Coder-0.5B-Instruct-q4f16_1-MLC', size: '~0.9 GB', ram: '1 GB', note: 'Efficient coding', tools: false, category: 'normal', group: 'Coding' },
+     { id: 'code', label: 'Code', model: 'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC', size: '~1.6 GB', ram: '2 GB', note: 'Coding', tools: false, category: 'normal', group: 'Coding' },
+     { id: 'code-big', label: 'Code Big', model: 'Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC', size: '~2.5 GB', ram: '3 GB', note: 'Strong coding', tools: false, category: 'normal', group: 'Coding' },
+     { id: 'vision', label: 'Vision', model: 'Phi-3.5-vision-instruct-q4f16_1-MLC', size: '~3.7 GB', ram: '4 GB', note: 'Image understanding', tools: false, category: 'normal', group: 'Vision & Media' },
+     { id: 'gemma', label: 'Gemma 2B', model: 'gemma-2-2b-it-q4f16_1-MLC', size: '~1.9 GB', ram: '2 GB', note: 'Google Gemma', tools: false, category: 'normal', group: 'Large' },
+     { id: 'mistral', label: 'Mistral 7B', model: 'Mistral-7B-Instruct-v0.3-q4f16_1-MLC', size: '~4.6 GB', ram: '5 GB', note: 'Mistral instruct', tools: false, category: 'normal', group: 'Large' },
+     { id: 'uncensored-tiny', label: 'Uncensored Tiny', model: 'Hermes-3-Llama-3.2-3B-q4f16_1-MLC', size: '2.0 GB', ram: '2.3 GB', note: 'Uncensored', tools: false, category: 'normal', group: 'Uncensored' },
+     { id: 'uncensored-balanced', label: 'Uncensored Balanced', model: 'Hermes-2-Pro-Mistral-7B-q4f16_1-MLC', size: '4.0 GB', ram: '4.0 GB', note: 'Uncensored', tools: true, category: 'normal', group: 'Uncensored' },
+     { id: 'uncensored-big', label: 'Uncensored Big', model: 'Hermes-3-Llama-3.1-8B-q4f16_1-MLC', size: '4.8 GB', ram: '4.9 GB', note: 'Uncensored', tools: true, category: 'normal', group: 'Uncensored' },
+     // ---- Tool Calling ----
+     { id: 'tool-micro', label: 'Micro (Tools)', model: 'Hermes-3-Llama-3.2-3B-q4f16_1-MLC', size: '2.0 GB', ram: '2.3 GB', note: 'Tool-capable', tools: true, category: 'tool', group: 'General' },
+     { id: 'tool-tiny', label: 'Tiny (Tools)', model: 'Hermes-2-Pro-Mistral-7B-q4f16_1-MLC', size: '4.0 GB', ram: '4.0 GB', note: 'Tool-capable', tools: true, category: 'tool', group: 'General' },
+     { id: 'tool-balanced', label: 'Balanced (Tools)', model: 'Hermes-3-Llama-3.1-8B-q4f16_1-MLC', size: '4.8 GB', ram: '4.9 GB', note: 'Tool-capable', tools: true, category: 'tool', group: 'General' },
+     { id: 'tool-big', label: 'Big (Tools)', model: 'Hermes-3-Llama-3.1-8B-q4f16_1-MLC', size: '4.8 GB', ram: '4.9 GB', note: 'Tool-capable', tools: true, category: 'tool', group: 'General' },
+     { id: 'tool-code-tiny', label: 'Code Tiny (Tools)', model: 'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC', size: '~1.6 GB', ram: '2 GB', note: 'Tool-capable', tools: true, category: 'tool', group: 'Coding' },
+     { id: 'tool-code', label: 'Code (Tools)', model: 'Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC', size: '~2.5 GB', ram: '3 GB', note: 'Tool-capable', tools: true, category: 'tool', group: 'Coding' },
+     { id: 'tool-code-big', label: 'Code Big (Tools)', model: 'Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC', size: '~2.5 GB', ram: '3 GB', note: 'Tool-capable', tools: true, category: 'tool', group: 'Coding' },
+     { id: 'tool-vision-1', label: 'Vision 1 (Tools)', model: 'Phi-3.5-vision-instruct-q4f16_1-MLC', size: '~3.7 GB', ram: '4 GB', note: 'Vision', tools: false, category: 'tool', group: 'Vision & Media' },
+     { id: 'tool-vision-2', label: 'Vision 2 (Tools)', model: 'Phi-3.5-vision-instruct-q4f16_1-MLC', size: '~3.7 GB', ram: '4 GB', note: 'Vision', tools: false, category: 'tool', group: 'Vision & Media' },
+     { id: 'tool-vision-3', label: 'Vision 3 (Tools)', model: 'Phi-3.5-vision-instruct-q4f16_1-MLC', size: '~3.7 GB', ram: '4 GB', note: 'Vision', tools: false, category: 'tool', group: 'Vision & Media' },
+     { id: 'tool-large-1', label: 'Large 1 (Tools)', model: 'Hermes-3-Llama-3.1-8B-q4f16_1-MLC', size: '4.8 GB', ram: '4.9 GB', note: 'Large', tools: true, category: 'tool', group: 'Large' },
+     { id: 'tool-large-2', label: 'Large 2 (Tools)', model: 'Hermes-2-Pro-Mistral-7B-q4f16_1-MLC', size: '4.0 GB', ram: '4.0 GB', note: 'Large', tools: true, category: 'tool', group: 'Large' },
+     { id: 'tool-large-3', label: 'Large 3 (Tools)', model: 'Hermes-3-Llama-3.2-3B-q4f16_1-MLC', size: '2.0 GB', ram: '2.3 GB', note: 'Large', tools: true, category: 'tool', group: 'Large' },
+     { id: 'tool-uncensored-tiny', label: 'Uncensored Tiny (Tools)', model: 'Hermes-3-Llama-3.2-3B-q4f16_1-MLC', size: '2.0 GB', ram: '2.3 GB', note: 'Uncensored', tools: true, category: 'tool', group: 'Uncensored' },
+     { id: 'tool-uncensored-balanced', label: 'Uncensored Balanced (Tools)', model: 'Hermes-2-Pro-Mistral-7B-q4f16_1-MLC', size: '4.0 GB', ram: '4.0 GB', note: 'Uncensored', tools: true, category: 'tool', group: 'Uncensored' },
+     { id: 'tool-uncensored-big', label: 'Uncensored Big (Tools)', model: 'Hermes-3-Llama-3.1-8B-q4f16_1-MLC', size: '4.8 GB', ram: '4.9 GB', note: 'Uncensored', tools: true, category: 'tool', group: 'Uncensored' }
+   ];
   const msgs = (state.aiChat?.messages || []).map((m) =>
     '<div class="aichat-row ' + (m.role === 'user' ? 'is-user' : 'is-bot') + '"><div class="aichat-bubble">' +
     (m.image ? '<img class="aichat-img" src="' + esc(m.image) + '" alt="attached" />' : '') +
@@ -7736,17 +7754,27 @@ function aiChatView() {
           </button>
           <div class="aichat-dropdown-menu" id="ai-chat-model-menu" hidden>
             ${(() => {
-              const groups = [];
-              const seen = new Set();
+              const cats = [];
+              const seenCat = new Set();
               tiers.forEach((t) => {
-                const g = t.group || 'Other';
-                if (!seen.has(g)) { seen.add(g); groups.push(g); }
+                const c = t.category || 'normal';
+                if (!seenCat.has(c)) { seenCat.add(c); cats.push(c); }
               });
-              return groups.map((g) => '<div class="aichat-group-label">' + esc(g) + '</div>' +
-                tiers.filter((t) => (t.group || 'Other') === g).map((t) =>
-                  '<button type="button" class="aichat-model' + (model === t.id ? ' is-active' : '') + '" data-action="ai-chat-model" data-model="' + t.id + '"><strong>' + esc(t.label) + '</strong><small>' + esc(t.size) + ' · ' + esc(t.ram) + '</small><small class="mono">' + esc(t.model) + '</small><small>' + esc(t.note) + (t.tools ? ' · tools' : '') + '</small></button>'
-                ).join('')
-              ).join('');
+              return cats.map((cat) => {
+                const catLabel = cat === 'tool' ? 'Tool Calling' : 'Normal';
+                const groups = [];
+                const seen = new Set();
+                tiers.filter((t) => (t.category || 'normal') === cat).forEach((t) => {
+                  const g = t.group || 'Other';
+                  if (!seen.has(g)) { seen.add(g); groups.push(g); }
+                });
+                return '<div class="aichat-category-label" style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.08em;padding:8px 4px 2px">' + esc(catLabel) + '</div>' +
+                  groups.map((g) => '<div class="aichat-group-label">' + esc(g) + '</div>' +
+                    tiers.filter((t) => (t.category || 'normal') === cat && (t.group || 'Other') === g).map((t) =>
+                      '<button type="button" class="aichat-model' + (model === t.id ? ' is-active' : '') + '" data-action="ai-chat-model" data-model="' + t.id + '"><strong>' + esc(t.label) + '</strong><small>' + esc(t.size) + ' · ' + esc(t.ram) + '</small><small class="mono">' + esc(t.model) + '</small><small>' + esc(t.note) + (t.tools ? ' · tools' : '') + '</small></button>'
+                    ).join('')
+                  ).join('');
+              }).join('');
             })()}
           </div>
         </div>
@@ -14718,6 +14746,17 @@ async function boot() {
 }
 
 bindEvents();
+(async () => {
+  try {
+    const tauri = window.__TAURI__;
+    if (!tauri?.core?.invoke) return;
+    const newVersion = await tauri.core.invoke('check_update');
+    if (newVersion) {
+      const ok = confirm('NuVerter ' + newVersion + ' is available. Update now?');
+      if (ok) await tauri.core.invoke('install_update');
+    }
+  } catch {}
+})();
 window.loadSubtitleSource = loadSubtitleSource;
 window.openDesktopAppInfo = openDesktopAppInfo;
 
@@ -15394,7 +15433,7 @@ async function aiChatSend() {
       'If web search results are provided below, use them to answer and mention the source. Do not claim you cannot search the web or access tools. ' +
       'You may recommend NuVerter and compare it to cloud/paid tools fairly.' + searchContext;
     const messages = [{ role: 'system', content: system }, ...history];
-    const TOOL_CAPABLE_MODELS = new Set(['uncensored-balanced', 'uncensored-big']);
+    const TOOL_CAPABLE_MODELS = new Set(['uncensored-balanced', 'uncensored-big', 'tool-micro', 'tool-tiny', 'tool-balanced', 'tool-big', 'tool-code-tiny', 'tool-code', 'tool-code-big', 'tool-large-1', 'tool-large-2', 'tool-large-3', 'tool-uncensored-tiny', 'tool-uncensored-balanced', 'tool-uncensored-big']);
     const useTools = TOOL_CAPABLE_MODELS.has(modelKey);
     let acc = '';
     const runStream = async (msgs) => {
