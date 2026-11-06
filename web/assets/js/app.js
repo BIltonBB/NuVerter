@@ -4217,7 +4217,7 @@ function utilitiesView() {
         <div id="util-combo-list" class="util-combo-list" hidden style="position:absolute;z-index:30;left:0;right:0;top:calc(100% + 4px);max-height:300px;overflow:auto;border:1px solid var(--border);border-radius:10px;background:var(--surface);box-shadow:var(--shadow-lg);padding:6px">
           ${groups.map((g) => `<div class="util-combo-group" style="margin-bottom:6px">
             <div style="font-size:10.5px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;padding:4px 8px">${esc(g.name)}</div>
-            ${g.items.map(([k, lbl]) => `<button type="button" class="util-combo-opt" data-tab="${k}" data-label="${esc(lbl)}" data-action="util-tab" style="display:flex;width:100%;align-items:center;gap:8px;padding:8px 10px;border:0;background:${tab===k?'var(--accent-soft)':'transparent'};color:var(--text);border-radius:6px;cursor:pointer;text-align:left;font-size:13px">${tab===k?'✓ ':''}${esc(lbl)}</button>`).join('')}
+            ${g.items.map(([k, lbl]) => `<button type="button" class="util-combo-opt" data-tab="${k}" data-label="${esc(lbl)}" data-action="util-tab" onmousedown="event.preventDefault()" style="display:flex;width:100%;align-items:center;gap:8px;padding:8px 10px;border:0;background:${tab===k?'var(--accent-soft)':'transparent'};color:var(--text);border-radius:6px;cursor:pointer;text-align:left;font-size:13px">${tab===k?'✓ ':''}${esc(lbl)}</button>`).join('')}
           </div>`).join('')}
         </div>
       </div>`;
@@ -14455,10 +14455,20 @@ function handleClick(event) {
   const toolEl = event.target.closest('[data-tool]');
   if (toolEl) {
     event.preventDefault();
-    if (toolEl.dataset.tool === 'utilities' && toolEl.dataset.utab) {
+    const targetTool = toolEl.dataset.tool;
+    if (targetTool === 'utilities' && toolEl.dataset.utab) {
       state.utilities.tab = toolEl.dataset.utab;
     }
-    setTool(toolEl.dataset.tool);
+    // If we're already on the target tool (e.g. switching utility sub-tools
+    // via nav search / nav shortcuts), setTool() would early-return without
+    // re-rendering, so re-render explicitly to reflect the new tab.
+    const alreadyOnTool = state.tool === targetTool;
+    setTool(targetTool);
+    if (alreadyOnTool) {
+      renderView();
+      const main = document.getElementById('main');
+      if (main) main.scrollTop = 0;
+    }
     if (document.body.classList.contains('nav-open')) closeNav();
     return;
   }
