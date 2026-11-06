@@ -520,6 +520,12 @@ const state = {
   }
 };
 
+const APP_DASHBOARDS = {
+  mediaapp: { title: 'Media Studio', desc: 'Convert, compress, crop, edit, record and extract — all on this device.', tools: ['converter','compressor','cropper','extractor','gif','recorder','subtitles','imageditor','videoeditor','reframe','workflow','audiotools'], accent: 'film' },
+  docsapp: { title: 'Documents', desc: 'PDF tools, OCR and document helpers.', tools: ['pdftools'], accent: 'file' },
+  aiapp: { title: 'AI Lab', desc: 'AI image, chat, background removal, upscale and embeddings.', tools: ['aitools','aichat'], accent: 'sparkles' },
+  devapp: { title: 'Developer Tools', desc: 'Dev tools, utilities and practical helpers.', tools: ['devtools','utilities','practical'], accent: 'command' }
+};
 const TOOLS = {
   converter: { label: 'Universal Converter', icon: 'repeat', index: '01' },
   compressor: { label: 'Video Compressor', icon: 'minimize-2', index: '02' },
@@ -539,7 +545,11 @@ const TOOLS = {
   imageditor: { label: 'Image Editor', icon: 'sliders-horizontal', index: '15' },
   videoeditor: { label: 'Video Editor', icon: 'film', index: '16' },
   reframe: { label: 'Auto Reframe', icon: 'crop', index: '17' },
-  workflow: { label: 'Workflows', icon: 'repeat', index: '18' }
+  workflow: { label: 'Workflows', icon: 'repeat', index: '18' },
+  mediaapp: { label: 'Media Studio', icon: 'film', index: 'A1' },
+  docsapp: { label: 'Documents', icon: 'file', index: 'A2' },
+  aiapp: { label: 'AI Lab', icon: 'sparkles', index: 'A3' },
+  devapp: { label: 'Developer Tools', icon: 'command', index: 'A4' }
 };
 
 let AVIF_SUPPORTED = false;
@@ -10679,6 +10689,22 @@ function bindReframe() {
   if (fileInput) fileInput.onchange = (e) => { const f = e.target.files?.[0]; if (f) reframeLoad(f); };
 }
 
+function appDashboardView(key) {
+  const cfg = APP_DASHBOARDS[key];
+  if (!cfg) return '<p class="muted">Unknown app.</p>';
+  const cards = cfg.tools.map((t) => {
+    const tool = TOOLS[t];
+    if (!tool) return '';
+    return `<button type="button" class="launch-card" data-action="app-open-tool" data-tool="${t}" style="min-height:110px">
+      <span class="launch-icon">${icon(tool.icon || 'circle')}</span>
+      <strong>${esc(tool.label)}</strong>
+      <span>Open ${esc(tool.label)}</span>
+    </button>`;
+  }).join('');
+  return `
+    ${viewHead({ index: cfg.index || '00', kicker: cfg.title, title: cfg.title + ' <span class="accent">workspace.</span>', sub: cfg.desc })}
+    <div class="launch-grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">${cards}</div>`;
+}
 function renderView() {
   const view = $('#view');
   if (!view) return;
@@ -10686,7 +10712,11 @@ function renderView() {
   if (state.tool === 'audiotools') state.utilities.tab = state.utilities.tab || 'audioclean';
   if (state.tool === 'practical') state.utilities.tab = state.utilities.tab || 'textimage';
   let html = '';
-  if (state.tool === 'converter') html = converterView();
+  if (state.tool === 'mediaapp') html = appDashboardView('mediaapp');
+  else if (state.tool === 'docsapp') html = appDashboardView('docsapp');
+  else if (state.tool === 'aiapp') html = appDashboardView('aiapp');
+  else if (state.tool === 'devapp') html = appDashboardView('devapp');
+  else if (state.tool === 'converter') html = converterView();
   else if (state.tool === 'compressor') html = compressorView();
   else if (state.tool === 'cropper') html = cropperView();
   else if (state.tool === 'extractor') html = extractorView();
@@ -14472,10 +14502,18 @@ function handleClick(event) {
       const t = actionEl.dataset.tool;
       const cat = actionEl.dataset.launchGroup;
       if (cat) applyCategoryFilter(cat);
-      if (t && TOOLS[t]) setTool(t);
+      // land on the app dashboard instead of a single tool
+      const appKey = cat === 'media' ? 'mediaapp' : cat === 'documents' ? 'docsapp' : cat === 'ai' ? 'aiapp' : cat === 'developer' ? 'devapp' : null;
+      if (appKey && TOOLS[appKey]) setTool(appKey);
+      else if (t && TOOLS[t]) setTool(t);
       const sugg = (window.CATEGORY_SUGGESTIONS || {})[cat];
       if (sugg && sugg.length) toast('Smart suggestions', 'Try: ' + sugg.slice(0, 4).join(', ') + '.', 'info');
       window.closeLaunchOverlay?.(true);
+      return;
+    }
+    if (action === 'app-open-tool') {
+      const t = actionEl.dataset.tool;
+      if (t && TOOLS[t]) setTool(t);
       return;
     }
     if (action === 'launch-all') {
