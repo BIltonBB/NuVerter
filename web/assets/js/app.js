@@ -9136,6 +9136,7 @@ function videoEditorView() {
             </div>
           </div>
         </details>
+        <button class="btn btn-primary" data-action="ve-export" ${source ? '' : 'disabled'} style="margin-top:8px">${icon('download')}Export video</button>
         <div id="ve-out" class="util-out"></div>
         <div id="ve-progress" class="progress-wrap" hidden><div class="progress"><span style="width:0%"></span></div><span class="pct">0%</span></div>
       </aside>
@@ -14451,7 +14452,14 @@ function handleClick(event) {
     if (action === 'launch-close') { window.closeLaunchOverlay?.(true); return; }
     if (action === 'launch-pick') {
       const t = actionEl.dataset.tool;
+      const cat = actionEl.dataset.launchGroup;
+      if (cat) applyCategoryFilter(cat);
       if (t && TOOLS[t]) setTool(t);
+      window.closeLaunchOverlay?.(true);
+      return;
+    }
+    if (action === 'launch-all') {
+      applyCategoryFilter(null);
       window.closeLaunchOverlay?.(true);
       return;
     }
@@ -14617,6 +14625,21 @@ function bindEvents() {
     { key: 'ai', label: 'AI Lab', tool: 'aitools', desc: 'AI tools, chat, background removal, upscale, embeddings', icon: 'sparkles' },
     { key: 'developer', label: 'Developer Tools', tool: 'devtools', desc: 'Dev tools, utilities, practical helpers, hashing', icon: 'command' }
   ];
+  const CATEGORY_GROUPS = {
+    media: ['convert','create','edit','audio'],
+    documents: ['documents'],
+    ai: ['ai'],
+    developer: ['developer','library']
+  };
+  function applyCategoryFilter(cat) {
+    try { if (cat) localStorage.setItem('NuVerter-category', cat); else localStorage.removeItem('NuVerter-category'); } catch {}
+    const groups = cat ? (CATEGORY_GROUPS[cat] || null) : null;
+    document.querySelectorAll('.nav-group[data-navgroup]').forEach((g) => {
+      if (!groups) { g.style.display = ''; return; }
+      g.style.display = groups.includes(g.dataset.navgroup) ? '' : 'none';
+    });
+  }
+  function currentCategory() { try { return localStorage.getItem('NuVerter-category'); } catch { return null; } }
   function renderLaunchGrid() {
     const grid = document.getElementById('launch-grid');
     if (!grid) return;
@@ -14651,6 +14674,9 @@ function bindEvents() {
   window.openLaunchOverlay = openLaunchOverlay;
   window.closeLaunchOverlay = closeLaunchOverlay;
   window.renderLaunchGrid = renderLaunchGrid;
+  window.applyCategoryFilter = applyCategoryFilter;
+  // restore category filter
+  try { applyCategoryFilter(localStorage.getItem('NuVerter-category')); } catch {}
 
   // restore collapsed nav groups
   try {
