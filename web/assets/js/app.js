@@ -22,7 +22,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
    the ad slot. Leave '' to keep the placeholder.
    ---------------------------------------------------------------- */
 const PAYMENT_URL = 'https://sociabuzz.com/biltonb/shop';
-const APP_VERSION = '1.1.2';
+const APP_VERSION = '1.1.21';
 const APP_DOWNLOAD_URL = 'https://github.com/BIltonBB/NuVerter/releases/latest'; // Desktop app (versioned release assets)
 const AD_SNIPPET = '';
 
@@ -12575,9 +12575,8 @@ function settingsBody() {
   const protocol = location.protocol === 'file:' ? 'file:// (engine blocked)' : location.origin;
   return `
     <div class="modal-section">
-      <div class="modal-section-title">${icon('info')}App version</div>
+      <div class="modal-section-title">${icon('info')}Updates</div>
       <div class="settings-list">
-        <div class="settings-item"><div class="settings-item-copy"><strong>Installed version</strong><small>Compiled binary</small></div><span class="mono" id="app-version-label">${APP_VERSION}</span></div>
         <div class="settings-item"><div class="settings-item-copy"><strong>Latest release</strong><small>GitHub</small></div><span class="mono" id="latest-release-label">checking…</span></div>
       </div>
       ${isTauri ? '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn btn-secondary btn-sm" data-action="check-update">Check for updates</button><button class="btn btn-danger btn-sm" data-action="uninstall-app">Uninstall NuVerter</button></div>' : ''}
@@ -14825,9 +14824,18 @@ async function boot() {
 bindEvents();
 (async () => {
   try {
-    const tauri = window.__TAURI__;
-    if (!tauri?.core?.invoke) return;
-    const newVersion = await tauri.core.invoke('check_update');
+    // wait for Tauri global to be injected
+    let tauri = window.__TAURI__ || window.__TAURI_INTERNALS__;
+    let tries = 0;
+    while ((!tauri?.core?.invoke && !tauri?.invoke) && tries < 50) {
+      await new Promise((r) => setTimeout(r, 100));
+      tauri = window.__TAURI__ || window.__TAURI_INTERNALS__;
+      tries++;
+    }
+    const inv = tauri?.core?.invoke || tauri?.invoke;
+    if (typeof inv !== 'function') return;
+    const bind = (tauri?.core || tauri);
+    const newVersion = await inv.call(bind, 'check_update');
     if (newVersion) {
       const modal = document.createElement('div');
       modal.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);backdrop-filter:blur(4px)';
