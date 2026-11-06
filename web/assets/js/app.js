@@ -22,7 +22,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
    the ad slot. Leave '' to keep the placeholder.
    ---------------------------------------------------------------- */
 const PAYMENT_URL = 'https://sociabuzz.com/biltonb/shop';
-const APP_VERSION = '1.1.1';
+const APP_VERSION = '1.1.2';
 const APP_DOWNLOAD_URL = 'https://github.com/BIltonBB/NuVerter/releases/latest'; // Desktop app (versioned release assets)
 const AD_SNIPPET = '';
 
@@ -12580,7 +12580,7 @@ function settingsBody() {
         <div class="settings-item"><div class="settings-item-copy"><strong>Installed version</strong><small>Compiled binary</small></div><span class="mono" id="app-version-label">${APP_VERSION}</span></div>
         <div class="settings-item"><div class="settings-item-copy"><strong>Latest release</strong><small>GitHub</small></div><span class="mono" id="latest-release-label">checking…</span></div>
       </div>
-      ${isTauri ? '<div style="display:flex;gap:6px;margin-top:8px"><button class="btn btn-secondary btn-sm" data-action="check-update">Check for updates</button></div>' : ''}
+      ${isTauri ? '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn btn-secondary btn-sm" data-action="check-update">Check for updates</button><button class="btn btn-danger btn-sm" data-action="uninstall-app">Uninstall NuVerter</button></div>' : ''}
     </div>
     <div class="modal-section">
       <div class="modal-section-title">${icon('sun')}Theme mode</div>
@@ -12820,8 +12820,8 @@ function settingsBody() {
     <div class="modal-section">
       <div class="modal-section-title">${icon('info')}About this build</div>
       <div class="engine-info-grid">
-        <div class="engine-info-cell"><span>App</span><strong id="app-version-label">NuVerter 1.0.9</strong></div>
-        <div class="engine-info-cell"><span>Latest release</span><strong id="latest-release-label">Checking…</strong></div>
+        <div class="engine-info-cell"><span>App</span><strong id="app-version-label">NuVerter ${APP_VERSION}</strong></div>
+        <div class="engine-info-cell"><span>Latest release</span><strong id="latest-release-label">Checking...</strong></div>
         <div class="engine-info-cell"><span>Engine</span><strong>ffmpeg.wasm 0.12</strong></div>
         <div class="engine-info-cell"><span>Served from</span><strong>${esc(protocol)}</strong></div>
         <div class="engine-info-cell"><span>Data sent</span><strong>0 bytes</strong></div>
@@ -14041,6 +14041,17 @@ async function handleAction(action, el) {
      case 'install-pwa': installPwa(); break;
     case 'privacy': openPrivacy(); break;
     case 'settings': openSettings(); break;
+    case 'uninstall-app': {
+      if (!confirm('Uninstall NuVerter? This will remove the app from your computer.')) return true;
+      (async () => {
+        try {
+          const tauri = window.__TAURI__ || window.__TAURI_INTERNALS__;
+          const inv = tauri?.core?.invoke || tauri?.invoke;
+          if (typeof inv === 'function') await inv.call(tauri?.core || tauri, 'uninstall_app');
+        } catch {}
+      })();
+      return true;
+    }
     case 'check-update': {
       (async () => {
         try {
