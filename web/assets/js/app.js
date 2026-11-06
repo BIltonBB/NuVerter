@@ -14473,6 +14473,8 @@ function handleClick(event) {
       const cat = actionEl.dataset.launchGroup;
       if (cat) applyCategoryFilter(cat);
       if (t && TOOLS[t]) setTool(t);
+      const sugg = (window.CATEGORY_SUGGESTIONS || {})[cat];
+      if (sugg && sugg.length) toast('Smart suggestions', 'Try: ' + sugg.slice(0, 4).join(', ') + '.', 'info');
       window.closeLaunchOverlay?.(true);
       return;
     }
@@ -14649,6 +14651,13 @@ function bindEvents() {
     ai: ['ai'],
     developer: ['developer','library']
   };
+  const CATEGORY_SUGGESTIONS = {
+    media: ['Video Compressor', 'GIF Maker', 'Auto Reframe', 'Audio Extractor'],
+    documents: ['PDF Tools', 'OCR'],
+    ai: ['AI Tools', 'AI Chat', 'AI BG removal'],
+    developer: ['Dev Tools', 'File hash', 'JSON mock data']
+  };
+  window.CATEGORY_SUGGESTIONS = CATEGORY_SUGGESTIONS;
   function applyCategoryFilter(cat) {
     try { if (cat) localStorage.setItem('NuVerter-category', cat); else localStorage.removeItem('NuVerter-category'); } catch {}
     const groups = cat ? (CATEGORY_GROUPS[cat] || null) : null;
