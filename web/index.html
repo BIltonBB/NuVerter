@@ -78,6 +78,7 @@
   <link rel="stylesheet" href="assets/css/extra.css?v=5" />
   <link rel="stylesheet" href="assets/css/responsive.css?v=4" />
   <link rel="stylesheet" href="assets/css/appearance-extra.css?v=1" />
+  <link rel="stylesheet" href="assets/css/launch-overlay.css?v=1" />
 </head>
 <body>
   <!-- Lucide icons v0.460.0 (ISC) - subset -->
@@ -658,6 +659,10 @@
         </div>
         <div id="nav-search-results" style="margin:0 12px 8px;display:none"></div>
         <nav class="nav">
+          <button class="nav-item" data-action="launch-open" style="margin-bottom:8px">
+            <svg class="icon"><use href="#i-layout-grid" /></svg>
+            <span>Launcher</span>
+          </button>
           <div class="nav-group" data-navgroup="convert">
             <p class="nav-label" data-action="nav-group-toggle">Convert <span class="nav-group-chev">▾</span></p>
             <button class="nav-item is-active" data-tool="converter">
@@ -967,7 +972,7 @@
       }, 50);
     })();
   </script>
-  <script type="module" src="assets/js/app.js?v=198"></script>
+  <script type="module" src="assets/js/app.js?v=201"></script>
   <script>
     // Clear legacy (non-COI) service workers / PWA caches, but keep coi-serviceworker.
     if ('serviceWorker' in navigator) {
@@ -983,6 +988,20 @@
       }
     }
   </script>
+  <div id="launch-overlay" class="launch-overlay" hidden>
+    <div class="launch-backdrop"></div>
+    <div class="launch-panel">
+      <div class="launch-head">
+        <div>
+          <p class="launch-kicker">NuVerter</p>
+          <h2>Choose your workspace</h2>
+          <p class="launch-sub">Pick an area to start. You can switch anytime from the sidebar.</p>
+        </div>
+        <button class="btn btn-ghost btn-sm" data-action="launch-close">Skip</button>
+      </div>
+      <div id="launch-grid" class="launch-grid"></div>
+    </div>
+  </div>
   <script src="coi-serviceworker.js"></script>
 </body>
 </html>
