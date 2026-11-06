@@ -656,6 +656,7 @@
           <svg class="icon"><use href="#i-search" /></svg>
           <input id="nav-search" type="search" placeholder="Search tools &amp; categories…" aria-label="Search tools and categories" autocomplete="off" />
         </div>
+        <div id="nav-search-results" style="margin:0 12px 8px;display:none"></div>
         <nav class="nav">
           <div class="nav-group" data-navgroup="convert">
             <p class="nav-label" data-action="nav-group-toggle">Convert <span class="nav-group-chev">▾</span></p>
@@ -723,7 +724,7 @@
               <svg class="icon"><use href="#i-music" /></svg>
               <span>Audio Tools</span>
             </button>
-            <button class="nav-item" data-tool="utilities">
+            <button class="nav-item" data-tool="utilities" data-utab="waveform">
               <svg class="icon"><use href="#i-activity" /></svg>
               <span>Waveform</span>
             </button>
@@ -735,7 +736,7 @@
               <svg class="icon"><use href="#i-file" /></svg>
               <span>PDF Tools</span>
             </button>
-            <button class="nav-item" data-tool="aitools">
+            <button class="nav-item" data-tool="utilities" data-utab="ocr">
               <svg class="icon"><use href="#i-scan" /></svg>
               <span>OCR</span>
             </button>
@@ -966,7 +967,7 @@
       }, 50);
     })();
   </script>
-  <script type="module" src="assets/js/app.js?v=184"></script>
+  <script type="module" src="assets/js/app.js?v=185"></script>
   <script>
     // Clear legacy (non-COI) service workers / PWA caches, but keep coi-serviceworker.
     if ('serviceWorker' in navigator) {

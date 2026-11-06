@@ -4187,38 +4187,39 @@ function utilitiesView() {
   const tab = data.tab || 'frames';
   return `
     ${viewHead({ index: '09', kicker: 'Utilities', title: 'Small tools. <span class="accent">Big help.</span>', sub: 'Frames, spritesheets, text, audio, AI and dev helpers — all local.' })}
-    <div class="util-search-row" style="margin:0 0 10px">
-      <input type="search" class="input" placeholder="Search tools…" style="width:100%;max-width:320px" oninput="document.querySelectorAll('.util-tabs button').forEach(function(b){b.style.display=b.textContent.toLowerCase().includes(this.value.toLowerCase())?'':'none'}.bind(this))" />
-      <div class="util-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
-        ${['All','Media','Audio','AI','Text'].map((c) => `<button type="button" class="btn btn-ghost btn-sm" data-util-chip="${c}" onclick="var g=this.dataset.utilChip;document.querySelectorAll('.util-tab-group').forEach(function(gr){var lab=gr.querySelector('.util-tab-group-label').textContent;gr.style.display=(g==='All'||lab===g)?'':'none'})">${c}</button>`).join('')}
-      </div>
-    </div>
-    <div class="util-tab-groups">
-      <div class="util-tab-group">
-        <span class="util-tab-group-label">Media</span>
-        <div class="util-tabs segmented" role="tablist">
-          ${['frames','spritesheet','slicer','textimage','trimmer','watermark','upscale','pdf','chroma','fileinfo','palette','favicon','vector'].map((t) => `<button data-action="util-tab" data-tab="${t}" class="util-tab ${tab === t ? 'is-active' : ''}">${t === 'frames' ? 'Frames' : t === 'spritesheet' ? 'Spritesheet' : t === 'slicer' ? 'Slice sheet' : t === 'textimage' ? 'Text card' : t === 'trimmer' ? 'Trimmer' : t === 'watermark' ? 'Watermark' : t === 'upscale' ? 'Upscale' : t === 'pdf' ? 'PDF' : t === 'chroma' ? 'Chroma key' : t === 'palette' ? 'Palette' : t === 'favicon' ? 'Favicon' : t === 'vector' ? 'Vectorize' : 'File info'}</button>`).join('')}
+    ${(() => {
+      const groups = [
+        { name: 'Media', items: [
+          ['frames','Frames'], ['spritesheet','Spritesheet'], ['slicer','Slice sheet'], ['textimage','Text card'], ['trimmer','Trimmer'], ['watermark','Watermark'], ['upscale','Upscale'], ['pdf','PDF'], ['chroma','Chroma key'], ['fileinfo','File info'], ['palette','Palette'], ['favicon','Favicon'], ['vector','Vectorize']
+        ]},
+        { name: 'Audio', items: [
+          ['audioclean','Audio clean'], ['silencetrim','Silence trim'], ['waveform','Waveform'], ['tts','TTS']
+        ]},
+        { name: 'AI', items: [
+          ['ocr','OCR'], ['aibg','AI BG'], ['aiup','AI Upscale'], ['emb','Embeddings']
+        ]},
+        { name: 'Text', items: [
+          ['hash','File hash'], ['textpaper','Text to paper']
+        ]}
+      ];
+      const labels = { frames:'Frames', spritesheet:'Spritesheet', slicer:'Slice sheet', textimage:'Text card', trimmer:'Trimmer', watermark:'Watermark', upscale:'Upscale', pdf:'PDF', chroma:'Chroma key', fileinfo:'File info', palette:'Palette', favicon:'Favicon', vector:'Vectorize', audioclean:'Audio clean', silencetrim:'Silence trim', waveform:'Waveform', tts:'TTS', ocr:'OCR', aibg:'AI BG', aiup:'AI Upscale', emb:'Embeddings', hash:'File hash', textpaper:'Text to paper' };
+      const currentLabel = labels[tab] || 'Frames';
+      return `
+      <div class="util-combo" style="position:relative;margin:0 0 14px">
+        <input type="search" id="util-combo-q" class="input" style="width:100%" placeholder="Search tools…" value="${esc(currentLabel)}" autocomplete="off"
+          onfocus="var l=document.getElementById('util-combo-list'); if(l){l.hidden=false;} this.select();"
+          onblur="setTimeout(function(){var l=document.getElementById('util-combo-list'); if(l) l.hidden=true;},160)"
+          oninput="var q=this.value.toLowerCase(); document.querySelectorAll('#util-combo-list .util-combo-opt').forEach(function(o){ o.style.display = (o.dataset.label.toLowerCase().includes(q)) ? '' : 'none'; }); document.querySelectorAll('#util-combo-list .util-combo-group').forEach(function(g){ var vis=g.querySelector('.util-combo-opt:not([style*=\\'display: none\\'])'); g.style.display = vis ? '' : 'none'; });"
+          onkeydown="if(event.key==='Escape'){this.blur();var l=document.getElementById('util-combo-list'); if(l) l.hidden=true;} if(event.key==='Enter'){var v=document.querySelector('#util-combo-list .util-combo-opt:not([style*=&quot;display: none&quot;])'); if(v){v.click();}}"
+        />
+        <div id="util-combo-list" class="util-combo-list" hidden style="position:absolute;z-index:30;left:0;right:0;top:calc(100% + 4px);max-height:300px;overflow:auto;border:1px solid var(--border);border-radius:10px;background:var(--surface);box-shadow:var(--shadow-lg);padding:6px">
+          ${groups.map((g) => `<div class="util-combo-group" style="margin-bottom:6px">
+            <div style="font-size:10.5px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;padding:4px 8px">${esc(g.name)}</div>
+            ${g.items.map(([k, lbl]) => `<button type="button" class="util-combo-opt" data-tab="${k}" data-label="${esc(lbl)}" data-action="util-tab" style="display:flex;width:100%;align-items:center;gap:8px;padding:8px 10px;border:0;background:${tab===k?'var(--accent-soft)':'transparent'};color:var(--text);border-radius:6px;cursor:pointer;text-align:left;font-size:13px">${tab===k?'✓ ':''}${esc(lbl)}</button>`).join('')}
+          </div>`).join('')}
         </div>
-      </div>
-      <div class="util-tab-group">
-        <span class="util-tab-group-label">Audio</span>
-        <div class="util-tabs segmented" role="tablist">
-          ${['audioclean','silencetrim','waveform','tts'].map((t) => `<button data-action="util-tab" data-tab="${t}" class="util-tab ${tab === t ? 'is-active' : ''}">${t === 'audioclean' ? 'Audio clean' : t === 'silencetrim' ? 'Silence trim' : t === 'waveform' ? 'Waveform' : 'TTS'}</button>`).join('')}
-        </div>
-      </div>
-      <div class="util-tab-group">
-        <span class="util-tab-group-label">AI</span>
-        <div class="util-tabs segmented" role="tablist">
-          ${['ocr','aibg','aiup','emb'].map((t) => `<button data-action="util-tab" data-tab="${t}" class="util-tab ${tab === t ? 'is-active' : ''}">${t === 'ocr' ? 'OCR' : t === 'aibg' ? 'AI BG' : t === 'aiup' ? 'AI Upscale' : 'Embeddings'}</button>`).join('')}
-        </div>
-      </div>
-      <div class="util-tab-group">
-        <span class="util-tab-group-label">Text</span>
-        <div class="util-tabs segmented" role="tablist">
-          ${['hash','textpaper'].map((t) => `<button data-action="util-tab" data-tab="${t}" class="util-tab ${tab === t ? 'is-active' : ''}">${t === 'hash' ? 'File hash' : 'Text to paper'}</button>`).join('')}
-        </div>
-      </div>
-    </div>
+      </div>`;
+    })()}
     <div class="util-body">
       ${tab === 'frames' ? utilFramesBody() :
         tab === 'spritesheet' ? utilSpritesheetBody() :
@@ -9044,22 +9045,6 @@ function videoEditorView() {
       </section>
       <section class="area-queue">
         <div class="stage-card">
-          <div class="stage-head"><div class="stage-head-copy"><strong>Timeline</strong><span>Multi-track · drag clips · click to scrub</span></div></div>
-          <div class="stage-body" style="padding:8px">
-            <div id="ve-timeline" style="position:relative;height:90px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer">
-              <div id="ve-timeline-ruler" style="position:absolute;top:0;left:0;right:0;height:18px;background:var(--surface-3);border-bottom:1px solid var(--border);font-size:10px;color:var(--text-3)"></div>
-              <div id="ve-track-video" style="position:absolute;top:18px;left:0;right:0;height:20px;background:rgba(124,58,237,0.12)"></div>
-              <div id="ve-track-overlays" style="position:absolute;top:40px;left:0;right:0;height:20px"></div>
-               <div id="ve-track-audio" style="position:absolute;top:62px;left:0;right:0;height:20px;background:rgba(16,185,129,0.12)"></div>
-              <div id="ve-playhead" style="position:absolute;top:0;bottom:0;width:2px;background:#ef4444;pointer-events:none"></div>
-            </div>
-            <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
-              <button class="btn btn-ghost btn-sm" data-action="ve-play">${icon('play')}Play/Pause</button>
-              <span class="mono" id="ve-timecode">0.00s</span>
-            </div>
-          </div>
-        </div>
-        <div class="stage-card">
           <div class="stage-head"><div class="stage-head-copy"><strong>Audio volume keyframes</strong><span>Animate volume over time</span></div></div>
           <div class="stage-body">
             <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -9124,6 +9109,22 @@ function videoEditorView() {
           </div>
         </div>
       </section>
+    </div>
+    <div class="stage-card" style="margin-top:12px">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Timeline</strong><span>Multi-track · drag clips · click to scrub</span></div></div>
+      <div class="stage-body" style="padding:8px">
+        <div id="ve-timeline" style="position:relative;height:110px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer">
+          <div id="ve-timeline-ruler" style="position:absolute;top:0;left:0;right:0;height:18px;background:var(--surface-3);border-bottom:1px solid var(--border);font-size:10px;color:var(--text-3)"></div>
+          <div id="ve-track-video" style="position:absolute;top:18px;left:0;right:0;height:22px;background:rgba(124,58,237,0.12)"></div>
+          <div id="ve-track-overlays" style="position:absolute;top:42px;left:0;right:0;height:22px"></div>
+          <div id="ve-track-audio" style="position:absolute;top:66px;left:0;right:0;height:22px;background:rgba(16,185,129,0.12)"></div>
+          <div id="ve-playhead" style="position:absolute;top:0;bottom:0;width:2px;background:#ef4444;pointer-events:none"></div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
+          <button class="btn btn-ghost btn-sm" data-action="ve-play">${icon('play')}Play/Pause</button>
+          <span class="mono" id="ve-timecode">0.00s</span>
+        </div>
+      </div>
     </div>`;
 }
 
@@ -14342,6 +14343,9 @@ function handleClick(event) {
   const toolEl = event.target.closest('[data-tool]');
   if (toolEl) {
     event.preventDefault();
+    if (toolEl.dataset.tool === 'utilities' && toolEl.dataset.utab) {
+      state.utilities.tab = toolEl.dataset.utab;
+    }
     setTool(toolEl.dataset.tool);
     if (document.body.classList.contains('nav-open')) closeNav();
     return;
@@ -14407,6 +14411,10 @@ function bindEvents() {
   $('#nav-scrim')?.addEventListener('click', closeNav);
 
   const navSearch = document.getElementById('nav-search');
+  const navResults = document.getElementById('nav-search-results');
+  const utilSubTools = [
+    ['frames','Frames'],['spritesheet','Spritesheet'],['slicer','Slice sheet'],['textimage','Text card'],['trimmer','Trimmer'],['watermark','Watermark'],['upscale','Upscale'],['pdf','PDF'],['chroma','Chroma key'],['fileinfo','File info'],['palette','Palette'],['favicon','Favicon'],['vector','Vectorize'],['audioclean','Audio clean'],['silencetrim','Silence trim'],['waveform','Waveform'],['tts','TTS'],['ocr','OCR'],['aibg','AI BG'],['aiup','AI Upscale'],['emb','Embeddings'],['hash','File hash'],['textpaper','Text to paper']
+  ];
   if (navSearch) {
     navSearch.addEventListener('input', () => {
       const q = String(navSearch.value || '').trim().toLowerCase();
@@ -14418,9 +14426,18 @@ function bindEvents() {
           if (show) any = true;
         });
         group.style.display = (q && !any) ? 'none' : '';
-        // while searching, expand groups
         if (q) group.classList.remove('is-collapsed');
       });
+      // quick-open utility sub-tools
+      if (navResults) {
+        if (!q) { navResults.style.display = 'none'; navResults.innerHTML = ''; return; }
+        const matches = utilSubTools.filter(([, lbl]) => lbl.toLowerCase().includes(q));
+        if (!matches.length) { navResults.style.display = 'none'; navResults.innerHTML = ''; return; }
+        navResults.style.display = 'block';
+        navResults.innerHTML = matches.slice(0, 8).map(([key, lbl]) =>
+          `<button type="button" class="btn btn-ghost btn-sm" data-tool="utilities" data-utab="${key}" style="display:block;width:100%;text-align:left;margin-bottom:4px">${lbl} <span style="opacity:.5;font-size:10px">→ Utilities</span></button>`
+        ).join('');
+      }
     });
   }
   // restore collapsed nav groups
