@@ -8990,20 +8990,29 @@ function videoEditorView() {
   const source = data.source;
   return `
     ${viewHead({ index: '16', kicker: 'Video editor', title: 'Non-destructive <span class="accent">video edits.</span>', sub: 'Adjust, overlay text, trim and crop. Original is never modified.' })}
-    <div class="tool-grid">
-      <section class="area-drop">
+    <div class="ve-shell" style="display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:12px;align-items:start">
+      <div class="ve-left">
         <div class="stage-card">
+          <div class="stage-head"><div class="stage-head-copy"><strong>Preview</strong><span>Live output</span></div></div>
+          <div class="stage-body" style="display:flex;flex-direction:column;align-items:center;gap:8px">
+            ${source ? `<div style="position:relative;display:inline-block;max-width:100%">
+              <video src="${source.url}" controls style="max-width:100%;border-radius:8px;display:block"></video>
+              <div id="ve-preview-overlay" style="position:absolute;inset:0;pointer-events:none;overflow:hidden"></div>
+            </div>` : `<label class="btn btn-secondary btn-sm" for="ve-file">Choose video</label><input id="ve-file" type="file" accept="video/*" data-ve="file" hidden />`}
+            ${source ? '' : ''}
+          </div>
+        </div>
+        <div class="stage-card" style="margin-top:12px">
           <div class="stage-head"><div class="stage-head-copy"><strong>Source</strong><span>Load a video</span></div></div>
           <div class="stage-body">
             <label class="btn btn-secondary btn-sm" for="ve-file">Choose video</label>
             <input id="ve-file" type="file" accept="video/*" data-ve="file" hidden />
-            ${source ? `<div style="position:relative;display:inline-block;max-width:100%;margin-top:8px">
-  <video src="${source.url}" controls style="max-width:100%;border-radius:8px;display:block"></video>
-  <div id="ve-preview-overlay" style="position:absolute;inset:0;pointer-events:none;overflow:hidden"></div>
-</div>` : ''}
+            ${source ? `<div style="font-size:11px;color:var(--text-3);margin-top:6px">${esc(source.name)} · ${source.width}×${source.height} · ${Number(source.duration||0).toFixed(1)}s</div>` : ''}
           </div>
         </div>
-        <details class="stage-card" style="margin-top:12px" open>
+      </div>
+      <aside class="ve-inspector" style="display:flex;flex-direction:column;gap:8px">
+        <details class="stage-card" open>
           <summary class="stage-head" style="cursor:pointer;list-style:none"><div class="stage-head-copy"><strong>Adjustments</strong><span>Video filters</span></div></summary>
           <div class="stage-body">
             ${[['brightness','Brightness',50,150,1],['contrast','Contrast',50,150,1],['saturation','Saturation',0,200,1],['hue','Hue',-180,180,1]].map(([k,l,min,max,step]) => `
@@ -9013,7 +9022,7 @@ function videoEditorView() {
               </div>`).join('')}
           </div>
         </details>
-        <details class="stage-card" style="margin-top:12px">
+        <details class="stage-card">
           <summary class="stage-head" style="cursor:pointer;list-style:none"><div class="stage-head-copy"><strong>Text overlay</strong><span>Burn text into the video</span></div></summary>
           <div class="stage-body">
             <input type="text" value="${esc(data.text)}" data-ve="text" class="input" style="width:100%" placeholder="watermark text (optional)" />
@@ -9035,17 +9044,15 @@ function videoEditorView() {
             </div>
           </div>
         </details>
-        <details class="stage-card" style="margin-top:12px">
+        <details class="stage-card">
           <summary class="stage-head" style="cursor:pointer;list-style:none"><div class="stage-head-copy"><strong>Layers / Overlays</strong><span>Multiple text layers with timing</span></div></summary>
           <div class="stage-body">
             <button class="btn btn-secondary btn-sm" data-action="ve-add-overlay">+ Add text layer</button>
             <div id="ve-overlays" style="margin-top:10px"></div>
           </div>
         </details>
-      </section>
-      <section class="area-queue">
-        <div class="stage-card">
-          <div class="stage-head"><div class="stage-head-copy"><strong>Audio volume keyframes</strong><span>Animate volume over time</span></div></div>
+        <details class="stage-card">
+          <summary class="stage-head" style="cursor:pointer;list-style:none"><div class="stage-head-copy"><strong>Audio volume keyframes</strong><span>Animate volume over time</span></div></summary>
           <div class="stage-body">
             <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
               <input type="number" min="0" max="200" value="100" id="ve-vol-input" class="input" style="width:70px" title="volume %" />
@@ -9060,9 +9067,9 @@ function videoEditorView() {
               </div>`).join('')}
             </div>` : ''}
           </div>
-        </div>
-        <div class="stage-card">
-          <div class="stage-head"><div class="stage-head-copy"><strong>Trim & crop</strong><span>Range and aspect</span></div></div>
+        </details>
+        <details class="stage-card">
+          <summary class="stage-head" style="cursor:pointer;list-style:none"><div class="stage-head-copy"><strong>Trim & crop</strong><span>Range and aspect</span></div></summary>
           <div class="stage-body">
             <div class="field">
               <div class="field-head"><span class="field-label">Trim start (%)</span></div>
@@ -9098,26 +9105,20 @@ function videoEditorView() {
                 <option value="webm" ${data.settings.format === 'webm' ? 'selected' : ''}>WEBM</option>
               </select>
             </div>
-            <div style="display:flex;gap:6px;margin-top:10px">
-              <button class="btn btn-secondary btn-sm" data-action="ve-undo" ${data.historyIndex <= 0 ? 'disabled' : ''}>${icon('undo-2')}Undo</button>
-              <button class="btn btn-secondary btn-sm" data-action="ve-redo" ${data.historyIndex >= data.history.length - 1 ? 'disabled' : ''}>${icon('repeat')}Redo</button>
-              <button class="btn btn-ghost btn-sm" data-action="ve-reset">${icon('rotate-ccw')}Reset</button>
-            </div>
-            <button class="btn btn-primary btn-sm" data-action="ve-export" ${source ? '' : 'disabled'} style="margin-top:10px">${icon('download')}Export edited video</button>
-            <div id="ve-out" class="util-out"></div>
-            <div id="ve-progress" class="progress-wrap" hidden><div class="progress"><span style="width:0%"></span></div><span class="pct">0%</span></div>
           </div>
-        </div>
-      </section>
+        </details>
+        <div id="ve-out" class="util-out"></div>
+        <div id="ve-progress" class="progress-wrap" hidden><div class="progress"><span style="width:0%"></span></div><span class="pct">0%</span></div>
+      </aside>
     </div>
     <div class="stage-card" style="margin-top:12px">
       <div class="stage-head"><div class="stage-head-copy"><strong>Timeline</strong><span>Multi-track · drag clips · click to scrub</span></div></div>
       <div class="stage-body" style="padding:8px">
-        <div id="ve-timeline" style="position:relative;height:110px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer">
+        <div id="ve-timeline" style="position:relative;height:120px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer">
           <div id="ve-timeline-ruler" style="position:absolute;top:0;left:0;right:0;height:18px;background:var(--surface-3);border-bottom:1px solid var(--border);font-size:10px;color:var(--text-3)"></div>
-          <div id="ve-track-video" style="position:absolute;top:18px;left:0;right:0;height:22px;background:rgba(124,58,237,0.12)"></div>
-          <div id="ve-track-overlays" style="position:absolute;top:42px;left:0;right:0;height:22px"></div>
-          <div id="ve-track-audio" style="position:absolute;top:66px;left:0;right:0;height:22px;background:rgba(16,185,129,0.12)"></div>
+          <div id="ve-track-video" style="position:absolute;top:18px;left:0;right:0;height:24px;background:rgba(124,58,237,0.12)"></div>
+          <div id="ve-track-overlays" style="position:absolute;top:44px;left:0;right:0;height:24px"></div>
+          <div id="ve-track-audio" style="position:absolute;top:70px;left:0;right:0;height:24px;background:rgba(16,185,129,0.12)"></div>
           <div id="ve-playhead" style="position:absolute;top:0;bottom:0;width:2px;background:#ef4444;pointer-events:none"></div>
         </div>
         <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
