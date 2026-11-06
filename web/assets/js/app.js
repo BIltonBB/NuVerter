@@ -12577,8 +12577,8 @@ function settingsBody() {
     <div class="modal-section">
       <div class="modal-section-title">${icon('info')}Updates</div>
       <div class="settings-list">
-        <div class="settings-item"><div class="settings-item-copy"><strong>Installed version</strong><small>This build</small></div><span class="mono" id="app-version-label">${APP_VERSION}</span></div>
-        <div class="settings-item"><div class="settings-item-copy"><strong>Latest release</strong><small>GitHub</small></div><span class="mono" id="latest-release-label">checking…</span></div>
+        <div class="settings-item"><div class="settings-item-copy"><strong>Installed version</strong><small>This build</small></div><span class="mono" data-app-version>v${APP_VERSION}</span></div>
+        <div class="settings-item"><div class="settings-item-copy"><strong>Latest release</strong><small>GitHub</small></div><span class="mono" data-latest-release>checking…</span></div>
       </div>
       ${isTauri ? '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn btn-secondary btn-sm" data-action="check-update">Check for updates</button><button class="btn btn-danger btn-sm" data-action="uninstall-app">Uninstall NuVerter</button></div>' : ''}
     </div>
@@ -12820,7 +12820,8 @@ function settingsBody() {
     <div class="modal-section">
       <div class="modal-section-title">${icon('info')}About this build</div>
       <div class="engine-info-grid">
-        <div class="engine-info-cell"><span>Latest release</span><strong id="latest-release-label">Checking...</strong></div>
+        <div class="engine-info-cell"><span>App</span><strong data-app-version>v${APP_VERSION}</strong></div>
+        <div class="engine-info-cell"><span>Latest release</span><strong data-latest-release>Checking...</strong></div>
         <div class="engine-info-cell"><span>Engine</span><strong>ffmpeg.wasm 0.12</strong></div>
         <div class="engine-info-cell"><span>Served from</span><strong>${esc(protocol)}</strong></div>
         <div class="engine-info-cell"><span>Data sent</span><strong>0 bytes</strong></div>
@@ -12856,17 +12857,17 @@ function renderSettingsBody() {
 }
 
 async function syncLatestReleaseLabel() {
-  const el = document.getElementById('latest-release-label');
-  if (!el) return;
+  const els = document.querySelectorAll('[data-latest-release]');
+  if (!els.length) return;
   try {
     const res = await fetch('https://api.github.com/repos/BIltonBB/NuVerter/releases/latest', { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const j = await res.json();
     const raw = String(j?.name || j?.tag_name || '').trim();
     const version = raw.replace(/^NuVerter\s*/i, '').replace(/^v/i, '').trim() || raw;
-    el.textContent = version ? ('v' + version) : 'Unknown';
+    els.forEach((el) => { el.textContent = version ? ('v' + version) : 'Unknown'; });
   } catch {
-    el.textContent = 'Unavailable';
+    els.forEach((el) => { el.textContent = 'Unavailable'; });
   }
 }
 
@@ -12910,8 +12911,7 @@ function openSettings() {
       const inv = tauri?.core?.invoke || tauri?.invoke;
       if (typeof inv === 'function') {
         const v = await inv.call(tauri?.core || tauri, 'get_app_version');
-        const el = document.getElementById('app-version-label');
-        if (el && v) el.textContent = 'v' + v;
+        if (v) document.querySelectorAll('[data-app-version]').forEach((el) => { el.textContent = 'v' + v; });
       }
     } catch {}
   })();
@@ -14860,53 +14860,21 @@ bindEvents();
         badge.onclick = async () => {
           badge.disabled = true;
           badge.textContent = '^';
-          try { await tauri.core.invoke('install_update'); } catch (e) { badge.remove(); }
+          try { await inv.call(bind, 'install_update'); } catch (e) { badge.remove(); }
         };
         document.body.appendChild(badge);
       };
       modal.querySelector('#upd-yes').onclick = async () => {
         const btn = modal.querySelector('#upd-yes');
         if (btn) { btn.disabled = true; btn.textContent = 'Updating...'; }
-        try { await tauri.core.invoke('install_update'); } catch (e) { cleanup(); }
+        try { await inv.call(bind, 'install_update'); } catch (e) { cleanup(); }
       };
     }
-  } catch {}
+  } catch (e) { console.warn('[updater] check failed', e); }
 })();
 window.loadSubtitleSource = loadSubtitleSource;
 window.openDesktopAppInfo = openDesktopAppInfo;
 
-// Floating update button when running inside Tauri with an available update
-(async function setupFloatingUpdateButton() {
-  try {
-    const T = window.__TAURI__;
-    if (!T || !T.updater || typeof T.updater.check !== 'function') return;
-    const update = await T.updater.check();
-    if (!update) return;
-    const wrap = document.createElement('div');
-    wrap.className = 'nv-update-prompt';
-    wrap.innerHTML = `
-      <div class="nv-update-copy">
-        <strong>Update available</strong>
-        <span>${esc(update?.version ? ('Version ' + update.version + ' is ready to install.') : 'A new version is ready to install.')}</span>
-      </div>
-      <div class="nv-update-actions">
-        <button type="button" class="btn btn-ghost btn-sm nv-update-later">Later</button>
-        <button type="button" class="btn btn-primary btn-sm nv-update-install">Install &amp; restart</button>
-      </div>`;
-    const installBtn = wrap.querySelector('.nv-update-install');
-    const laterBtn = wrap.querySelector('.nv-update-later');
-    laterBtn.onclick = () => { wrap.remove(); };
-    installBtn.onclick = async () => {
-      installBtn.textContent = 'Installing…';
-      installBtn.disabled = true;
-      laterBtn.disabled = true;
-      try { await update.downloadAndInstall(); } catch (e) {}
-      if (T.process && typeof T.process.relaunch === 'function') { try { await T.process.relaunch(); } catch (e) {} }
-      else { window.location.reload(); }
-    };
-    document.body.appendChild(wrap);
-  } catch (e) {}
-})();
 window.runSubtitleBurn = runSubtitleBurn;
 boot();
 
