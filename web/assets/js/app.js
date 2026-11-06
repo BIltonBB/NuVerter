@@ -9019,7 +9019,7 @@ function videoEditorView() {
   const source = data.source;
   return `
     ${viewHead({ index: '16', kicker: 'Video editor', title: 'Non-destructive <span class="accent">video edits.</span>', sub: 'Adjust, overlay text, trim and crop. Original is never modified.' })}
-    <div class="ve-shell" style="display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:12px;align-items:start">
+    <div class="ve-shell" style="display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px;align-items:start">
       <div class="ve-left">
         <div class="stage-card">
           <div class="stage-head"><div class="stage-head-copy"><strong>Preview</strong><span>Live output</span></div></div>
@@ -9040,7 +9040,7 @@ function videoEditorView() {
           </div>
         </div>
       </div>
-      <aside class="ve-inspector" style="display:flex;flex-direction:column;gap:8px">
+      <aside class="ve-inspector" style="display:flex;flex-direction:column;gap:8px;max-height:calc(100vh - 260px);overflow:auto;padding-right:4px">
         <details class="stage-card" open>
           <summary class="stage-head" style="cursor:pointer;list-style:none"><div class="stage-head-copy"><strong>Adjustments</strong><span>Video filters</span></div></summary>
           <div class="stage-body">
@@ -9140,7 +9140,7 @@ function videoEditorView() {
         <div id="ve-progress" class="progress-wrap" hidden><div class="progress"><span style="width:0%"></span></div><span class="pct">0%</span></div>
       </aside>
     </div>
-    <div class="stage-card" style="margin-top:12px">
+    <div class="stage-card" style="margin-top:12px;position:sticky;bottom:8px;z-index:5;box-shadow:0 -8px 24px rgba(0,0,0,.25)">
       <div class="stage-head"><div class="stage-head-copy"><strong>Timeline</strong><span>Multi-track · drag clips · click to scrub</span></div></div>
       <div class="stage-body" style="padding:8px">
         <div id="ve-timeline" style="position:relative;height:180px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer">
@@ -12944,6 +12944,7 @@ function openHelp() {
     ['⌘ / Ctrl', '↵', 'Start the current batch or tool'],
     ['⌘ / Ctrl', ',', 'Open settings'],
     ['⌘ / Ctrl', 'K', 'Command palette (search tools)'],
+    ['⌘ / Ctrl', 'L', 'App launcher (pick a category)'],
     ['1 – 7', '', 'Jump between tools'],
     ['?', '', 'Show this shortcut sheet'],
     ['Esc', '', 'Close a dialog, stop a recording or cancel a batch']
