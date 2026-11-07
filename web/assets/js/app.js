@@ -395,6 +395,7 @@ const state = {
     textColor: '',
     buttonColor: '',
     appSidebarSwap: false,
+    sidebarPosition: 'left',
     radiusScale: 1,
     glow: true,
     fontFamily: 'inter',
@@ -841,6 +842,17 @@ function applyAppearance() {
   document.documentElement.classList.toggle('has-custom-appearance', Boolean(
     p.accentColor || p.buttonColor || p.bgColor || p.surfaceColor || p.sidebarColor || p.borderColor || p.textColor
   ));
+}
+
+function applySidebarPosition() {
+  const allowed = ['left', 'right', 'top', 'hidden'];
+  const pos = allowed.includes(state.prefs && state.prefs.sidebarPosition) ? state.prefs.sidebarPosition : 'left';
+  const app = document.querySelector('.app');
+  document.body.dataset.sidebarPos = pos;
+  if (app) {
+    app.classList.remove('sidebar-pos-left', 'sidebar-pos-right', 'sidebar-pos-top', 'sidebar-pos-hidden');
+    app.classList.add('sidebar-pos-' + pos);
+  }
 }
 
 function applyAccentColor() {
@@ -11196,14 +11208,10 @@ function renderView() {
       ['--accent','--accent-strong','--accent-bright','--accent-text','--accent-soft','--accent-border'].forEach((v) => document.body.style.removeProperty(v));
     }
   } catch { delete document.body.dataset.app; }
-  // Per-app sidebar identity: position + style varies per app.
+  // App mode: app's own rail becomes navigation; sidebar follows the user's position choice.
   const appMode = !!(_appCfg && _appCfg.group);
   document.body.classList.toggle('app-mode', appMode);
-  if (_appCfg && _appCfg.group) {
-    document.body.dataset.sidebarPos = _appCfg.group === 'documents' ? 'right' : _appCfg.group === 'developer' ? 'top' : 'left';
-  } else {
-    delete document.body.dataset.sidebarPos;
-  }
+  applySidebarPosition();
   // Per-app sidebar swap (opt-in, independent).
   try { if (sidebarSwapOn) syncAppSidebar(_appCfg); else { const p = document.getElementById('app-sidebar-panel'); if (p) p.remove(); const n = document.querySelector('.nav'); if (n) n.style.display = ''; } } catch (e) { /* ignore */ }
   if (state.tool === 'aitools') {
@@ -13260,7 +13268,7 @@ function settingsBody() {
           <button class="switch" role="switch" aria-checked="${state.prefs.audioReactive}" aria-label="Audio-reactive theme" data-toggle="prefs.audioReactive"></button>
         </div>
         <div class="settings-item">
-          <div class="settings-item-copy"><strong>App-focused sidebar (experimental)</strong><small>Replace the global sidebar with an app-specific one when opening an app</small></div>
+          <div class="settings-item-copy"><strong>App-focused sidebar</strong><small>Replace the global sidebar with an app-specific one when opening an app</small></div>
           <button class="switch" role="switch" aria-checked="${state.prefs.appSidebarSwap}" aria-label="App-focused sidebar" data-toggle="prefs.appSidebarSwap"></button>
         </div>
       </div>
@@ -13280,6 +13288,17 @@ function settingsBody() {
             <input type="color" data-field="prefs.${key}" value="${esc(state.prefs[key] || def)}" style="width:44px;height:28px;border:0;background:transparent;cursor:pointer" />
           </div>`;
         }).join('')}
+      </div>
+    </div>
+    <div class="modal-section">
+      <div class="modal-section-title">${icon('layout-grid')}Sidebar position</div>
+      <div class="settings-list">
+        <div class="settings-item">
+          <div class="settings-item-copy"><strong>Global sidebar position</strong><small>Where the main navigation sidebar sits</small></div>
+          <div class="segmented" role="group">
+            ${['left','right','top','hidden'].map((m) => `<button data-action="set-sidebar-position" data-pos="${m}" class="${(state.prefs.sidebarPosition || 'left') === m ? 'is-active' : ''}">${m === 'left' ? 'Left' : m === 'right' ? 'Right' : m === 'top' ? 'Top' : 'Hidden'}</button>`).join('')}
+          </div>
+        </div>
       </div>
     </div>
     <div class="modal-section">
@@ -13432,7 +13451,7 @@ function openSettings() {
 }
 
 function resetPreferences() {
-  state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: false, appAccents: false, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' };
+  state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: false, sidebarPosition: 'left', appAccents: false, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' };
   savePrefs();
   applyTheme();
   renderSettingsBody();
@@ -13446,7 +13465,7 @@ async function privacyReset() {
   try { if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.map((k) => caches.delete(k))); } } catch {}
   try { localStorage.removeItem('NuVerter-converter'); localStorage.removeItem('NuVerter-prefs'); localStorage.removeItem('NuVerter-ai-chat'); localStorage.removeItem('NuVerter-workflows'); } catch {}
 try { const db = await openDB(); const tx = db.transaction(DB_WORKFLOWS_STORE, 'readwrite'); tx.objectStore(DB_WORKFLOWS_STORE).clear(); } catch {}
-  try { state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: false, appAccents: false, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' }; savePrefs(); applyTheme(); } catch {}
+  try { state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: false, sidebarPosition: 'left', appAccents: false, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' }; savePrefs(); applyTheme(); } catch {}
   try { renderView(); } catch {}
   toast('Privacy reset', 'Queue, results, caches and preferences cleared. Note: browser/OS may retain other copies.', 'success');
 }
@@ -14547,6 +14566,15 @@ try { await idbWorkflowsSave(state.workflows); } catch {}
     }
     case 'wf-run': {
       await wfRun();
+      return true;
+    }
+    case 'set-sidebar-position': {
+      const pos = el.dataset.pos || 'left';
+      state.prefs.sidebarPosition = pos;
+      savePrefs();
+      applySidebarPosition();
+      // update active state
+      document.querySelectorAll('[data-action="set-sidebar-position"]').forEach((b) => b.classList.toggle('is-active', b.dataset.pos === pos));
       return true;
     }
     default: return false;
