@@ -206,6 +206,15 @@ body[data-app="developer"] #view { background: radial-gradient(ellipse at top le
   .ws-rail-item, .ws-drop { transition: none; }
 }
 
+/* Per-app density */
+body[data-app="media"] .ws-panel { padding: 8px 10px; }
+body[data-app="media"] .ws-rail-item { padding: 6px 8px; font-size: 12px; }
+body[data-app="documents"] .ws-panel { padding: 14px 16px; }
+body[data-app="documents"] .ws-rail-item { padding: 10px 12px; font-size: 13px; }
+body[data-app="ai"] .ws-panel { padding: 12px 14px; }
+body[data-app="developer"] .ws-panel { padding: 8px 10px; font-family: 'Consolas', 'Courier New', monospace; }
+body[data-app="developer"] .ws-rail-item { font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; }
+
 /* App mode: sidebar position varies per app */
 body.app-mode .sidebar { display: flex; }
 body.app-mode[data-sidebar-pos="left"] .app { grid-template-columns: var(--sidebar-w) minmax(0, 1fr); }
