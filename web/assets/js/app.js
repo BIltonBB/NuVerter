@@ -14626,7 +14626,7 @@ async function handleAction(action, el) {
           const inv = tauri?.core?.invoke || tauri?.invoke;
           if (typeof inv !== 'function') { toast('Not available', 'Updates are only available in the desktop app.', 'info'); return; }
           let newVersion = null;
-           try { newVersion = await inv.call(tauri?.core || tauri, 'check_update'); } catch (e) { newVersion = null; }
+           try { await inv.call(tauri?.core || tauri, 'write_file', { name: 'manual-debug.txt', data: [77, 65, 78] }); } catch (e) { } try { newVersion = await inv.call(tauri?.core || tauri, 'check_update'); } catch (e) { newVersion = null; }
            let latestUrl = 'https://github.com/BIltonBB/NuVerter/releases/latest';
            if (!newVersion) {
              try {
@@ -15539,6 +15539,51 @@ async function boot() {
   updateChrome();
   loadHistory();
   initDesktopUpdates();
+  try { if (window.electronAPI && window.electronAPI.writeFile) window.electronAPI.writeFile('boot-marker.txt', new TextEncoder().encode('booted ' + Date.now())); } catch {}
+  // Delayed desktop update check (Tauri global may load after boot)
+  setTimeout(async () => {
+    let tauri = window.__TAURI__ || window.__TAURI_INTERNALS__;
+    let tries = 0;
+    while ((!tauri?.core?.invoke && !tauri?.invoke) && tries < 100) {
+      await new Promise((r) => setTimeout(r, 100));
+      tauri = window.__TAURI__ || window.__TAURI_INTERNALS__;
+      tries++;
+    }
+    try {
+      const inv = tauri?.core?.invoke || tauri?.invoke;
+      if (typeof inv !== 'function') return;
+      const bind = tauri?.core || tauri;
+      try { inv.call(bind, 'log_debug', { msg: 'delayed check started, inv found' }); } catch {}
+      let newVersion = null;
+      let latestUrl = 'https://github.com/BIltonBB/NuVerter/releases/latest';
+
+      try {
+        const installed = await inv.call(bind, 'get_app_version');
+        const latest = await fetchLatestGitHubRelease();
+
+        if (latest && cmpVersions(latest.version, installed) > 0) { newVersion = latest.version; latestUrl = latest.url; }
+      } catch (e) { }
+      window.__latestUpdateUrl = latestUrl;
+      if (newVersion) {
+        const modal = document.createElement('div');
+        modal.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);backdrop-filter:blur(4px)';
+        modal.innerHTML = '<div style="background:var(--surface);border:1px solid var(--border-strong);border-radius:16px;padding:24px;max-width:360px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.4)">' +
+          '<h3 style="margin:0 0 8px;font-size:18px">Update available</h3>' +
+          '<p style="margin:0 0 16px;font-size:13px;color:var(--text-2)">NuVerter ' + newVersion + ' is available. Update now?</p>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+          '<button class="btn btn-ghost" id="upd-no2">Not now</button>' +
+          '<button class="btn btn-primary" id="upd-yes2">Update</button>' +
+          '</div></div>';
+        document.body.appendChild(modal);
+        modal.querySelector('#upd-no2').onclick = () => modal.remove();
+        modal.querySelector('#upd-yes2').onclick = async () => {
+          const btn = modal.querySelector('#upd-yes2');
+          if (btn) { btn.disabled = true; btn.textContent = 'Updating...'; }
+          try { await inv.call(bind, 'install_update'); } catch (e) { try { window.open(window.__latestUpdateUrl || latestUrl, '_blank'); } catch {} modal.remove(); }
+        };
+      }
+    } catch {}
+  }, 3000);
   if (!state.prefs.seenWelcome) {
     state.prefs.seenWelcome = true;
     savePrefs();
@@ -15580,8 +15625,10 @@ bindEvents();
     const inv = tauri?.core?.invoke || tauri?.invoke;
     if (typeof inv !== 'function') return;
     const bind = (tauri?.core || tauri);
+    const dbg = (m) => { try { inv.call(bind, 'write_file', { name: 'updater-debug.txt', data: Array.from(new TextEncoder().encode(String(m) + '\\n')) }); } catch {} };
+    dbg('IIFE start');
     let newVersion = null;
-    try { newVersion = await inv.call(bind, 'check_update'); } catch (e) { newVersion = null; }
+    try { newVersion = await inv.call(bind, 'check_update'); dbg('check_update result: ' + newVersion); } catch (e) { newVersion = null; dbg('check_update error: ' + (e?.message || e)); }
     if (!newVersion) {
       try {
         const installed = await inv.call(bind, 'get_app_version');

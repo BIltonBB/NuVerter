@@ -119,11 +119,6 @@ fn uninstall_app(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
-fn log_debug(msg: String) {
-    let _ = std::fs::write("C:\\Users\\user\\frontend-debug.txt", msg);
-}
-
-#[tauri::command]
 fn get_models_path(app: tauri::AppHandle) -> String {
     let p = ensure_dir(&storage_root(&app).join("models"));
     p.to_string_lossy().to_string()
@@ -194,7 +189,6 @@ async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 fn main() {
-    let _ = std::fs::write("C:\\Users\\user\\tauri-started.txt", "started");
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -208,7 +202,6 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             get_user_data_path,
-            log_debug,
             get_app_version,
             uninstall_app,
             get_storage_root,
