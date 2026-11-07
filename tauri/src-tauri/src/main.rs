@@ -94,6 +94,31 @@ async fn select_storage_dir(app: tauri::AppHandle) -> Option<String> {
 }
 
 #[tauri::command]
+fn get_app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
+#[tauri::command]
+fn uninstall_app(app: tauri::AppHandle) {
+    use std::process::Command;
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            for name in ["Uninstall NuVerter.exe", "uninstall.exe", "Uninstall.exe", "unins000.exe"] {
+                let unins = dir.join(name);
+                if unins.exists() {
+                    let _ = Command::new(&unins).spawn();
+                    app.exit(0);
+                    return;
+                }
+            }
+        }
+    }
+    // Fallback: open Programs and Features
+    let _ = Command::new("cmd").args(["/c", "start", "appwiz.cpl"]).spawn();
+    app.exit(0);
+}
+
+#[tauri::command]
 fn get_models_path(app: tauri::AppHandle) -> String {
     let p = ensure_dir(&storage_root(&app).join("models"));
     p.to_string_lossy().to_string()
@@ -122,39 +147,56 @@ fn list_files(app: tauri::AppHandle) -> Vec<String> {
         .unwrap_or_default()
 }
 
+#[tauri::command]
+async fn check_update(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    match updater.check().await {
+        Ok(Some(update)) => Ok(Some(update.version.clone())),
+        Ok(None) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
+    let updater = app.updater().map_err(|e| e.to_string())?;
+    let update = updater
+        .check()
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "no update available".to_string())?;
+    update
+        .download_and_install(|_, _| {}, || {})
+        .await
+        .map_err(|e| e.to_string())?;
+    app.restart();
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
-            let handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                if let Ok(updater) = handle.updater() {
-                    if let Ok(Some(update)) = updater.check().await {
-                        use tauri_plugin_dialog::DialogExt;
-                        let install = handle.dialog()
-                            .message("A new version is available. Install now?")
-                            .title("Update Available")
-                            .blocking_show();
-                        if install {
-                            let _ = update.download_and_install(|_, _| {}, || {}).await;
-                            handle.restart();
-                        }
-                    }
-                }
-            });
+            #[cfg(target_os = "windows")]
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window_vibrancy::apply_mica(&window, None);
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_user_data_path,
+            get_app_version,
+            uninstall_app,
             get_storage_root,
             set_storage_root,
             select_storage_dir,
             get_models_path,
             write_file,
             read_file,
-            list_files
+            list_files,
+            check_update,
+            install_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
