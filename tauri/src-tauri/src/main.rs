@@ -205,7 +205,23 @@ async fn install_update(app: tauri::AppHandle, url: Option<String>) -> Result<()
     Ok(())
 }
 
+// Tauri stages each downloaded updater payload in %TEMP%\NuVerter-<ver>-updater-*.
+// The installer never removes that folder, so it piles up (~32 MB per update).
+// Sweep it on startup; harmless if a file is locked (best effort).
+fn cleanup_stale_updates() {
+    let temp = std::env::temp_dir();
+    if let Ok(entries) = fs::read_dir(&temp) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with("NuVerter-") && name.contains("-updater-") {
+                let _ = fs::remove_dir_all(entry.path());
+            }
+        }
+    }
+}
+
 fn main() {
+    cleanup_stale_updates();
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
