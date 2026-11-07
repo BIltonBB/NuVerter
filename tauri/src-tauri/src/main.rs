@@ -149,27 +149,11 @@ fn list_files(app: tauri::AppHandle) -> Vec<String> {
 
 #[tauri::command]
 async fn check_update(app: tauri::AppHandle) -> Result<Option<String>, String> {
-    let log = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")).join("updater-error.log");
-    let updater = match app.updater() {
-        Ok(u) => u,
-        Err(e) => {
-            let _ = std::fs::write(&log, format!("updater() err: {}", e));
-            return Err(e.to_string());
-        }
-    };
+    let updater = app.updater().map_err(|e| e.to_string())?;
     match updater.check().await {
-        Ok(Some(update)) => {
-            let _ = std::fs::write(&log, format!("update available: {}", update.version));
-            Ok(Some(update.version.clone()))
-        }
-        Ok(None) => {
-            let _ = std::fs::write(&log, "no update available".to_string());
-            Ok(None)
-        }
-        Err(e) => {
-            let _ = std::fs::write(&log, format!("check err: {}", e));
-            Err(e.to_string())
-        }
+        Ok(Some(update)) => Ok(Some(update.version.clone())),
+        Ok(None) => Ok(None),
+        Err(e) => Err(e.to_string()),
     }
 }
 
@@ -230,16 +214,6 @@ fn main() {
             #[cfg(target_os = "windows")]
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window_vibrancy::apply_mica(&window, None);
-            }
-            // Test hook: only when a marker file exists, auto-run the updater so the
-            // download/install path can be verified without manual clicking.
-            let marker = std::env::temp_dir().join("nuverter-auto-update-test");
-            if marker.exists() {
-                let handle = app.handle().clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_secs(20));
-                    let _ = tauri::async_runtime::block_on(install_update(handle, None));
-                });
             }
             Ok(())
         })
