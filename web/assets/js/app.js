@@ -11021,47 +11021,71 @@ function syncAppSidebar(appCfg) {
   const nav = scroll ? scroll.querySelector('.nav') : null;
   if (!scroll) return;
   let panel = document.getElementById('app-sidebar-panel');
-  // Disabled by default: only swap when the user opts in via settings.
   const enabled = !!(state.prefs && state.prefs.appSidebarSwap);
   if (!enabled || !appCfg || !appCfg.group) {
     if (panel) panel.remove();
     if (nav) nav.style.display = '';
     return;
   }
-    if (!panel) {
-      panel = document.createElement('div');
-      panel.id = 'app-sidebar-panel';
-      panel.className = 'app-sidebar-panel';
-      if (nav) nav.parentNode.insertBefore(panel, nav);
-      else scroll.appendChild(panel);
-    }
-    // Build app-focused sidebar content
-    const tools = (appCfg.tools || []).map((t) => {
-      const tool = TOOLS[t];
-      if (!tool) return '';
-      return `<button class="nav-item" data-tool="${t}">
-        <svg class="icon"><use href="#i-${tool.icon || 'circle'}"></use></svg>
-        <span>${esc(tool.label)}</span>
-        <span class="nav-index">${tool.index || ''}</span>
-      </button>`;
-    }).join('');
-    panel.innerHTML = `
-      <div class="nav-group" data-navgroup="app">
-        <p class="nav-label">${esc(appCfg.title)} <span class="nav-group-chev">·</span></p>
-        <button class="nav-item" data-action="launch-open" style="margin-bottom:6px">
-          <svg class="icon"><use href="#i-layout-grid"></use></svg>
-          <span>All tools</span>
-        </button>
-        ${tools}
-      </div>
-      <div class="nav-group" data-navgroup="app-quick">
-        <p class="nav-label">Quick actions <span class="nav-group-chev">·</span></p>
-        <button class="nav-item" data-action="launch-all">
-          <svg class="icon"><use href="#i-layout-grid"></use></svg>
-          <span>Show all tools</span>
-        </button>
-      </div>`;
-    if (nav) nav.style.display = 'none';
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'app-sidebar-panel';
+    panel.className = 'app-sidebar-panel';
+    if (nav) nav.parentNode.insertBefore(panel, nav);
+    else scroll.appendChild(panel);
+  }
+  const group = appCfg.group;
+  let content = '';
+  if (group === 'media') {
+    content = '<div class="nav-group" data-navgroup="app"><p class="nav-label" style="color:var(--accent-text)">Media Studio</p>'
+      + '<button class="nav-item" data-action="launch-open"><svg class="icon"><use href="#i-layout-grid"></use></svg><span>All tools</span></button>'
+      + '<button class="nav-item" data-action="pick-files" data-context="converter"><svg class="icon"><use href="#i-plus"></use></svg><span>Add media</span></button>'
+      + '<button class="nav-item" data-action="load-demo"><svg class="icon"><use href="#i-sparkles"></use></svg><span>Load demo batch</span></button></div>'
+      + '<div class="nav-group" data-navgroup="app-tools"><p class="nav-label">Tools</p>'
+      + (appCfg.tools||[]).map((t) => { const tool = TOOLS[t]; if (!tool) return ''; return '<button class="nav-item" data-tool="' + t + '"><svg class="icon"><use href="#i-' + (tool.icon||'circle') + '"></use></svg><span>' + esc(tool.label) + '</span></button>'; }).join('')
+      + '</div>'
+      + '<div class="nav-group" data-navgroup="app-quick"><p class="nav-label">Quick</p>'
+      + '<button class="nav-item" data-tool="videoeditor"><svg class="icon"><use href="#i-film"></use></svg><span>Edit video</span></button>'
+      + '<button class="nav-item" data-tool="imageditor"><svg class="icon"><use href="#i-sliders-horizontal"></use></svg><span>Edit image</span></button></div>';
+  } else if (group === 'documents') {
+    const recs = (state.history||[]).filter((r) => r.tool === 'pdftools').slice(0, 5);
+    content = '<div class="nav-group" data-navgroup="app"><p class="nav-label" style="color:var(--accent-text)">Documents</p>'
+      + '<button class="nav-item" data-action="launch-open"><svg class="icon"><use href="#i-layout-grid"></use></svg><span>All tools</span></button>'
+      + '<button class="nav-item" data-tool="pdftools"><svg class="icon"><use href="#i-plus"></use></svg><span>Open PDF tools</span></button></div>'
+      + '<div class="nav-group" data-navgroup="app-ops"><p class="nav-label">Operations</p>'
+      + '<button class="nav-item" data-action="docs-op" data-op="merge"><svg class="icon"><use href="#i-file"></use></svg><span>Merge PDFs</span></button>'
+      + '<button class="nav-item" data-action="docs-op" data-op="split"><svg class="icon"><use href="#i-file"></use></svg><span>Split PDF</span></button>'
+      + '<button class="nav-item" data-action="docs-op" data-op="redact"><svg class="icon"><use href="#i-file"></use></svg><span>Redact</span></button></div>'
+      + '<div class="nav-group" data-navgroup="app-recent"><p class="nav-label">Recent (' + recs.length + ')</p>'
+      + (recs.map((r) => '<button class="nav-item" data-tool="pdftools"><svg class="icon"><use href="#i-file"></use></svg><span>' + esc((r.name||'').slice(0,18)) + '</span></button>').join('') || '<span class="muted" style="font-size:11px;padding:4px">No recent files</span>')
+      + '</div>';
+  } else if (group === 'ai') {
+    content = '<div class="nav-group" data-navgroup="app"><p class="nav-label" style="color:var(--accent-text)">AI Lab</p>'
+      + '<button class="nav-item" data-action="launch-open"><svg class="icon"><use href="#i-layout-grid"></use></svg><span>All tools</span></button>'
+      + '<button class="nav-item" data-action="ai-chat-clear"><svg class="icon"><use href="#i-trash-2"></use></svg><span>Clear chat</span></button></div>'
+      + '<div class="nav-group" data-navgroup="app-tools"><p class="nav-label">Tools</p>'
+      + '<button class="nav-item" data-tool="aichat"><svg class="icon"><use href="#i-cpu"></use></svg><span>AI Chat</span></button>'
+      + '<button class="nav-item" data-tool="aitools" data-aitab="aiimg"><svg class="icon"><use href="#i-sparkles"></use></svg><span>Image gen</span></button>'
+      + '<button class="nav-item" data-tool="aitools" data-aitab="aibg"><svg class="icon"><use href="#i-sparkles"></use></svg><span>BG remove</span></button>'
+      + '<button class="nav-item" data-tool="aitools" data-aitab="aiup"><svg class="icon"><use href="#i-sparkles"></use></svg><span>Upscale</span></button></div>'
+      + '<div class="nav-group" data-navgroup="app-context"><p class="nav-label">Context</p>'
+      + '<button class="nav-item" data-action="ai-chat-attach-image"><svg class="icon"><use href="#i-image"></use></svg><span>Attach image</span></button>'
+      + '<button class="nav-item" data-action="ai-chat-attach-file"><svg class="icon"><use href="#i-file"></use></svg><span>Attach doc</span></button></div>';
+  } else if (group === 'developer') {
+    content = '<div class="nav-group" data-navgroup="app"><p class="nav-label" style="color:var(--accent-text)">Developer</p>'
+      + '<button class="nav-item" data-action="launch-open"><svg class="icon"><use href="#i-layout-grid"></use></svg><span>All tools</span></button></div>'
+      + '<div class="nav-group" data-navgroup="app-ops"><p class="nav-label">Operations</p>'
+      + '<button class="nav-item" data-tool="devtools" data-devtab="json"><svg class="icon"><use href="#i-command"></use></svg><span>JSON</span></button>'
+      + '<button class="nav-item" data-tool="devtools" data-devtab="base64"><svg class="icon"><use href="#i-command"></use></svg><span>Base64</span></button>'
+      + '<button class="nav-item" data-tool="devtools" data-devtab="regex"><svg class="icon"><use href="#i-command"></use></svg><span>Regex</span></button>'
+      + '<button class="nav-item" data-tool="devtools" data-devtab="pii"><svg class="icon"><use href="#i-command"></use></svg><span>PII scrub</span></button>'
+      + '<button class="nav-item" data-tool="utilities"><svg class="icon"><use href="#i-settings"></use></svg><span>Utilities</span></button></div>'
+      + '<div class="nav-group" data-navgroup="app-quick"><p class="nav-label">Quick</p>'
+      + '<button class="nav-item" data-action="launch-all"><svg class="icon"><use href="#i-layout-grid"></use></svg><span>Show all tools</span></button></div>';
+  }
+  panel.innerHTML = content + '<div class="nav-group" data-navgroup="app-exit"><p class="nav-label">Exit</p><button class="nav-item" data-action="launch-all"><svg class="icon"><use href="#i-x"></use></svg><span>Show all tools</span></button></div>';
+  if (nav) nav.style.display = 'none';
+  document.body.classList.add('app-mode');
 }
 
 function renderView() {
@@ -11146,9 +11170,14 @@ function renderView() {
       ['--accent','--accent-strong','--accent-bright','--accent-text','--accent-soft','--accent-border'].forEach((v) => document.body.style.removeProperty(v));
     }
   } catch { delete document.body.dataset.app; }
-  // Per-app mode: hide global sidebar so the app's own rail becomes the navigation.
+  // Per-app sidebar identity: position + style varies per app.
   const appMode = !!(_appCfg && _appCfg.group);
   document.body.classList.toggle('app-mode', appMode);
+  if (_appCfg && _appCfg.group) {
+    document.body.dataset.sidebarPos = _appCfg.group === 'documents' ? 'right' : _appCfg.group === 'developer' ? 'top' : 'left';
+  } else {
+    delete document.body.dataset.sidebarPos;
+  }
   // Per-app sidebar swap (opt-in, independent).
   try { if (sidebarSwapOn) syncAppSidebar(_appCfg); else { const p = document.getElementById('app-sidebar-panel'); if (p) p.remove(); const n = document.querySelector('.nav'); if (n) n.style.display = ''; } } catch (e) { /* ignore */ }
   if (state.tool === 'aitools') {
