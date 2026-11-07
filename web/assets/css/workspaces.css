@@ -206,9 +206,15 @@ body[data-app="developer"] #view { background: radial-gradient(ellipse at top le
   .ws-rail-item, .ws-drop { transition: none; }
 }
 
-/* App mode: hide global sidebar, app's own rail becomes navigation */
-body.app-mode .sidebar { display: none; }
-body.app-mode .app { grid-template-columns: minmax(0, 1fr); }
+/* App mode: sidebar position varies per app */
+body.app-mode .sidebar { display: flex; }
+body.app-mode[data-sidebar-pos="left"] .app { grid-template-columns: var(--sidebar-w) minmax(0, 1fr); }
+body.app-mode[data-sidebar-pos="right"] .app { grid-template-columns: minmax(0, 1fr) var(--sidebar-w); }
+body.app-mode[data-sidebar-pos="right"] .sidebar { order: 2; border-left: 1px solid var(--border, rgba(0,0,0,.08)); border-right: 0; }
+body.app-mode[data-sidebar-pos="top"] .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+body.app-mode[data-sidebar-pos="top"] .sidebar { grid-column: 1; grid-row: 1; flex-direction: row; flex-wrap: wrap; max-height: 120px; overflow-y: auto; border-bottom: 1px solid var(--border, rgba(0,0,0,.08)); border-right: 0; }
+body.app-mode[data-sidebar-pos="top"] .sidebar .nav { display: flex; flex-wrap: wrap; gap: 4px; }
+body.app-mode[data-sidebar-pos="top"] .sidebar .nav-group { display: inline-block; min-width: 120px; }
 
 /* Scrollbar styling */
 .ws-premiere-rail::-webkit-scrollbar,
