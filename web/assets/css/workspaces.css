@@ -206,6 +206,85 @@ body[data-app="developer"] #view { background: radial-gradient(ellipse at top le
   .ws-rail-item, .ws-drop { transition: none; }
 }
 
+/* Claude-style AI Lab layout */
+.ws-claude {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+.ws-claude-threads {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: var(--surface-2, rgba(0,0,0,.04));
+  border: 1px solid var(--border, rgba(0,0,0,.08));
+  border-radius: 10px;
+  max-height: calc(100vh - 260px);
+  overflow-y: auto;
+}
+.ws-claude-newchat {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px dashed var(--border, rgba(0,0,0,.15));
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  color: var(--text, inherit);
+  margin-bottom: 6px;
+}
+.ws-claude-newchat:hover { background: var(--accent-soft, rgba(0,0,0,.06)); }
+.ws-claude-thread {
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.ws-claude-thread.is-active { background: var(--accent-soft, rgba(0,0,0,.1)); font-weight: 600; }
+.ws-claude-thread-title { display: block; }
+.ws-claude-thread-meta { font-size: 10px; color: var(--text-3, #888); }
+.ws-claude-chat { min-width: 0; }
+@media (max-width: 900px) {
+  .ws-claude { grid-template-columns: 1fr; }
+  .ws-claude-threads { max-height: none; }
+}
+
+/* Postman-style Developer layout */
+.ws-postman {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr) 240px;
+  gap: 10px;
+  align-items: start;
+}
+.ws-postman-collections {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  background: var(--surface-2, rgba(0,0,0,.04));
+  border: 1px solid var(--border, rgba(0,0,0,.08));
+  border-radius: 10px;
+  max-height: calc(100vh - 260px);
+  overflow-y: auto;
+}
+.ws-postman-request { min-width: 0; }
+.ws-postman-response {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  max-height: calc(100vh - 260px);
+  overflow-y: auto;
+}
+@media (max-width: 900px) {
+  .ws-postman { grid-template-columns: 1fr; }
+  .ws-postman-collections, .ws-postman-response { max-height: none; }
+}
+
 /* Acrobat-style Documents layout */
 .ws-acrobat {
   display: grid;
