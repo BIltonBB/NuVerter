@@ -206,6 +206,25 @@ body[data-app="developer"] #view { background: radial-gradient(ellipse at top le
   .ws-rail-item, .ws-drop { transition: none; }
 }
 
+/* Scrollbar styling */
+.ws-premiere-rail::-webkit-scrollbar,
+.ws-acrobat-files::-webkit-scrollbar,
+.ws-acrobat-ops::-webkit-scrollbar,
+.ws-claude-threads::-webkit-scrollbar,
+.ws-postman-collections::-webkit-scrollbar,
+.ws-postman-response::-webkit-scrollbar {
+  width: 6px;
+}
+.ws-premiere-rail::-webkit-scrollbar-thumb,
+.ws-acrobat-files::-webkit-scrollbar-thumb,
+.ws-acrobat-ops::-webkit-scrollbar-thumb,
+.ws-claude-threads::-webkit-scrollbar-thumb,
+.ws-postman-collections::-webkit-scrollbar-thumb,
+.ws-postman-response::-webkit-scrollbar-thumb {
+  background: var(--border, rgba(0,0,0,.2));
+  border-radius: 3px;
+}
+
 /* Claude-style AI Lab layout */
 .ws-claude {
   display: grid;
@@ -320,21 +339,29 @@ body[data-app="developer"] #view { background: radial-gradient(ellipse at top le
 .ws-premiere-rail {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 8px 6px;
+  gap: 2px;
+  padding: 8px;
   background: var(--surface-2, rgba(0,0,0,.04));
   border: 1px solid var(--border, rgba(0,0,0,.08));
   border-radius: 10px;
   max-height: calc(100vh - 260px);
   overflow-y: auto;
-  align-items: center;
+  align-items: stretch;
 }
+.ws-premiere-rail .ws-rail-title { text-align: left; }
 .ws-rail-icononly {
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  justify-content: center;
+  width: 100%;
+  height: auto;
+  padding: 8px 10px;
+  justify-content: flex-start;
   border-radius: 8px;
+  gap: 8px;
+}
+.ws-rail-icononly .ws-rail-label {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .ws-premiere-stage { min-width: 0; }
 .ws-premiere-inspector {
