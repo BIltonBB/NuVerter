@@ -10774,19 +10774,21 @@ function mediaWorkspace(app) {
         <button class="drop-demo" data-action="load-demo" type="button">try the batch</button>
       </div>
     </div>
-    <section class="area-queue" id="queue-slot"></section>`;
+    <section class="area-queue" id="queue-slot"></section>
+    <div class="ws-panel" style="margin-top:8px">
+      <div class="ws-panel-head"><span class="ws-panel-title">Recent outputs</span><button class="btn btn-ghost btn-sm" data-tool="history">${icon('history')}History</button></div>
+      <div class="ws-panel-body">${mediaResultsHtml()}</div>
+    </div>`;
   const inspector = `
     ${wsPanel({ title: 'Workspace', body: `<p class="muted" style="font-size:12px;margin:0 0 10px">Queue is shared with the Universal Converter. Format, quality and rename templates live in the full converter.</p><button class="btn btn-secondary btn-sm" data-tool="converter" style="width:100%">${icon('sliders-horizontal')}Open full converter</button>` })}
     ${wsPanel({ title: 'Output settings', body: `<p class="muted" style="font-size:12px;margin:0 0 10px">Current format: <strong>${esc(state.converter.format === 'auto' ? 'AUTO' : (FORMATS[state.converter.format]?.label || state.converter.format))}</strong> · ${esc(state.converter.quality)}</p><button class="btn btn-ghost btn-sm" data-tool="converter" style="width:100%">Adjust settings</button>` })}`;
   const shell = wsShell({ layout: 'media', rail, main, inspector });
-  const results = wsPanel({ title: 'Recent outputs', actions: `<button class="btn btn-ghost btn-sm" data-tool="history">${icon('history')}History</button>`, body: mediaResultsHtml() });
   return `
     ${viewHead({ index: 'A1', kicker: 'Media Studio', title: 'Media Studio <span class="accent">workspace.</span>', sub: app.desc, actions: `
       <button class="btn btn-secondary btn-sm" data-action="import-link">${icon('link')}<span>From link</span></button>
       <button class="btn btn-secondary btn-sm" data-action="load-demo">${icon('sparkles')}<span>Load batch</span></button>
       <button class="btn btn-primary btn-sm" data-action="pick-files" data-context="converter">${icon('plus')}<span>Add media</span></button>` })}
-    ${shell}
-    <div class="ws-results">${results}</div>`;
+    ${shell}`;
 }
 function documentsWorkspace(app) {
   const ops = [
@@ -11014,6 +11016,11 @@ function renderView() {
   if (state.tool === 'subtitles') { bindSubtitleOverlay(); bindSubtitleEditorInputs(); }
   $$('input[type="range"]').forEach((input) => setCssPct(input));
   updateEngineUI();
+  const _appCfg = APP_DASHBOARDS[state.tool];
+  if (_appCfg && _appCfg.group && typeof window.applyCategoryFilter === 'function') window.applyCategoryFilter(_appCfg.group);
+  try {
+    document.body.dataset.app = (_appCfg && _appCfg.group) ? _appCfg.group : 'all';
+  } catch { document.body.dataset.app = 'all'; }
   if (state.tool === 'aitools') {
     if (state.aiTools.tab === 'models') refreshAiModelsInfo();
     const keyInput = document.getElementById('aiimg-api-key');
