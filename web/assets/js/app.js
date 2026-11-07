@@ -10960,6 +10960,52 @@ function wsChips(opts) {
   const items = opts.items || [];
   return `<div class="ws-chips">${items.map((it) => `<button type="button" class="ws-chip" ${it.action ? `data-action="${esc(it.action)}"` : ''} ${it.tool ? `data-tool="${esc(it.tool)}"` : ''}>${it.icon ? icon(it.icon) : ''}<span>${esc(it.label || '')}</span></button>`).join('')}</div>`;
 }
+function syncAppSidebar(appCfg) {
+  const scroll = document.getElementById('sidebar-scroll');
+  const nav = scroll ? scroll.querySelector('.nav') : null;
+  if (!scroll) return;
+  let panel = document.getElementById('app-sidebar-panel');
+  if (appCfg && appCfg.group) {
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'app-sidebar-panel';
+      panel.className = 'app-sidebar-panel';
+      if (nav) nav.parentNode.insertBefore(panel, nav);
+      else scroll.appendChild(panel);
+    }
+    // Build app-focused sidebar content
+    const tools = (appCfg.tools || []).map((t) => {
+      const tool = TOOLS[t];
+      if (!tool) return '';
+      return `<button class="nav-item" data-tool="${t}">
+        <svg class="icon"><use href="#i-${tool.icon || 'circle'}"></use></svg>
+        <span>${esc(tool.label)}</span>
+        <span class="nav-index">${tool.index || ''}</span>
+      </button>`;
+    }).join('');
+    panel.innerHTML = `
+      <div class="nav-group" data-navgroup="app">
+        <p class="nav-label">${esc(appCfg.title)} <span class="nav-group-chev">·</span></p>
+        <button class="nav-item" data-action="launch-open" style="margin-bottom:6px">
+          <svg class="icon"><use href="#i-layout-grid"></use></svg>
+          <span>All tools</span>
+        </button>
+        ${tools}
+      </div>
+      <div class="nav-group" data-navgroup="app-quick">
+        <p class="nav-label">Quick actions <span class="nav-group-chev">·</span></p>
+        <button class="nav-item" data-action="launch-all">
+          <svg class="icon"><use href="#i-layout-grid"></use></svg>
+          <span>Show all tools</span>
+        </button>
+      </div>`;
+    if (nav) nav.style.display = 'none';
+  } else {
+    if (panel) panel.remove();
+    if (nav) nav.style.display = '';
+  }
+}
+
 function renderView() {
   const view = $('#view');
   if (!view) return;
@@ -11021,6 +11067,8 @@ function renderView() {
   try {
     document.body.dataset.app = (_appCfg && _appCfg.group) ? _appCfg.group : 'all';
   } catch { document.body.dataset.app = 'all'; }
+  // Per-app sidebar swap (cool stuff): replace global nav with an app-focused panel.
+  try { syncAppSidebar(_appCfg); } catch (e) { /* ignore */ }
   if (state.tool === 'aitools') {
     if (state.aiTools.tab === 'models') refreshAiModelsInfo();
     const keyInput = document.getElementById('aiimg-api-key');
