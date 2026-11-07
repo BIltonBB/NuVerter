@@ -11146,7 +11146,10 @@ function renderView() {
       ['--accent','--accent-strong','--accent-bright','--accent-text','--accent-soft','--accent-border'].forEach((v) => document.body.style.removeProperty(v));
     }
   } catch { delete document.body.dataset.app; }
-  // Per-app sidebar swap (opt-in).
+  // Per-app mode: hide global sidebar so the app's own rail becomes the navigation.
+  const appMode = !!(_appCfg && _appCfg.group);
+  document.body.classList.toggle('app-mode', appMode);
+  // Per-app sidebar swap (opt-in, independent).
   try { if (sidebarSwapOn) syncAppSidebar(_appCfg); else { const p = document.getElementById('app-sidebar-panel'); if (p) p.remove(); const n = document.querySelector('.nav'); if (n) n.style.display = ''; } } catch (e) { /* ignore */ }
   if (state.tool === 'aitools') {
     if (state.aiTools.tab === 'models') refreshAiModelsInfo();
