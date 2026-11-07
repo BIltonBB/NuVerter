@@ -1,11 +1,11 @@
 ﻿{
-    "version":  "1.1.24",
-    "notes":  "NuVerter 1.1.24: native updater endpoint fixed, UI improvements, bug fixes.",
-    "pub_date":  "2026-11-07T09:26:06Z",
+    "version":  "1.1.25",
+    "notes":  "NuVerter 1.1.25: native updater endpoint fixed, UI improvements, bug fixes.",
+    "pub_date":  "2026-11-07T09:53:20Z",
     "platforms":  {
                       "windows-x86_64":  {
-                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdkp1VW5uZS9EVG9KRUdxSTgyb2ZWamFodUFsVitqYTB4M3M1dk5uTmVEM1d6MWxqUHZoR2tHaHBXR3RkOW5KdTNnc2JsVmg3MGoyUndXdjNOT21UWU91dEx1amtaekFVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MDQzNTYxCWZpbGU6bnNpcy1vdXRwdXQuZXhlCXZlcnNpb246MS4xLjI0CnBENVo1NitWYVFpYnVzVDh4cVlLL3VrVDZvVVczUXY4amZjeE0wVFNjZHgwQWVqUkJuaU5oTUFEcnNYdGRtaGVPS3p0eUZLYTQ3dkhNRmlnOUdhY0RnPT0K",
-                                             "url":  "https://github.com/BIltonBB/NuVerter/releases/download/v1.1.24/NuVerter_1.1.24_x64-setup.exe"
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdkp1VW5uZS9EVGd5NDhweUcyNlRFMkIwaUVPVy9vR2lQbEpBNldDSU9EQXBuSE15Q3V3WWIzZzlEOUNxM2hmWldKblBmem43RCtaak1IMVpVSHR5RFp3UWI0K3IzSEFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MDQ1MTk0CWZpbGU6bnNpcy1vdXRwdXQuZXhlCXZlcnNpb246MS4xLjI1CjY1MHhucVJpSWROMVc2ZVF0c00yUmRFbTc1VzBwcXBQWGJxNGtWTzV5Y09uK3R4SkUwUEh3bFF2ZER2bXlHUTFRRlNoZHJUNm1HbWNOcGpjZmNLN0F3PT0K",
+                                             "url":  "https://github.com/BIltonBB/NuVerter/releases/download/v1.1.25/NuVerter_1.1.25_x64-setup.exe"
                                          }
                   }
 }
