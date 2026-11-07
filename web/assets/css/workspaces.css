@@ -206,6 +206,10 @@ body[data-app="developer"] #view { background: radial-gradient(ellipse at top le
   .ws-rail-item, .ws-drop { transition: none; }
 }
 
+/* App mode: hide global sidebar, app's own rail becomes navigation */
+body.app-mode .sidebar { display: none; }
+body.app-mode .app { grid-template-columns: minmax(0, 1fr); }
+
 /* Scrollbar styling */
 .ws-premiere-rail::-webkit-scrollbar,
 .ws-acrobat-files::-webkit-scrollbar,
