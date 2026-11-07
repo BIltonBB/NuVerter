@@ -517,14 +517,20 @@ const state = {
     target: '9:16', smart: true, manualX: 50,
     cropX: 0, cropW: 0, cropH: 0,
     settings: { format: 'mp4', quality: 'balanced', keepAudio: true }
+  },
+  appUi: {
+    media: { pane: 'queue', selectedId: null, showInspector: true, filter: 'all' },
+    docs: { fileId: null, op: 'merge', page: 1 },
+    ai: { threadId: null, scope: 'general', attach: [] },
+    dev: { op: 'json', input: '', output: '', history: [] }
   }
 };
 
 const APP_DASHBOARDS = {
-  mediaapp: { title: 'Media Studio', desc: 'Convert, compress, crop, edit, record and extract — all on this device.', tools: ['converter','compressor','cropper','extractor','gif','recorder','subtitles','imageditor','videoeditor','reframe','workflow','audiotools'], accent: 'film' },
-  docsapp: { title: 'Documents', desc: 'PDF tools, OCR and document helpers.', tools: ['pdftools'], accent: 'file' },
-  aiapp: { title: 'AI Lab', desc: 'AI image, chat, background removal, upscale and embeddings.', tools: ['aitools','aichat'], accent: 'sparkles' },
-  devapp: { title: 'Developer Tools', desc: 'Dev tools, utilities and practical helpers.', tools: ['devtools','utilities','practical'], accent: 'command' }
+  mediaapp: { id: 'mediaapp', title: 'Media Studio', desc: 'Convert, compress, crop, edit, record and extract — all on this device.', tools: ['converter','compressor','cropper','extractor','gif','recorder','subtitles','imageditor','videoeditor','reframe','workflow','audiotools'], accent: 'film', layout: 'media', group: 'media', defaultTool: 'converter', icon: 'film', index: 'A1' },
+  docsapp: { id: 'docsapp', title: 'Documents', desc: 'PDF tools, OCR and document helpers.', tools: ['pdftools'], accent: 'file', layout: 'documents', group: 'documents', defaultTool: 'pdftools', icon: 'file', index: 'A2' },
+  aiapp: { id: 'aiapp', title: 'AI Lab', desc: 'AI image, chat, background removal, upscale and embeddings.', tools: ['aitools','aichat'], accent: 'sparkles', layout: 'ai', group: 'ai', defaultTool: 'aichat', icon: 'sparkles', index: 'A3' },
+  devapp: { id: 'devapp', title: 'Developer Tools', desc: 'Dev tools, utilities and practical helpers.', tools: ['devtools','utilities','practical'], accent: 'command', layout: 'developer', group: 'developer', defaultTool: 'devtools', icon: 'command', index: 'A4' }
 };
 const TOOLS = {
   converter: { label: 'Universal Converter', icon: 'repeat', index: '01' },
@@ -586,6 +592,18 @@ function loadLocalState() {
     if (state.converter.format !== 'auto' && !FORMAT_GROUPS.some((g) => g.keys.includes(state.converter.format))) state.converter.format = 'auto';
     if (!['basics', 'advanced'].includes(state.converter.tab)) state.converter.tab = 'basics';
     if (!QUALITY[state.converter.quality]) state.converter.quality = 'balanced';
+    // app UI state (corruption-tolerant merge)
+    try {
+      const savedAppUi = JSON.parse(localStorage.getItem('NuVerter-appui') || '{}');
+      if (savedAppUi && typeof savedAppUi === 'object') {
+        state.appUi = {
+          media: { ...state.appUi.media, ...(savedAppUi.media || {}) },
+          docs: { ...state.appUi.docs, ...(savedAppUi.docs || {}) },
+          ai: { ...state.appUi.ai, ...(savedAppUi.ai || {}) },
+          dev: { ...state.appUi.dev, ...(savedAppUi.dev || {}) }
+        };
+      }
+    } catch {}
   } catch {
     /* private mode / corrupted storage */
   }
@@ -594,6 +612,18 @@ function loadLocalState() {
 function saveConverter() {
   try {
     localStorage.setItem('NuVerter-converter', JSON.stringify(state.converter));
+  } catch {}
+}
+function saveAppUi() {
+  try {
+    // Persist lightweight UI state only; never file blobs/inputs that may contain secrets.
+    const payload = {
+      media: { pane: state.appUi.media.pane, showInspector: state.appUi.media.showInspector, filter: state.appUi.media.filter },
+      docs: { op: state.appUi.docs.op, page: state.appUi.docs.page },
+      ai: { scope: state.appUi.ai.scope },
+      dev: { op: state.appUi.dev.op, history: (state.appUi.dev.history || []).slice(-20) }
+    };
+    localStorage.setItem('NuVerter-appui', JSON.stringify(payload));
   } catch {}
 }
 async function restorePersistedSubtitleFile() {
@@ -10705,6 +10735,229 @@ function appDashboardView(key) {
     ${viewHead({ index: cfg.index || '00', kicker: cfg.title, title: cfg.title + ' <span class="accent">workspace.</span>', sub: cfg.desc })}
     <div class="launch-grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">${cards}</div>`;
 }
+
+// Phase 1: app workspace dispatch. Specialized layouts land in Phases 2-5;
+// until then every app falls back to the classic dashboard grid (no regression).
+function mediaResultsHtml() {
+  const mediaTools = new Set(['converter','compressor','cropper','extractor','gif','recorder','subtitles','imageditor','videoeditor','reframe','workflow','audiotools']);
+  const recs = (state.history || []).filter((r) => mediaTools.has(r.tool)).slice(0, 8);
+  if (!recs.length) return wsEmpty({ icon: 'inbox', title: 'No outputs yet', copy: 'Converted files appear here as soon as a batch finishes.' });
+  return recs.map((r) => wsResult({ record: r })).join('');
+}
+function mediaWorkspace(app) {
+  const tools = (app.tools || []).map((t) => {
+    const tool = TOOLS[t];
+    if (!tool) return '';
+    return wsRailItem({ tool: t, icon: tool.icon || 'circle', label: tool.label });
+  }).join('');
+  const quick = [
+    { label: 'Compress video', tool: 'compressor', sub: 'Shrink MP4/MKV with quality control' },
+    { label: 'Make GIF', tool: 'gif', sub: 'Turn a clip into an animated GIF' },
+    { label: 'Extract audio', tool: 'extractor', sub: 'Pull MP3/WAV from video' }
+  ];
+  const rail = `
+    <div class="ws-rail-title">Media tools</div>
+    ${tools}
+    <div class="ws-rail-title" style="margin-top:8px">Quick starts</div>
+    <div class="ws-quickstarts">
+      ${quick.map((q) => `<button type="button" class="ws-quickstart" data-tool="${q.tool}"><strong>${esc(q.label)}</strong><span>${esc(q.sub)}</span></button>`).join('')}
+    </div>`;
+  const main = `
+    <div class="ws-drop" data-action="pick-files" data-context="converter" data-drop="converter" role="button" tabindex="0" aria-label="Add media files">
+      <span class="drop-ico">${icon('cloud-upload')}</span>
+      <div class="drop-copy">
+        <div class="ws-drop-title">Drop media here</div>
+        <div class="ws-drop-sub">Videos, audio and images — processed locally in your browser</div>
+      </div>
+      <div class="drop-foot">
+        <span class="drop-browse">${icon('folder-open')}Browse files</span>
+        <button class="drop-demo" data-action="load-demo" type="button">try the batch</button>
+      </div>
+    </div>
+    <section class="area-queue" id="queue-slot"></section>`;
+  const inspector = `
+    ${wsPanel({ title: 'Workspace', body: `<p class="muted" style="font-size:12px;margin:0 0 10px">Queue is shared with the Universal Converter. Format, quality and rename templates live in the full converter.</p><button class="btn btn-secondary btn-sm" data-tool="converter" style="width:100%">${icon('sliders-horizontal')}Open full converter</button>` })}
+    ${wsPanel({ title: 'Output settings', body: `<p class="muted" style="font-size:12px;margin:0 0 10px">Current format: <strong>${esc(state.converter.format === 'auto' ? 'AUTO' : (FORMATS[state.converter.format]?.label || state.converter.format))}</strong> · ${esc(state.converter.quality)}</p><button class="btn btn-ghost btn-sm" data-tool="converter" style="width:100%">Adjust settings</button>` })}`;
+  const shell = wsShell({ layout: 'media', rail, main, inspector });
+  const results = wsPanel({ title: 'Recent outputs', actions: `<button class="btn btn-ghost btn-sm" data-tool="history">${icon('history')}History</button>`, body: mediaResultsHtml() });
+  return `
+    ${viewHead({ index: 'A1', kicker: 'Media Studio', title: 'Media Studio <span class="accent">workspace.</span>', sub: app.desc, actions: `
+      <button class="btn btn-secondary btn-sm" data-action="import-link">${icon('link')}<span>From link</span></button>
+      <button class="btn btn-secondary btn-sm" data-action="load-demo">${icon('sparkles')}<span>Load batch</span></button>
+      <button class="btn btn-primary btn-sm" data-action="pick-files" data-context="converter">${icon('plus')}<span>Add media</span></button>` })}
+    ${shell}
+    <div class="ws-results">${results}</div>`;
+}
+function documentsWorkspace(app) {
+  const ops = [
+    { id: 'merge', label: 'Merge PDFs' },
+    { id: 'split', label: 'Split PDF' },
+    { id: 'img2pdf', label: 'Images → PDF' },
+    { id: 'pdf2img', label: 'PDF → Images' },
+    { id: 'redact', label: 'Redact' }
+  ];
+  const rail = `
+    <div class="ws-rail-title">Operations</div>
+    ${ops.map((o) => `<button type="button" class="ws-rail-item" data-action="docs-op" data-op="${o.id}">${icon('file', 'ws-rail-icon')}<span>${esc(o.label)}</span></button>`).join('')}
+    <div class="ws-rail-title" style="margin-top:8px">Quick starts</div>
+    <div class="ws-quickstarts">
+      <button type="button" class="ws-quickstart" data-action="docs-op" data-op="merge"><strong>Merge PDFs</strong><span>Combine multiple PDFs into one</span></button>
+      <button type="button" class="ws-quickstart" data-action="docs-op" data-op="redact"><strong>OCR / redact</strong><span>Open PDF tools for OCR or redaction</span></button>
+    </div>
+    <div class="ws-rail-title" style="margin-top:8px">Utilities</div>
+    <button type="button" class="ws-rail-item" data-tool="utilities" data-utab="ocr">${icon('scan-line', 'ws-rail-icon')}<span>OCR</span></button>`;
+  const main = `<div class="ws-embed">${pdfToolsView()}</div>`;
+  const pdfRecs = (state.history || []).filter((r) => r.tool === 'pdftools').slice(0, 6);
+  const results = pdfRecs.length ? pdfRecs.map((r) => wsResult({ record: r })).join('') : wsEmpty({ icon: 'file', title: 'No outputs yet', copy: 'PDF results appear here after an operation.' });
+  const inspector = wsPanel({ title: 'Output', body: `<p class="muted" style="font-size:12px;margin:0 0 10px">Run an operation in the center panel. Results download directly and are listed below.</p>${results}` });
+  const shell = wsShell({ layout: 'docs', rail, main, inspector });
+  return `
+    ${viewHead({ index: 'A2', kicker: 'Documents', title: 'Documents <span class="accent">desk.</span>', sub: app.desc, actions: `<button class="btn btn-primary btn-sm" data-tool="pdftools">${icon('plus')}<span>Open PDF tools</span></button>` })}
+    ${shell}`;
+}
+function aiWorkspace(app) {
+  const tools = [
+    { id: 'aichat', label: 'AI Chat', tab: null, icon: 'cpu' },
+    { id: 'aitools', label: 'AI Image', tab: 'aiimg', icon: 'sparkles' },
+    { id: 'aitools', label: 'Background removal', tab: 'aibg', icon: 'sparkles' },
+    { id: 'aitools', label: 'Upscale', tab: 'aiup', icon: 'sparkles' },
+    { id: 'aitools', label: 'OCR', tab: 'ocr', icon: 'scan-line' },
+    { id: 'aitools', label: 'TTS', tab: 'tts', icon: 'volume-2' },
+    { id: 'aitools', label: 'Embeddings', tab: 'emb', icon: 'hash' },
+    { id: 'aitools', label: 'Doc search', tab: 'docs', icon: 'search' },
+    { id: 'aitools', label: 'Doc Q&A', tab: 'docqa', icon: 'command' }
+  ];
+  const rail = `
+    <div class="ws-rail-title">AI tools</div>
+    ${tools.map((t) => {
+      const extra = t.tab ? ` data-aitab="${t.tab}"` : '';
+      return `<button type="button" class="ws-rail-item" data-tool="${t.id}"${extra}>${icon(t.icon, 'ws-rail-icon')}<span>${esc(t.label)}</span></button>`;
+    }).join('')}
+    <div class="ws-rail-title" style="margin-top:8px">Context</div>
+    <div class="ws-chips">
+      <button type="button" class="ws-chip" data-action="ai-chat-attach-image">${icon('image')}<span>Image</span></button>
+      <button type="button" class="ws-chip" data-action="ai-chat-attach-file">${icon('file')}<span>Document</span></button>
+    </div>`;
+  const main = `<div class="ws-embed">${aiChatView()}</div>`;
+  const shell = wsShell({ layout: 'ai', rail, main });
+  return `
+    ${viewHead({ index: 'A3', kicker: 'AI Lab', title: 'AI Lab <span class="accent">assistant.</span>', sub: app.desc, actions: `<button class="btn btn-secondary btn-sm" data-tool="aitools">${icon('sparkles')}<span>AI tools</span></button>` })}
+    ${shell}`;
+}
+function developerWorkspace(app) {
+  const devOps = [
+    { id: 'json', label: 'JSON' },
+    { id: 'base64', label: 'Base64' },
+    { id: 'regex', label: 'Regex' },
+    { id: 'pii', label: 'PII scrub' },
+    { id: 'mock', label: 'Mock data' },
+    { id: 'wc', label: 'WebCodecs' },
+    { id: 'clip', label: 'Clipboard' }
+  ];
+  const rail = `
+    <div class="ws-rail-title">Operations</div>
+    ${devOps.map((o) => `<button type="button" class="ws-rail-item" data-tool="devtools" data-devtab="${o.id}">${icon('command', 'ws-rail-icon')}<span>${esc(o.label)}</span></button>`).join('')}
+    <div class="ws-rail-title" style="margin-top:8px">More</div>
+    <button type="button" class="ws-rail-item" data-tool="utilities">${icon('settings', 'ws-rail-icon')}<span>Utilities</span></button>
+    <button type="button" class="ws-rail-item" data-tool="practical">${icon('settings', 'ws-rail-icon')}<span>Practical</span></button>`;
+  const main = `<div class="ws-embed">${devToolsView()}</div>`;
+  const devRecs = (state.history || []).filter((r) => r.tool === 'devtools' || r.tool === 'utilities' || r.tool === 'practical').slice(0, 6);
+  const results = devRecs.length ? devRecs.map((r) => wsResult({ record: r })).join('') : wsEmpty({ icon: 'command', title: 'No outputs yet', copy: 'Developer tool results appear here.' });
+  const inspector = wsPanel({ title: 'Output', body: `<p class="muted" style="font-size:12px;margin:0 0 10px">Run an operation in the center panel. Copy/download actions stay in the tool view.</p>${results}` });
+  const shell = wsShell({ layout: 'dev', rail, main, inspector });
+  return `
+    ${viewHead({ index: 'A4', kicker: 'Developer Tools', title: 'Developer <span class="accent">console.</span>', sub: app.desc, actions: `<button class="btn btn-primary btn-sm" data-tool="devtools">${icon('command')}<span>Open dev tools</span></button>` })}
+    ${shell}`;
+}
+function appView(key) {
+  const app = APP_DASHBOARDS[key];
+  if (!app) return appDashboardView(key);
+  switch (app.layout) {
+    case 'media': return mediaWorkspace(app);
+    case 'documents': return documentsWorkspace(app);
+    case 'ai': return aiWorkspace(app);
+    case 'developer': return developerWorkspace(app);
+    default:
+      return appDashboardView(key);
+  }
+}
+
+// Shared workspace primitives (Phase 1). Built once, consumed by Phases 2-5.
+function wsShell(opts) {
+  opts = opts || {};
+  const rail = opts.rail || '';
+  const main = opts.main || '';
+  const inspector = opts.inspector || '';
+  const status = opts.status || '';
+  const layout = opts.layout || 'media';
+  return `<div class="ws-shell ws-${esc(layout)}">
+    ${rail ? `<aside class="ws-rail">${rail}</aside>` : ''}
+    <section class="ws-main">${main}</section>
+    ${inspector ? `<aside class="ws-inspector">${inspector}</aside>` : ''}
+    ${status ? `<div class="ws-status">${status}</div>` : ''}
+  </div>`;
+}
+function wsPanel(opts) {
+  opts = opts || {};
+  const title = opts.title || '';
+  const actions = opts.actions || '';
+  const body = opts.body || '';
+  return `<div class="ws-panel">
+    ${(title || actions) ? `<div class="ws-panel-head">${title ? `<span class="ws-panel-title">${title}</span>` : ''}${actions ? `<div class="ws-panel-actions">${actions}</div>` : ''}</div>` : ''}
+    <div class="ws-panel-body">${body}</div>
+  </div>`;
+}
+function wsEmpty(opts) {
+  opts = opts || {};
+  const ico = opts.icon || 'inbox';
+  const title = opts.title || 'Nothing here yet';
+  const copy = opts.copy || '';
+  const primary = opts.primary || '';
+  const secondary = opts.secondary || '';
+  return `<div class="ws-empty">
+    <span class="ws-empty-ico">${icon(ico)}</span>
+    <strong>${esc(title)}</strong>
+    ${copy ? `<p>${esc(copy)}</p>` : ''}
+    ${primary || secondary ? `<div class="ws-empty-actions">${primary}${secondary}</div>` : ''}
+  </div>`;
+}
+function wsRailItem(opts) {
+  opts = opts || {};
+  const tool = opts.tool || '';
+  const ico = opts.icon || 'circle';
+  const label = opts.label || '';
+  const active = !!opts.active;
+  const extra = opts.extra || '';
+  const attrs = opts.attrs || '';
+  return `<button type="button" class="ws-rail-item${active ? ' is-active' : ''}" ${tool ? `data-tool="${esc(tool)}"` : ''} ${extra} ${attrs}>${icon(ico, 'ws-rail-icon')}<span>${esc(label)}</span></button>`;
+}
+function wsStatusBar(opts) {
+  opts = opts || {};
+  const left = opts.left || '';
+  const right = opts.right || '';
+  return `<div class="ws-statusbar"><span class="ws-status-left">${left}</span><span class="ws-status-right">${right}</span></div>`;
+}
+function wsResult(opts) {
+  opts = opts || {};
+  const r = opts.record || {};
+  const name = r.name || 'output';
+  const size = r.size ? formatBytes(r.size) : '';
+  const when = r.createdAt ? timeAgo(r.createdAt) : '';
+  const url = r.url || '#';
+  return `<div class="ws-result-row">
+    <span class="file-ico">${icon('file')}</span>
+    <div style="min-width:0;flex:1">
+      <div class="ws-result-name">${esc(name)}</div>
+      <div class="ws-result-meta">${esc(r.tool || '')}${size ? ' · ' + esc(size) : ''}${when ? ' · ' + esc(when) : ''}</div>
+    </div>
+    <a class="btn btn-ghost btn-sm" href="${esc(url)}" download="${esc(name)}">${icon('download')}</a>
+  </div>`;
+}
+function wsChips(opts) {
+  opts = opts || {};
+  const items = opts.items || [];
+  return `<div class="ws-chips">${items.map((it) => `<button type="button" class="ws-chip" ${it.action ? `data-action="${esc(it.action)}"` : ''} ${it.tool ? `data-tool="${esc(it.tool)}"` : ''}>${it.icon ? icon(it.icon) : ''}<span>${esc(it.label || '')}</span></button>`).join('')}</div>`;
+}
 function renderView() {
   const view = $('#view');
   if (!view) return;
@@ -10712,10 +10965,10 @@ function renderView() {
   if (state.tool === 'audiotools') state.utilities.tab = state.utilities.tab || 'audioclean';
   if (state.tool === 'practical') state.utilities.tab = state.utilities.tab || 'textimage';
   let html = '';
-  if (state.tool === 'mediaapp') html = appDashboardView('mediaapp');
-  else if (state.tool === 'docsapp') html = appDashboardView('docsapp');
-  else if (state.tool === 'aiapp') html = appDashboardView('aiapp');
-  else if (state.tool === 'devapp') html = appDashboardView('devapp');
+  if (state.tool === 'mediaapp') html = appView('mediaapp');
+  else if (state.tool === 'docsapp') html = appView('docsapp');
+  else if (state.tool === 'aiapp') html = appView('aiapp');
+  else if (state.tool === 'devapp') html = appView('devapp');
   else if (state.tool === 'converter') html = converterView();
   else if (state.tool === 'compressor') html = compressorView();
   else if (state.tool === 'cropper') html = cropperView();
@@ -14518,6 +14771,10 @@ function handleClick(event) {
     }
     if (action === 'launch-all') {
       applyCategoryFilter(null);
+      // Restore classic unified UI: leave any app workspace for the converter landing.
+      if (state.tool === 'mediaapp' || state.tool === 'docsapp' || state.tool === 'aiapp' || state.tool === 'devapp') {
+        setTool('converter');
+      }
       window.closeLaunchOverlay?.(true);
       return;
     }
@@ -14533,6 +14790,12 @@ function handleClick(event) {
     const targetTool = toolEl.dataset.tool;
     if (targetTool === 'utilities' && toolEl.dataset.utab) {
       state.utilities.tab = toolEl.dataset.utab;
+    }
+    if (targetTool === 'aitools' && toolEl.dataset.aitab) {
+      state.aiTools.tab = toolEl.dataset.aitab;
+    }
+    if (targetTool === 'devtools' && toolEl.dataset.devtab) {
+      state.devTools.tab = toolEl.dataset.devtab;
     }
     // If we're already on the target tool (e.g. switching utility sub-tools
     // via nav search / nav shortcuts), setTool() would early-return without
