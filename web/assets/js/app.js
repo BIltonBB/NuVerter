@@ -10841,7 +10841,6 @@ function documentsWorkspace(app) {
 
 function aiWorkspace(app) {
   const tools = [
-    { id: 'aichat', label: 'Chat', tab: null, icon: 'cpu' },
     { id: 'aitools', label: 'Image', tab: 'aiimg', icon: 'sparkles' },
     { id: 'aitools', label: 'BG remove', tab: 'aibg', icon: 'sparkles' },
     { id: 'aitools', label: 'Upscale', tab: 'aiup', icon: 'sparkles' },
@@ -10858,32 +10857,35 @@ function aiWorkspace(app) {
   const contextChips = `
     <button type="button" class="ws-chip" data-action="ai-chat-attach-image">${icon('image')}<span>Image</span></button>
     <button type="button" class="ws-chip" data-action="ai-chat-attach-file">${icon('file')}<span>Document</span></button>`;
-  const main = `
-    <div class="ws-panel" style="margin-bottom:8px">
-      <div class="ws-panel-head"><span class="ws-panel-title">Tools</span></div>
-      <div class="ws-panel-body"><div class="ws-chips">${topChips}</div></div>
-    </div>
-    <div class="ws-panel" style="margin-bottom:8px">
-      <div class="ws-panel-head"><span class="ws-panel-title">Starter prompts</span></div>
-      <div class="ws-panel-body">
-        ${wsChips({ items: [
-          { label: 'Summarize a document', icon: 'file', action: 'ai-chat-starter', prompt: 'Summarize the attached document in 5 bullet points.' },
-          { label: 'Explain this code', icon: 'command', action: 'ai-chat-starter', prompt: 'Explain the following code step by step.' },
-          { label: 'Write a story', icon: 'sparkles', action: 'ai-chat-starter', prompt: 'Write a short creative story about a robot learning to paint.' },
-          { label: 'Translate to Spanish', icon: 'globe', action: 'ai-chat-starter', prompt: 'Translate the following text to Spanish.' }
-        ] })}
-      </div>
-    </div>
-    <div class="ws-panel" style="margin-bottom:8px">
-      <div class="ws-panel-head"><span class="ws-panel-title">Context</span></div>
-      <div class="ws-panel-body"><div class="ws-chips">${contextChips}</div></div>
-    </div>
-    <div class="ws-embed">${aiChatView()}</div>`;
-  // AI lab: chat-first, single column, no side rail.
+  // Claude-style: left thread rail, center chat, bottom composer (composer is inside aiChatView).
   return `
     ${viewHead({ index: 'A3', kicker: 'AI Lab', title: 'AI Lab <span class="accent">assistant.</span>', sub: app.desc, actions: `<button class="btn btn-secondary btn-sm" data-tool="aitools">${icon('sparkles')}<span>AI tools</span></button>` })}
-    <div class="ws-shell ws-ai" style="grid-template-columns:1fr">
-      <section class="ws-main">${main}</section>
+    <div class="ws-claude">
+      <aside class="ws-claude-threads">
+        <button type="button" class="ws-claude-newchat">+ New chat</button>
+        <div class="ws-claude-thread is-active">
+          <span class="ws-claude-thread-title">Current conversation</span>
+          <span class="ws-claude-thread-meta">${(state.aiChat?.messages || []).length} messages</span>
+        </div>
+        <div class="ws-rail-title" style="margin-top:10px">Tools</div>
+        <div class="ws-chips" style="padding:0 8px">${topChips}</div>
+        <div class="ws-rail-title" style="margin-top:10px">Context</div>
+        <div class="ws-chips" style="padding:0 8px">${contextChips}</div>
+      </aside>
+      <section class="ws-claude-chat">
+        <div class="ws-panel" style="margin-bottom:8px">
+          <div class="ws-panel-head"><span class="ws-panel-title">Starter prompts</span></div>
+          <div class="ws-panel-body">
+            ${wsChips({ items: [
+              { label: 'Summarize a document', icon: 'file', action: 'ai-chat-starter', prompt: 'Summarize the attached document in 5 bullet points.' },
+              { label: 'Explain this code', icon: 'command', action: 'ai-chat-starter', prompt: 'Explain the following code step by step.' },
+              { label: 'Write a story', icon: 'sparkles', action: 'ai-chat-starter', prompt: 'Write a short creative story about a robot learning to paint.' },
+              { label: 'Translate to Spanish', icon: 'globe', action: 'ai-chat-starter', prompt: 'Translate the following text to Spanish.' }
+            ] })}
+          </div>
+        </div>
+        <div class="ws-embed">${aiChatView()}</div>
+      </section>
     </div>`;
 }
 function developerWorkspace(app) {
@@ -10896,26 +10898,33 @@ function developerWorkspace(app) {
     { id: 'wc', label: 'WebCodecs' },
     { id: 'clip', label: 'Clipboard' }
   ];
-  const opChips = devOps.map((o) => `<button type="button" class="ws-chip" data-tool="devtools" data-devtab="${o.id}">${icon('command')}<span>${esc(o.label)}</span></button>`).join('')
-    + `<button type="button" class="ws-chip" data-tool="utilities">${icon('settings')}<span>Utilities</span></button>`
-    + `<button type="button" class="ws-chip" data-tool="practical">${icon('settings')}<span>Practical</span></button>`;
+  // Postman-style: left collections (ops), center request (input), right response (output).
+  const opsRail = `
+    <div class="ws-rail-title">Operations</div>
+    ${devOps.map((o) => `<button type="button" class="ws-rail-item" data-tool="devtools" data-devtab="${o.id}">${icon('command', 'ws-rail-icon')}<span>${esc(o.label)}</span></button>`).join('')}
+    <div class="ws-rail-title" style="margin-top:8px">More</div>
+    <button type="button" class="ws-rail-item" data-tool="utilities">${icon('settings', 'ws-rail-icon')}<span>Utilities</span></button>
+    <button type="button" class="ws-rail-item" data-tool="practical">${icon('settings', 'ws-rail-icon')}<span>Practical</span></button>`;
   const devRecs = (state.history || []).filter((r) => r.tool === 'devtools' || r.tool === 'utilities' || r.tool === 'practical').slice(0, 6);
   const results = devRecs.length ? devRecs.map((r) => wsResult({ record: r })).join('') : wsEmpty({ icon: 'command', title: 'No outputs yet', copy: 'Developer tool results appear here.' });
-  // Developer: console layout — ops as top chip bar, then input/output split.
   return `
-    ${viewHead({ index: 'A4', kicker: 'Developer Tools', title: 'Developer <span class="accent">console.</span>', sub: app.desc, actions: `<button class="btn btn-primary btn-sm" data-tool="devtools">${icon('command')}<span>Open dev tools</span></button>` })}
-    <div class="ws-shell ws-dev" style="grid-template-columns:1fr">
-      <section class="ws-main">
+    ${viewHead({ index: 'A4', kicker: 'Developer Tools', title: 'Developer <span class="accent">console.</span>', sub: app.desc, actions: `<button class="btn btn-primary btn-sm" data-tool="devtools">${icon('command')}<span>Run</span></button>` })}
+    <div class="ws-postman">
+      <aside class="ws-postman-collections">
+        ${opsRail}
+      </aside>
+      <section class="ws-postman-request">
         <div class="ws-panel" style="margin-bottom:8px">
-          <div class="ws-panel-head"><span class="ws-panel-title">Operations</span></div>
-          <div class="ws-panel-body"><div class="ws-chips">${opChips}</div></div>
+          <div class="ws-panel-head"><span class="ws-panel-title">Input</span></div>
+          <div class="ws-panel-body"><div class="ws-embed">${devToolsView()}</div></div>
         </div>
-        <div class="ws-embed">${devToolsView()}</div>
       </section>
-    </div>
-    <div class="ws-panel" style="margin-top:8px">
-      <div class="ws-panel-head"><span class="ws-panel-title">Recent output</span></div>
-      <div class="ws-panel-body">${results}</div>
+      <aside class="ws-postman-response">
+        <div class="ws-panel">
+          <div class="ws-panel-head"><span class="ws-panel-title">Recent output</span></div>
+          <div class="ws-panel-body">${results}</div>
+        </div>
+      </aside>
     </div>`;
 }
 function appView(key) {
