@@ -205,3 +205,73 @@ body[data-app="developer"] #view { background: radial-gradient(ellipse at top le
 @media (prefers-reduced-motion: reduce) {
   .ws-rail-item, .ws-drop { transition: none; }
 }
+
+/* Premiere-style Media Studio layout */
+.ws-premiere {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) 280px;
+  gap: 10px;
+  align-items: start;
+}
+.ws-premiere-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 6px;
+  background: var(--surface-2, rgba(0,0,0,.04));
+  border: 1px solid var(--border, rgba(0,0,0,.08));
+  border-radius: 10px;
+  max-height: calc(100vh - 260px);
+  overflow-y: auto;
+  align-items: center;
+}
+.ws-rail-icononly {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 8px;
+}
+.ws-premiere-stage { min-width: 0; }
+.ws-premiere-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  max-height: calc(100vh - 260px);
+  overflow-y: auto;
+}
+.ws-premiere-timeline {
+  margin-top: 10px;
+  padding: 10px;
+  background: var(--surface-2, rgba(0,0,0,.04));
+  border: 1px solid var(--border, rgba(0,0,0,.08));
+  border-radius: 10px;
+}
+.ws-timeline-track {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  min-height: 28px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.ws-timeline-clip {
+  background: var(--accent-soft, rgba(0,0,0,.1));
+  border: 1px solid var(--accent-border, rgba(0,0,0,.15));
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 900px) {
+  .ws-premiere { grid-template-columns: 56px 1fr; }
+  .ws-premiere-inspector { grid-column: 1 / -1; max-height: none; }
+}
+@media (max-width: 600px) {
+  .ws-premiere { grid-template-columns: 1fr; }
+  .ws-premiere-rail { flex-direction: row; flex-wrap: wrap; max-height: none; }
+  .ws-premiere-inspector { max-height: 40vh; }
+}
