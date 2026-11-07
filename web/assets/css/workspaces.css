@@ -21,6 +21,8 @@
   border: 1px solid var(--border, rgba(0,0,0,.08));
   border-radius: 12px;
   min-width: 0;
+  max-height: calc(100vh - 280px);
+  overflow-y: auto;
 }
 .ws-rail-title {
   font-size: 11px;
@@ -158,6 +160,28 @@
   font-size: 12px;
   color: var(--text-3, #888);
   padding: 6px 2px;
+}
+
+/* Per-app accent identity (unique feel per workspace) */
+body[data-app="media"] {
+  --accent: #0ea5e9; --accent-strong: #0284c7; --accent-bright: #38bdf8;
+  --accent-soft: rgba(14, 165, 233, .12); --accent-border: rgba(14, 165, 233, .28);
+  --accent-text: #0284c7;
+}
+body[data-app="documents"] {
+  --accent: #f59e0b; --accent-strong: #d97706; --accent-bright: #fbbf24;
+  --accent-soft: rgba(245, 158, 11, .12); --accent-border: rgba(245, 158, 11, .28);
+  --accent-text: #d97706;
+}
+body[data-app="ai"] {
+  --accent: #8b5cf6; --accent-strong: #7c3aed; --accent-bright: #a78bfa;
+  --accent-soft: rgba(139, 92, 246, .13); --accent-border: rgba(139, 92, 246, .28);
+  --accent-text: #7c3aed;
+}
+body[data-app="developer"] {
+  --accent: #10b981; --accent-strong: #059669; --accent-bright: #34d399;
+  --accent-soft: rgba(16, 185, 129, .12); --accent-border: rgba(16, 185, 129, .28);
+  --accent-text: #059669;
 }
 
 /* Responsive */
