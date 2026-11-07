@@ -1,11 +1,11 @@
 {
-    "version":  "1.1.32",
-    "notes":  "NuVerter 1.1.32: reliable updater install + fallback, UI improvements.",
-    "pub_date":  "2026-11-07T11:17:12Z",
+    "version":  "1.1.33",
+    "notes":  "NuVerter 1.1.33: updater install now downloads and restarts reliably, with browser fallback; UI improvements.",
+    "pub_date":  "2026-11-07T11:24:37Z",
     "platforms":  {
                       "windows-x86_64":  {
-                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdkp1VW5uZS9EVGlXczBNUUtnQnBMNTlqeXB6WjZlR1R0ODNqN1FhZFFqaE1FSENNK3NVWWlsWFdUbzk4OUFIb0VKYm9CNWxoUnRVQng0azM3ZjlkbXpieUx1Um5kSmd3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MDUwMjI1CWZpbGU6TnVWZXJ0ZXJfMS4xLjMyX3g2NC1zZXR1cC5leGUJdmVyc2lvbjoxLjEuMzIKUFRqYlEzSEdoTzdBNis5RGQ1dVZJL2NtUFVud25yZWVXb0ZiQThXWW5FMjV6WEhWdzV5VFVsMHdja2xCLzVBZzZuSWkzazdjNFBGcGxkcWxKZG81RFE9PQo=",
-                                             "url":  "https://github.com/BIltonBB/NuVerter/releases/download/v1.1.32/NuVerter_1.1.32_x64-setup.exe"
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdkp1VW5uZS9EVGhTdmF5QUxPNW1HbHlReEJxeU1rOVI2OXErdVRldGlZRWxxaE9hdHVqMkE3NlFvdU1jT3NRY0pLWTd1VU5RUFNhT0FkT0piZVhJdjUva2Q1Wm14bFFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MDUwNjcyCWZpbGU6TnVWZXJ0ZXJfMS4xLjMzX3g2NC1zZXR1cC5leGUJdmVyc2lvbjoxLjEuMzMKUWpVT2kxeW1QNGlrVmtpeVZPdWNlR2cwdlNXZlczYTB1blVXN0hrMDRIWmFiQ2JTZWVwZlpGcjkxblBvK0RPcGNQK0JzaUpFWDJUVExFK2xZYUFyQUE9PQo=",
+                                             "url":  "https://github.com/BIltonBB/NuVerter/releases/download/v1.1.33/NuVerter_1.1.33_x64-setup.exe"
                                          }
                   }
 }
