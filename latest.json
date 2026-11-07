@@ -1,11 +1,11 @@
 {
-    "version":  "1.1.35",
-    "notes":  "NuVerter 1.1.35: smaller/faster build (LTO+strip), automatic cleanup of stale update temp files.",
-    "pub_date":  "2026-11-07T11:59:14Z",
+    "version":  "1.1.36",
+    "notes":  "NuVerter 1.1.36: OCR fixed on desktop and mobile (Tesseract loading + CDN language packs), AI Chat tool-calling fixed (real tool-capable models, web_search, longer replies), and dead buttons repaired.",
+    "pub_date":  "2026-11-07T12:26:55Z",
     "platforms":  {
                       "windows-x86_64":  {
-                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdkp1VW5uZS9EVG1wMDFlYVQzeCtJK3JtZ2lXd1RkQkg0OGhqa1o3Q3VtZmpvMUdFTGVIam9zYkVkd09veVUrRkV6QTBncUcwVnQvdEdvbHcyYVlJRlNaOHMrYlN4UEFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MDUyNzQ0CWZpbGU6TnVWZXJ0ZXJfMS4xLjM1X3g2NC1zZXR1cC5leGUJdmVyc2lvbjoxLjEuMzUKRVZEMVIreEVodTlvaUJoVS9uZk9QNTRRc1JiVjlJQjBQcVRKUnZqTGcrYmV3RE1rcG1DOGlmWWZXWnVWMU1YajhrRWthZ1RFL0ZQSW1CSGsxeGFiQ2c9PQo=",
-                                             "url":  "https://github.com/BIltonBB/NuVerter/releases/download/v1.1.35/NuVerter_1.1.35_x64-setup.exe"
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdkp1VW5uZS9EVHJ6LzVPeEx0Nk13K014QVd6MVdkVDRWM1FxR1ZEdC9SNkFsSVdLeTArYmp0TEg5RHNPTDVRbENUN2laTUxMT1h4Z0xoekkrMnR3d3lBbDJxNE5lVGd3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MDU0Mzk1CWZpbGU6TnVWZXJ0ZXJfMS4xLjM2X3g2NC1zZXR1cC5leGUJdmVyc2lvbjoxLjEuMzYKN3AzMlVXbGtCL0hqY1hBZTFoSzFMaUJzNUJjRFFqMm5HNTVqVDRGWGVMRGl2YUFtVVRWZnZqS01qK0xyZHlVM1J5VUsrWFB4MnJSVk1PcUpEcEhBQnc9PQo=",
+                                             "url":  "https://github.com/BIltonBB/NuVerter/releases/download/v1.1.36/NuVerter_1.1.36_x64-setup.exe"
                                          }
                   }
 }
