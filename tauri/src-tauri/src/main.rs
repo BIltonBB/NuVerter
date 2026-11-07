@@ -175,17 +175,23 @@ async fn check_update(app: tauri::AppHandle) -> Result<Option<String>, String> {
 
 #[tauri::command]
 async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
-    let updater = app.updater().map_err(|e| e.to_string())?;
-    let update = updater
-        .check()
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "no update available".to_string())?;
-    update
-        .download_and_install(|_, _| {}, || {})
-        .await
-        .map_err(|e| e.to_string())?;
+    let log = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")).join("install-error.log");
+    let updater = match app.updater() {
+        Ok(u) => u,
+        Err(e) => { let _ = std::fs::write(&log, format!("updater() err: {}", e)); return Err(e.to_string()); }
+    };
+    let update = match updater.check().await {
+        Ok(Some(u)) => u,
+        Ok(None) => { let _ = std::fs::write(&log, "no update available".to_string()); return Err("no update available".to_string()); }
+        Err(e) => { let _ = std::fs::write(&log, format!("check err: {}", e)); return Err(e.to_string()); }
+    };
+    match update.download_and_install(|_, _| {}, || {}).await {
+        Ok(_) => {}
+        Err(e) => { let _ = std::fs::write(&log, format!("download_and_install err: {}", e)); return Err(e.to_string()); }
+    }
+    let _ = std::fs::write(&log, "success, restarting".to_string());
     app.restart();
+    Ok(())
 }
 
 fn main() {
