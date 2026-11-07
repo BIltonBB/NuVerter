@@ -1,6 +1,6 @@
 [package]
 name = "nuverter-tauri"
-version = "1.1.27"
+version = "1.1.32"
 description = "NuVerter desktop (Tauri)"
 edition = "2021"
 
