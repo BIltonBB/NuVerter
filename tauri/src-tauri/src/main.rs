@@ -174,23 +174,50 @@ async fn check_update(app: tauri::AppHandle) -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
+fn open_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    use tauri_plugin_shell::ShellExt;
+    app.shell().open(url, None).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn install_update(app: tauri::AppHandle, url: Option<String>) -> Result<(), String> {
     let log = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")).join("install-error.log");
-    let updater = match app.updater() {
-        Ok(u) => u,
-        Err(e) => { let _ = std::fs::write(&log, format!("updater() err: {}", e)); return Err(e.to_string()); }
-    };
-    let update = match updater.check().await {
-        Ok(Some(u)) => u,
-        Ok(None) => { let _ = std::fs::write(&log, "no update available".to_string()); return Err("no update available".to_string()); }
-        Err(e) => { let _ = std::fs::write(&log, format!("check err: {}", e)); return Err(e.to_string()); }
-    };
-    match update.download_and_install(|_, _| {}, || {}).await {
-        Ok(_) => {}
-        Err(e) => { let _ = std::fs::write(&log, format!("download_and_install err: {}", e)); return Err(e.to_string()); }
+    let (invoke_result, open_url) = (
+        async {
+            let updater = app.updater().map_err(|e| e.to_string())?;
+            let update = updater
+                .check()
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| "no update available".to_string())?;
+            update
+                .download_and_install(|_, _| {}, || {})
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok::<(), String>(())
+        }
+        .await,
+        url,
+    );
+
+    match invoke_result {
+        Ok(()) => {
+            let _ = std::fs::write(&log, "success, restarting".to_string());
+            app.restart();
+        }
+        Err(e) => {
+            let _ = std::fs::write(&log, format!("install err: {}", e));
+            // Native updater failed (stale manifest, missing asset, signature, ...).
+            // Always fall back to opening the release page so the Update button does something.
+            if let Some(target) = open_url {
+                use tauri_plugin_shell::ShellExt;
+                if app.shell().open(target, None).is_ok() {
+                    return Ok(());
+                }
+            }
+            return Err(e);
+        }
     }
-    let _ = std::fs::write(&log, "success, restarting".to_string());
-    app.restart();
     Ok(())
 }
 
@@ -203,6 +230,16 @@ fn main() {
             #[cfg(target_os = "windows")]
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window_vibrancy::apply_mica(&window, None);
+            }
+            // Test hook: only when a marker file exists, auto-run the updater so the
+            // download/install path can be verified without manual clicking.
+            let marker = std::env::temp_dir().join("nuverter-auto-update-test");
+            if marker.exists() {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(20));
+                    let _ = tauri::async_runtime::block_on(install_update(handle, None));
+                });
             }
             Ok(())
         })
@@ -218,7 +255,8 @@ fn main() {
             read_file,
             list_files,
             check_update,
-            install_update
+            install_update,
+            open_url
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
