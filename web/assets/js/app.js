@@ -381,6 +381,11 @@ const state = {
     processingMode: 'eco',
     audioReactive: false,
     accentColor: '',
+    appAccents: true,
+    appAccentMedia: '#0ea5e9',
+    appAccentDocs: '#f59e0b',
+    appAccentAI: '#8b5cf6',
+    appAccentDev: '#10b981',
     gradientBg: false,
     appearancePreset: 'studio',
     bgColor: '',
@@ -389,7 +394,7 @@ const state = {
     borderColor: '',
     textColor: '',
     buttonColor: '',
-    appSidebarSwap: false,
+    appSidebarSwap: true,
     radiusScale: 1,
     glow: true,
     fontFamily: 'inter',
@@ -10776,6 +10781,14 @@ function mediaWorkspace(app) {
       </div>
     </div>
     <section class="area-queue" id="queue-slot"></section>
+    <div class="ws-quickstarts" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));margin-top:8px">
+      <button type="button" class="ws-quickstart" data-tool="compressor"><strong>Compress video</strong><span>Shrink MP4/MKV</span></button>
+      <button type="button" class="ws-quickstart" data-tool="gif"><strong>Make GIF</strong><span>Animate a clip</span></button>
+      <button type="button" class="ws-quickstart" data-tool="extractor"><strong>Extract audio</strong><span>Pull MP3/WAV</span></button>
+      <button type="button" class="ws-quickstart" data-tool="videoeditor"><strong>Edit video</strong><span>Trim, overlay, export</span></button>
+      <button type="button" class="ws-quickstart" data-tool="imageditor"><strong>Edit image</strong><span>Adjust, mask, export</span></button>
+      <button type="button" class="ws-quickstart" data-tool="reframe"><strong>Reframe</strong><span>Auto-crop to 9:16</span></button>
+    </div>
     <div class="ws-panel" style="margin-top:8px">
       <div class="ws-panel-head"><span class="ws-panel-title">Recent outputs</span><button class="btn btn-ghost btn-sm" data-tool="history">${icon('history')}History</button></div>
       <div class="ws-panel-body">${mediaResultsHtml()}</div>
@@ -10841,7 +10854,19 @@ function aiWorkspace(app) {
       <button type="button" class="ws-chip" data-action="ai-chat-attach-image">${icon('image')}<span>Image</span></button>
       <button type="button" class="ws-chip" data-action="ai-chat-attach-file">${icon('file')}<span>Document</span></button>
     </div>`;
-  const main = `<div class="ws-embed">${aiChatView()}</div>`;
+  const main = `
+    <div class="ws-panel" style="margin-bottom:8px">
+      <div class="ws-panel-head"><span class="ws-panel-title">Starter prompts</span></div>
+      <div class="ws-panel-body">
+        ${wsChips({ items: [
+          { label: 'Summarize a document', icon: 'file', action: 'ai-chat-starter', prompt: 'Summarize the attached document in 5 bullet points.' },
+          { label: 'Explain this code', icon: 'command', action: 'ai-chat-starter', prompt: 'Explain the following code step by step.' },
+          { label: 'Write a story', icon: 'sparkles', action: 'ai-chat-starter', prompt: 'Write a short creative story about a robot learning to paint.' },
+          { label: 'Translate to Spanish', icon: 'globe', action: 'ai-chat-starter', prompt: 'Translate the following text to Spanish.' }
+        ] })}
+      </div>
+    </div>
+    <div class="ws-embed">${aiChatView()}</div>`;
   const shell = wsShell({ layout: 'ai', rail, main });
   return `
     ${viewHead({ index: 'A3', kicker: 'AI Lab', title: 'AI Lab <span class="accent">assistant.</span>', sub: app.desc, actions: `<button class="btn btn-secondary btn-sm" data-tool="aitools">${icon('sparkles')}<span>AI tools</span></button>` })}
@@ -10959,7 +10984,7 @@ function wsResult(opts) {
 function wsChips(opts) {
   opts = opts || {};
   const items = opts.items || [];
-  return `<div class="ws-chips">${items.map((it) => `<button type="button" class="ws-chip" ${it.action ? `data-action="${esc(it.action)}"` : ''} ${it.tool ? `data-tool="${esc(it.tool)}"` : ''}>${it.icon ? icon(it.icon) : ''}<span>${esc(it.label || '')}</span></button>`).join('')}</div>`;
+  return `<div class="ws-chips">${items.map((it) => `<button type="button" class="ws-chip" ${it.action ? `data-action="${esc(it.action)}"` : ''} ${it.tool ? `data-tool="${esc(it.tool)}"` : ''} ${it.prompt ? `data-prompt="${esc(it.prompt)}"` : ''}>${it.icon ? icon(it.icon) : ''}<span>${esc(it.label || '')}</span></button>`).join('')}</div>`;
 }
 function syncAppSidebar(appCfg) {
   const scroll = document.getElementById('sidebar-scroll');
@@ -11068,11 +11093,23 @@ function renderView() {
   const _appCfg = APP_DASHBOARDS[state.tool];
   if (_appCfg && _appCfg.group && typeof window.applyCategoryFilter === 'function') window.applyCategoryFilter(_appCfg.group);
   try {
-    // Per-app accent only when the user hasn't chosen a custom accent color.
-    if (state.prefs && state.prefs.accentColor) {
-      delete document.body.dataset.app;
+    const group = (_appCfg && _appCfg.group) ? _appCfg.group : 'all';
+    document.body.dataset.app = group;
+    // Per-app accent (customizable, toggleable): apply inline override when enabled and no global custom accent.
+    const usePerApp = !!(state.prefs && state.prefs.appAccents !== false);
+    const hasCustomGlobal = !!(state.prefs && state.prefs.accentColor);
+    const colorKey = group === 'media' ? 'appAccentMedia' : group === 'documents' ? 'appAccentDocs' : group === 'ai' ? 'appAccentAI' : group === 'developer' ? 'appAccentDev' : '';
+    if (usePerApp && !hasCustomGlobal && colorKey && state.prefs && state.prefs[colorKey]) {
+      const c = state.prefs[colorKey];
+      document.body.style.setProperty('--accent', c);
+      document.body.style.setProperty('--accent-strong', 'color-mix(in srgb, ' + c + ' 82%, black)');
+      document.body.style.setProperty('--accent-bright', 'color-mix(in srgb, ' + c + ' 70%, white)');
+      document.body.style.setProperty('--accent-text', 'color-mix(in srgb, ' + c + ' 78%, white)');
+      document.body.style.setProperty('--accent-soft', 'color-mix(in srgb, ' + c + ' 14%, transparent)');
+      document.body.style.setProperty('--accent-border', 'color-mix(in srgb, ' + c + ' 28%, transparent)');
     } else {
-      document.body.dataset.app = (_appCfg && _appCfg.group) ? _appCfg.group : 'all';
+      // Clear per-app override so global/custom accent takes over.
+      ['--accent','--accent-strong','--accent-bright','--accent-text','--accent-soft','--accent-border'].forEach((v) => document.body.style.removeProperty(v));
     }
   } catch { document.body.dataset.app = 'all'; }
   // Per-app sidebar swap (cool stuff): replace global nav with an app-focused panel.
@@ -13138,6 +13175,22 @@ function settingsBody() {
     </div>
 
     <div class="modal-section">
+      <div class="modal-section-title">${icon('palette')}App accents</div>
+      <div class="settings-list">
+        <div class="settings-item">
+          <div class="settings-item-copy"><strong>Use per-app accents</strong><small>Each app gets its own accent color (off = main accent everywhere)</small></div>
+          <button class="switch" role="switch" aria-checked="${state.prefs.appAccents !== false}" aria-label="Use per-app accents" data-toggle="prefs.appAccents"></button>
+        </div>
+        ${['Media|#0ea5e9|appAccentMedia','Documents|#f59e0b|appAccentDocs','AI Lab|#8b5cf6|appAccentAI','Developer|#10b981|appAccentDev'].map((s) => {
+          const [label, def, key] = s.split('|');
+          return `<div class="settings-item">
+            <div class="settings-item-copy"><strong>${label}</strong><small>Accent color for ${label}</small></div>
+            <input type="color" data-field="prefs.${key}" value="${esc(state.prefs[key] || def)}" style="width:44px;height:28px;border:0;background:transparent;cursor:pointer" />
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+    <div class="modal-section">
       <div class="modal-section-title">${icon('hard-drive')}Local result storage</div>
       <div class="settings-item">
         <div class="settings-item-copy">
@@ -13287,7 +13340,7 @@ function openSettings() {
 }
 
 function resetPreferences() {
-  state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: false };
+  state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: true, appAccents: true, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' };
   savePrefs();
   applyTheme();
   renderSettingsBody();
@@ -13301,7 +13354,7 @@ async function privacyReset() {
   try { if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.map((k) => caches.delete(k))); } } catch {}
   try { localStorage.removeItem('NuVerter-converter'); localStorage.removeItem('NuVerter-prefs'); localStorage.removeItem('NuVerter-ai-chat'); localStorage.removeItem('NuVerter-workflows'); } catch {}
 try { const db = await openDB(); const tx = db.transaction(DB_WORKFLOWS_STORE, 'readwrite'); tx.objectStore(DB_WORKFLOWS_STORE).clear(); } catch {}
-  try { state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: false }; savePrefs(); applyTheme(); } catch {}
+  try { state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: true, appAccents: true, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' }; savePrefs(); applyTheme(); } catch {}
   try { renderView(); } catch {}
   toast('Privacy reset', 'Queue, results, caches and preferences cleared. Note: browser/OS may retain other copies.', 'success');
 }
@@ -13866,6 +13919,7 @@ function handleField(el) {
     if (path !== 'prefs.appearancePreset') state.prefs.appearancePreset = 'custom';
     savePrefs();
     applyAppearance();
+    if (path.startsWith('prefs.appAccent')) renderView();
   }
 
   if (path.startsWith('converter.')) {
@@ -13895,6 +13949,7 @@ function handleToggle(el) {
     if (path === 'prefs.reduceMotion') applyTheme();
     if (path === 'prefs.audioReactive') applyAudioReactiveTheme();
     if (path === 'prefs.appSidebarSwap') renderView();
+    if (path === 'prefs.appAccents') renderView();
   }
   if (path.startsWith('converter.')) {
     saveConverter();
@@ -14233,6 +14288,12 @@ async function handleExtraAction(action, el) {
     case 'dev-mock-copy': { const d = window.__mockData; if (d) { try { await navigator.clipboard.writeText(JSON.stringify(d, null, 2)); toast('Copied', 'Mock data copied.', 'success'); } catch {} } return true; }
     case 'dev-mock-dl': { const d = window.__mockData; if (d) { const blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'mock-data.json'; a.click(); URL.revokeObjectURL(a.href); } return true; }
     case 'ai-chat-send': await aiChatSend(); return true;
+    case 'ai-chat-starter': {
+      const prompt = el.dataset.prompt || '';
+      const input = document.getElementById('ai-chat-input');
+      if (input) { input.value = prompt; input.focus(); }
+      return true;
+    }
     case 'ai-chat-clear': state.aiChat.messages = []; saveAiChat(); renderView(); return true;
     case 'ai-chat-toggle-search': state.aiChat.webSearch = !state.aiChat.webSearch; saveAiChat(); renderView(); return true;
     case 'ai-chat-toggle-debug': state.aiChat.debug = !state.aiChat.debug; renderView(); return true;
