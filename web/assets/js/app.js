@@ -10821,33 +10821,24 @@ function documentsWorkspace(app) {
   const ops = [
     { id: 'merge', label: 'Merge PDFs' },
     { id: 'split', label: 'Split PDF' },
-    { id: 'img2pdf', label: 'Images → PDF' },
-    { id: 'pdf2img', label: 'PDF → Images' },
+    { id: 'img2pdf', label: 'Images to PDF' },
+    { id: 'pdf2img', label: 'PDF to Images' },
     { id: 'redact', label: 'Redact' }
   ];
-  const rail = `
-    <div class="ws-rail-title">Operations</div>
-    ${ops.map((o) => `<button type="button" class="ws-rail-item" data-action="docs-op" data-op="${o.id}">${icon('file', 'ws-rail-icon')}<span>${esc(o.label)}</span></button>`).join('')}
-    <div class="ws-rail-title" style="margin-top:8px">Quick starts</div>
-    <div class="ws-quickstarts">
-      <button type="button" class="ws-quickstart" data-action="docs-op" data-op="merge"><strong>Merge PDFs</strong><span>Combine multiple PDFs into one</span></button>
-      <button type="button" class="ws-quickstart" data-action="docs-op" data-op="redact"><strong>OCR / redact</strong><span>Open PDF tools for OCR or redaction</span></button>
-    </div>
-    <div class="ws-rail-title" style="margin-top:8px">Utilities</div>
-    <button type="button" class="ws-rail-item" data-tool="utilities" data-utab="ocr">${icon('scan-line', 'ws-rail-icon')}<span>OCR</span></button>`;
-  const main = `<div class="ws-embed">${pdfToolsView()}</div>`;
-  const pdfRecs = (state.history || []).filter((r) => r.tool === 'pdftools').slice(0, 6);
-  const results = pdfRecs.length ? pdfRecs.map((r) => wsResult({ record: r })).join('') : wsEmpty({ icon: 'file', title: 'No outputs yet', copy: 'PDF results appear here after an operation.' });
-  const inspector = wsPanel({ title: 'Output', body: `<p class="muted" style="font-size:12px;margin:0 0 10px">Run an operation in the center panel. Results download directly and are listed below.</p>${results}` });
-  const shell = wsShell({ layout: 'docs', rail, main }); // docs: 2-pane, output inline below
-  return `
-    ${viewHead({ index: 'A2', kicker: 'Documents', title: 'Documents <span class="accent">desk.</span>', sub: app.desc, actions: `<button class="btn btn-primary btn-sm" data-tool="pdftools">${icon('plus')}<span>Open PDF tools</span></button>` })}
-    ${shell}
-    <div class="ws-panel" style="margin-top:8px">
-      <div class="ws-panel-head"><span class="ws-panel-title">Recent output</span></div>
-      <div class="ws-panel-body">${results}</div>
-    </div>`;
+  const pdfRecs = (state.history || []).filter((r) => r.tool === 'pdftools').slice(0, 8);
+  const fileList = pdfRecs.length ? pdfRecs.map((r) => wsResult({ record: r })).join('') : wsEmpty({ icon: 'file', title: 'No documents yet', copy: 'PDF results appear here after an operation.' });
+  const opsRail = ops.map((o) => '<button type="button" class="ws-rail-item" data-action="docs-op" data-op="' + o.id + '">' + o.label + '</button>').join('');
+  const main = '<div class="ws-embed">' + pdfToolsView() + '</div>';
+  const inspector = wsPanel({ title: 'Operations', body: '<div class="ws-quickstarts">' + ops.map((o) => '<button type="button" class="ws-quickstart" data-action="docs-op" data-op="' + o.id + '"><strong>' + o.label + '</strong><span>Run this operation</span></button>').join('') + '</div>' })
+    + '<div class="ws-panel" style="margin-top:8px"><div class="ws-panel-head"><span class="ws-panel-title">Recent output</span></div><div class="ws-panel-body">' + (pdfRecs.length ? pdfRecs.map((r) => wsResult({ record: r })).join('') : wsEmpty({ icon: 'file', title: 'No outputs yet', copy: 'Results appear here.' })) + '</div></div>';
+  return viewHead({ index: 'A2', kicker: 'Documents', title: 'Documents <span class="accent">desk.</span>', sub: app.desc, actions: '<button class="btn btn-primary btn-sm" data-tool="pdftools">' + icon('plus') + '<span>Open PDF tools</span></button>' })
+    + '<div class="ws-acrobat">'
+    + '<aside class="ws-acrobat-files"><div class="ws-rail-title">Recent files</div><div class="ws-panel-body">' + fileList + '</div></aside>'
+    + '<section class="ws-acrobat-desk">' + main + '</section>'
+    + '<aside class="ws-acrobat-ops">' + opsRail + inspector + '</aside>'
+    + '</div>';
 }
+
 function aiWorkspace(app) {
   const tools = [
     { id: 'aichat', label: 'Chat', tab: null, icon: 'cpu' },
