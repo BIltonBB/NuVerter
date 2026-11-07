@@ -1,0 +1,23 @@
+# NuVerter
+
+> NuVerter is a free, 100% client-side media studio that runs entirely in the browser. No uploads, no accounts, no tracking.
+
+## What it does
+- Universal media converter (video, audio, images, text) with queue and batch export
+- Video compressor, cropper, GIF maker, screen recorder
+- Audio extractor, waveform editor, TTS, silence trim
+- Image editor (adjustments, inpaint, redact), auto reframe
+- PDF tools (merge, split, convert, redact, OCR)
+- Developer utilities (JSON, Base64, regex, PII scrub, hashing, etc.)
+- AI tools (AI image, background removal, upscale, OCR, embeddings, local AI chat)
+- Workflows (visual DAG builder)
+
+## Key facts
+- All processing happens locally via WebAssembly (FFmpeg.wasm, Tesseract.js, ONNX Runtime Web, WebLLM).
+- Cross-origin isolated (COOP/COEP) for SharedArrayBuffer.
+- Open source: https://github.com/BIltonBB/NuVerter
+- Live: https://biltonbb.github.io/NuVerter/
+
+## For AI agents
+- The app is a single-page app; routes are hash-based (#converter, #aichat, etc.).
+- No backend required; optional /api/* proxies for AI image search.
