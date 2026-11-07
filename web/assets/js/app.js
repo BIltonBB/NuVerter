@@ -381,7 +381,7 @@ const state = {
     processingMode: 'eco',
     audioReactive: false,
     accentColor: '',
-    appAccents: false,
+    appAccents: true,
     appAccentMedia: '#0ea5e9',
     appAccentDocs: '#f59e0b',
     appAccentAI: '#8b5cf6',
@@ -394,7 +394,7 @@ const state = {
     borderColor: '',
     textColor: '',
     buttonColor: '',
-    appSidebarSwap: false,
+    appSidebarSwap: true,
     radiusScale: 1,
     glow: true,
     fontFamily: 'inter',
@@ -10769,7 +10769,7 @@ function mediaWorkspace(app) {
       ${quick.map((q) => `<button type="button" class="ws-quickstart" data-tool="${q.tool}"><strong>${esc(q.label)}</strong><span>${esc(q.sub)}</span></button>`).join('')}
     </div>`;
   const main = `
-    <div class="ws-drop" data-action="pick-files" data-context="converter" data-drop="converter" role="button" tabindex="0" aria-label="Add media files">
+    <div class="ws-drop" data-action="pick-files" data-context="converter" data-drop="converter" role="button" tabindex="0" aria-label="Add media files" style="min-height:180px">
       <span class="drop-ico">${icon('cloud-upload')}</span>
       <div class="drop-copy">
         <div class="ws-drop-title">Drop media here</div>
@@ -10781,14 +10781,6 @@ function mediaWorkspace(app) {
       </div>
     </div>
     <section class="area-queue" id="queue-slot"></section>
-    <div class="ws-quickstarts" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr));margin-top:8px">
-      <button type="button" class="ws-quickstart" data-tool="compressor"><strong>Compress video</strong><span>Shrink MP4/MKV</span></button>
-      <button type="button" class="ws-quickstart" data-tool="gif"><strong>Make GIF</strong><span>Animate a clip</span></button>
-      <button type="button" class="ws-quickstart" data-tool="extractor"><strong>Extract audio</strong><span>Pull MP3/WAV</span></button>
-      <button type="button" class="ws-quickstart" data-tool="videoeditor"><strong>Edit video</strong><span>Trim, overlay, export</span></button>
-      <button type="button" class="ws-quickstart" data-tool="imageditor"><strong>Edit image</strong><span>Adjust, mask, export</span></button>
-      <button type="button" class="ws-quickstart" data-tool="reframe"><strong>Reframe</strong><span>Auto-crop to 9:16</span></button>
-    </div>
     <div class="ws-panel" style="margin-top:8px">
       <div class="ws-panel-head"><span class="ws-panel-title">Recent outputs</span><button class="btn btn-ghost btn-sm" data-tool="history">${icon('history')}History</button></div>
       <div class="ws-panel-body">${mediaResultsHtml()}</div>
@@ -13361,7 +13353,7 @@ function openSettings() {
 }
 
 function resetPreferences() {
-  state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: false, appAccents: false, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' };
+  state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: true, appAccents: true, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' };
   savePrefs();
   applyTheme();
   renderSettingsBody();
@@ -13375,7 +13367,7 @@ async function privacyReset() {
   try { if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.map((k) => caches.delete(k))); } } catch {}
   try { localStorage.removeItem('NuVerter-converter'); localStorage.removeItem('NuVerter-prefs'); localStorage.removeItem('NuVerter-ai-chat'); localStorage.removeItem('NuVerter-workflows'); } catch {}
 try { const db = await openDB(); const tx = db.transaction(DB_WORKFLOWS_STORE, 'readwrite'); tx.objectStore(DB_WORKFLOWS_STORE).clear(); } catch {}
-  try { state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: false, appAccents: false, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' }; savePrefs(); applyTheme(); } catch {}
+  try { state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: true, appAccents: true, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' }; savePrefs(); applyTheme(); } catch {}
   try { renderView(); } catch {}
   toast('Privacy reset', 'Queue, results, caches and preferences cleared. Note: browser/OS may retain other copies.', 'success');
 }
