@@ -381,7 +381,7 @@ const state = {
     processingMode: 'eco',
     audioReactive: false,
     accentColor: '',
-    appAccents: true,
+    appAccents: false,
     appAccentMedia: '#0ea5e9',
     appAccentDocs: '#f59e0b',
     appAccentAI: '#8b5cf6',
@@ -10754,7 +10754,7 @@ function mediaWorkspace(app) {
   const tools = (app.tools || []).map((t) => {
     const tool = TOOLS[t];
     if (!tool) return '';
-    return `<button type="button" class="ws-rail-item ws-rail-icononly" data-tool="${t}" title="${esc(tool.label)}">${icon(tool.icon || 'circle')}</button>`;
+    return `<button type="button" class="ws-rail-item ws-rail-icononly" data-tool="${t}" title="${esc(tool.label)}">${icon(tool.icon || 'circle')}<span class="ws-rail-label">${esc(tool.label)}</span></button>`;
   }).join('');
   // Premiere/Resolve-style: left icon rail, center stage, right inspector, bottom timeline.
   const main = `
@@ -13374,7 +13374,7 @@ function openSettings() {
 }
 
 function resetPreferences() {
-  state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: true, appAccents: true, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' };
+  state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: true, appAccents: false, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' };
   savePrefs();
   applyTheme();
   renderSettingsBody();
@@ -13388,7 +13388,7 @@ async function privacyReset() {
   try { if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.map((k) => caches.delete(k))); } } catch {}
   try { localStorage.removeItem('NuVerter-converter'); localStorage.removeItem('NuVerter-prefs'); localStorage.removeItem('NuVerter-ai-chat'); localStorage.removeItem('NuVerter-workflows'); } catch {}
 try { const db = await openDB(); const tx = db.transaction(DB_WORKFLOWS_STORE, 'readwrite'); tx.objectStore(DB_WORKFLOWS_STORE).clear(); } catch {}
-  try { state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: true, appAccents: true, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' }; savePrefs(); applyTheme(); } catch {}
+  try { state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: true, appAccents: false, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' }; savePrefs(); applyTheme(); } catch {}
   try { renderView(); } catch {}
   toast('Privacy reset', 'Queue, results, caches and preferences cleared. Note: browser/OS may retain other copies.', 'success');
 }
