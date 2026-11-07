@@ -206,6 +206,31 @@ body[data-app="developer"] #view { background: radial-gradient(ellipse at top le
   .ws-rail-item, .ws-drop { transition: none; }
 }
 
+/* Acrobat-style Documents layout */
+.ws-acrobat {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr) 220px;
+  gap: 10px;
+  align-items: start;
+}
+.ws-acrobat-files, .ws-acrobat-ops {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: var(--surface-2, rgba(0,0,0,.04));
+  border: 1px solid var(--border, rgba(0,0,0,.08));
+  border-radius: 10px;
+  max-height: calc(100vh - 260px);
+  overflow-y: auto;
+}
+.ws-acrobat-desk { min-width: 0; }
+.ws-acrobat-ops .ws-rail-item { width: 100%; }
+@media (max-width: 900px) {
+  .ws-acrobat { grid-template-columns: 1fr; }
+  .ws-acrobat-files, .ws-acrobat-ops { max-height: none; }
+}
+
 /* Premiere-style Media Studio layout */
 .ws-premiere {
   display: grid;
