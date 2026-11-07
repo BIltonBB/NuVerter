@@ -10754,20 +10754,9 @@ function mediaWorkspace(app) {
   const tools = (app.tools || []).map((t) => {
     const tool = TOOLS[t];
     if (!tool) return '';
-    return wsRailItem({ tool: t, icon: tool.icon || 'circle', label: tool.label });
+    return `<button type="button" class="ws-rail-item ws-rail-icononly" data-tool="${t}" title="${esc(tool.label)}">${icon(tool.icon || 'circle')}</button>`;
   }).join('');
-  const quick = [
-    { label: 'Compress video', tool: 'compressor', sub: 'Shrink MP4/MKV with quality control' },
-    { label: 'Make GIF', tool: 'gif', sub: 'Turn a clip into an animated GIF' },
-    { label: 'Extract audio', tool: 'extractor', sub: 'Pull MP3/WAV from video' }
-  ];
-  const rail = `
-    <div class="ws-rail-title">Media tools</div>
-    ${tools}
-    <div class="ws-rail-title" style="margin-top:8px">Quick starts</div>
-    <div class="ws-quickstarts">
-      ${quick.map((q) => `<button type="button" class="ws-quickstart" data-tool="${q.tool}"><strong>${esc(q.label)}</strong><span>${esc(q.sub)}</span></button>`).join('')}
-    </div>`;
+  // Premiere/Resolve-style: left icon rail, center stage, right inspector, bottom timeline.
   const main = `
     <div class="ws-drop" data-action="pick-files" data-context="converter" data-drop="converter" role="button" tabindex="0" aria-label="Add media files" style="min-height:180px">
       <span class="drop-ico">${icon('cloud-upload')}</span>
@@ -10786,15 +10775,47 @@ function mediaWorkspace(app) {
       <div class="ws-panel-body">${mediaResultsHtml()}</div>
     </div>`;
   const inspector = `
-    ${wsPanel({ title: 'Workspace', body: `<p class="muted" style="font-size:12px;margin:0 0 10px">Queue is shared with the Universal Converter. Format, quality and rename templates live in the full converter.</p><button class="btn btn-secondary btn-sm" data-tool="converter" style="width:100%">${icon('sliders-horizontal')}Open full converter</button>` })}
-    ${wsPanel({ title: 'Output settings', body: `<p class="muted" style="font-size:12px;margin:0 0 10px">Current format: <strong>${esc(state.converter.format === 'auto' ? 'AUTO' : (FORMATS[state.converter.format]?.label || state.converter.format))}</strong> · ${esc(state.converter.quality)}</p><button class="btn btn-ghost btn-sm" data-tool="converter" style="width:100%">Adjust settings</button>` })}`;
-  const shell = wsShell({ layout: 'media', rail, main, inspector });
+    ${wsPanel({ title: 'Workspace', body: `<p class="muted" style="font-size:12px;margin:0 0 10px">Queue shared with Universal Converter.</p><button class="btn btn-secondary btn-sm" data-tool="converter" style="width:100%">${icon('sliders-horizontal')}Open full converter</button>` })}
+    ${wsPanel({ title: 'Output settings', body: `<p class="muted" style="font-size:12px;margin:0 0 10px">Format: <strong>${esc(state.converter.format === 'auto' ? 'AUTO' : (FORMATS[state.converter.format]?.label || state.converter.format))}</strong></p><button class="btn btn-ghost btn-sm" data-tool="converter" style="width:100%">Adjust settings</button>` })}`;
+  // Premiere-style layout
   return `
-    ${viewHead({ index: 'A1', kicker: 'Media Studio', title: 'Media Studio <span class="accent">workspace.</span>', sub: app.desc, actions: `
+    ${viewHead({ index: 'A1', kicker: 'Media Studio', title: 'Media Studio <span class="accent">editing bay.</span>', sub: app.desc, actions: `
       <button class="btn btn-secondary btn-sm" data-action="import-link">${icon('link')}<span>From link</span></button>
       <button class="btn btn-secondary btn-sm" data-action="load-demo">${icon('sparkles')}<span>Load batch</span></button>
       <button class="btn btn-primary btn-sm" data-action="pick-files" data-context="converter">${icon('plus')}<span>Add media</span></button>` })}
-    ${shell}`;
+    <div class="ws-premiere">
+      <aside class="ws-premiere-rail">
+        <div class="ws-rail-title">Tools</div>
+        ${tools}
+      </aside>
+      <section class="ws-premiere-stage">
+        <div class="ws-drop" data-action="pick-files" data-context="converter" data-drop="converter" role="button" tabindex="0" aria-label="Add media files">
+          <span class="drop-ico">${icon('cloud-upload')}</span>
+          <div class="drop-copy">
+            <div class="ws-drop-title">Drop media here</div>
+            <div class="ws-drop-sub">Videos, audio and images — processed locally</div>
+          </div>
+          <div class="drop-foot">
+            <span class="drop-browse">${icon('folder-open')}Browse files</span>
+            <button class="drop-demo" data-action="load-demo" type="button">try the batch</button>
+          </div>
+        </div>
+        <section class="area-queue" id="queue-slot" style="margin-top:8px"></section>
+        <div class="ws-panel" style="margin-top:8px">
+          <div class="ws-panel-head"><span class="ws-panel-title">Recent outputs</span><button class="btn btn-ghost btn-sm" data-tool="history">${icon('history')}History</button></div>
+          <div class="ws-panel-body">${mediaResultsHtml()}</div>
+        </div>
+      </section>
+      <aside class="ws-premiere-inspector">
+        ${inspector}
+      </aside>
+    </div>
+    <div class="ws-premiere-timeline">
+      <div class="ws-panel-head"><span class="ws-panel-title">Batch timeline</span><span class="muted" style="font-size:11px">${(state.queue||[]).length} item${(state.queue||[]).length===1?'':'s'}</span></div>
+      <div class="ws-timeline-track">
+        ${(state.queue||[]).map((q) => `<div class="ws-timeline-clip"><span>${esc((q.name||'').slice(0,14))}</span></div>`).join('') || '<span class="muted" style="font-size:11px;padding:4px">Add media to populate the timeline</span>'}
+      </div>
+    </div>`;
 }
 function documentsWorkspace(app) {
   const ops = [
