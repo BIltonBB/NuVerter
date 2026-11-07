@@ -119,6 +119,11 @@ fn uninstall_app(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
+fn log_debug(msg: String) {
+    let _ = std::fs::write("C:\\Users\\user\\frontend-debug.txt", msg);
+}
+
+#[tauri::command]
 fn get_models_path(app: tauri::AppHandle) -> String {
     let p = ensure_dir(&storage_root(&app).join("models"));
     p.to_string_lossy().to_string()
@@ -149,11 +154,27 @@ fn list_files(app: tauri::AppHandle) -> Vec<String> {
 
 #[tauri::command]
 async fn check_update(app: tauri::AppHandle) -> Result<Option<String>, String> {
-    let updater = app.updater().map_err(|e| e.to_string())?;
+    let log = app.path().app_data_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")).join("updater-error.log");
+    let updater = match app.updater() {
+        Ok(u) => u,
+        Err(e) => {
+            let _ = std::fs::write(&log, format!("updater() err: {}", e));
+            return Err(e.to_string());
+        }
+    };
     match updater.check().await {
-        Ok(Some(update)) => Ok(Some(update.version.clone())),
-        Ok(None) => Ok(None),
-        Err(e) => Err(e.to_string()),
+        Ok(Some(update)) => {
+            let _ = std::fs::write(&log, format!("update available: {}", update.version));
+            Ok(Some(update.version.clone()))
+        }
+        Ok(None) => {
+            let _ = std::fs::write(&log, "no update available".to_string());
+            Ok(None)
+        }
+        Err(e) => {
+            let _ = std::fs::write(&log, format!("check err: {}", e));
+            Err(e.to_string())
+        }
     }
 }
 
@@ -173,6 +194,7 @@ async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 fn main() {
+    let _ = std::fs::write("C:\\Users\\user\\tauri-started.txt", "started");
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -186,6 +208,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             get_user_data_path,
+            log_debug,
             get_app_version,
             uninstall_app,
             get_storage_root,
