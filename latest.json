@@ -1,0 +1,11 @@
+﻿{
+    "version":  "1.1.23",
+    "notes":  "NuVerter 1.1.23: updater fallback, UI improvements, bug fixes.",
+    "pub_date":  "2026-11-07T09:08:11Z",
+    "platforms":  {
+                      "windows-x86_64":  {
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdkp1VW5uZS9EVGwwZG51Q0hmdkJjZUx2UVk4djlMaTN6UlM1alNOZklHd1F3eWErNllLamxKN2hFZHlZZDhpdW1veVBqTzM3OC9id3lDL3ZWdHg5Mm1XeHJTQXMrakFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MDQyNDg2CWZpbGU6bnNpcy1vdXRwdXQuZXhlCXZlcnNpb246MS4xLjIzClBpUUxrUFMrWlF6aHBqUmQzVFR4MTVWZWszR1ZVR2V1eEZ6VDJSQzdCNGxJSXdUWi94NFpaNVpncTZPQitTRzAxeXczY29VUGF0eGVwWFVITHhpNUJRPT0K",
+                                             "url":  "https://github.com/BIltonBB/NuVerter/releases/download/v1.1.23/NuVerter_1.1.23_x64-setup.exe"
+                                         }
+                  }
+}
