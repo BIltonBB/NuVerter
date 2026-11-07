@@ -1,7 +1,7 @@
-﻿{
+{
     "version":  "1.1.25",
     "notes":  "NuVerter 1.1.25: native updater endpoint fixed, UI improvements, bug fixes.",
-    "pub_date":  "2026-11-07T09:53:20Z",
+    "pub_date":  "2026-11-07T09:54:41Z",
     "platforms":  {
                       "windows-x86_64":  {
                                              "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSdkp1VW5uZS9EVGd5NDhweUcyNlRFMkIwaUVPVy9vR2lQbEpBNldDSU9EQXBuSE15Q3V3WWIzZzlEOUNxM2hmWldKblBmem43RCtaak1IMVpVSHR5RFp3UWI0K3IzSEFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MDQ1MTk0CWZpbGU6bnNpcy1vdXRwdXQuZXhlCXZlcnNpb246MS4xLjI1CjY1MHhucVJpSWROMVc2ZVF0c00yUmRFbTc1VzBwcXBQWGJxNGtWTzV5Y09uK3R4SkUwUEh3bFF2ZER2bXlHUTFRRlNoZHJUNm1HbWNOcGpjZmNLN0F3PT0K",
