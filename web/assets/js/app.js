@@ -394,7 +394,7 @@ const state = {
     borderColor: '',
     textColor: '',
     buttonColor: '',
-    appSidebarSwap: true,
+    appSidebarSwap: false,
     radiusScale: 1,
     glow: true,
     fontFamily: 'inter',
@@ -10808,6 +10808,17 @@ function mediaWorkspace(app) {
       </section>
       <aside class="ws-premiere-inspector">
         ${inspector}
+        <div class="ws-panel" style="margin-top:8px">
+          <div class="ws-panel-head"><span class="ws-panel-title">Getting started</span></div>
+          <div class="ws-panel-body">
+            <div class="ws-chips">
+              <button type="button" class="ws-chip" data-tool="compressor">${icon('minimize-2')}<span>Compress</span></button>
+              <button type="button" class="ws-chip" data-tool="gif">${icon('film')}<span>Make GIF</span></button>
+              <button type="button" class="ws-chip" data-tool="extractor">${icon('music')}<span>Extract audio</span></button>
+              <button type="button" class="ws-chip" data-tool="videoeditor">${icon('film')}<span>Edit video</span></button>
+            </div>
+          </div>
+        </div>
       </aside>
     </div>
     <div class="ws-premiere-timeline">
@@ -10836,7 +10847,12 @@ function documentsWorkspace(app) {
     + '<aside class="ws-acrobat-files"><div class="ws-rail-title">Recent files</div><div class="ws-panel-body">' + fileList + '</div></aside>'
     + '<section class="ws-acrobat-desk">' + main + '</section>'
     + '<aside class="ws-acrobat-ops">' + opsRail + inspector + '</aside>'
-    + '</div>';
+    + '</div>'
+    + '<div class="ws-panel" style="margin-top:8px"><div class="ws-panel-head"><span class="ws-panel-title">Getting started</span></div><div class="ws-panel-body"><div class="ws-chips">'
+    + '<button type="button" class="ws-chip" data-action="docs-op" data-op="merge">' + icon('file') + '<span>Merge two PDFs</span></button>'
+    + '<button type="button" class="ws-chip" data-action="docs-op" data-op="split">' + icon('file') + '<span>Split a PDF</span></button>'
+    + '<button type="button" class="ws-chip" data-action="docs-op" data-op="redact">' + icon('file') + '<span>Redact sensitive info</span></button>'
+    + '</div></div></div>';
 }
 
 function aiWorkspace(app) {
@@ -10923,6 +10939,16 @@ function developerWorkspace(app) {
         <div class="ws-panel">
           <div class="ws-panel-head"><span class="ws-panel-title">Recent output</span></div>
           <div class="ws-panel-body">${results}</div>
+        </div>
+        <div class="ws-panel" style="margin-top:8px">
+          <div class="ws-panel-head"><span class="ws-panel-title">Getting started</span></div>
+          <div class="ws-panel-body">
+            <div class="ws-chips">
+              <button type="button" class="ws-chip" data-tool="devtools" data-devtab="json">${icon('command')}<span>Format JSON</span></button>
+              <button type="button" class="ws-chip" data-tool="devtools" data-devtab="base64">${icon('command')}<span>Encode Base64</span></button>
+              <button type="button" class="ws-chip" data-tool="devtools" data-devtab="pii">${icon('command')}<span>Scrub PII</span></button>
+            </div>
+          </div>
         </div>
       </aside>
     </div>`;
@@ -13234,7 +13260,7 @@ function settingsBody() {
           <button class="switch" role="switch" aria-checked="${state.prefs.audioReactive}" aria-label="Audio-reactive theme" data-toggle="prefs.audioReactive"></button>
         </div>
         <div class="settings-item">
-          <div class="settings-item-copy"><strong>App-focused sidebar</strong><small>When opening an app, replace the sidebar with that app's tools and actions (off by default)</small></div>
+          <div class="settings-item-copy"><strong>App-focused sidebar (experimental)</strong><small>Replace the global sidebar with an app-specific one when opening an app</small></div>
           <button class="switch" role="switch" aria-checked="${state.prefs.appSidebarSwap}" aria-label="App-focused sidebar" data-toggle="prefs.appSidebarSwap"></button>
         </div>
       </div>
@@ -13406,7 +13432,7 @@ function openSettings() {
 }
 
 function resetPreferences() {
-  state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: true, appAccents: false, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' };
+  state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: false, appAccents: false, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' };
   savePrefs();
   applyTheme();
   renderSettingsBody();
@@ -13420,7 +13446,7 @@ async function privacyReset() {
   try { if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.map((k) => caches.delete(k))); } } catch {}
   try { localStorage.removeItem('NuVerter-converter'); localStorage.removeItem('NuVerter-prefs'); localStorage.removeItem('NuVerter-ai-chat'); localStorage.removeItem('NuVerter-workflows'); } catch {}
 try { const db = await openDB(); const tx = db.transaction(DB_WORKFLOWS_STORE, 'readwrite'); tx.objectStore(DB_WORKFLOWS_STORE).clear(); } catch {}
-  try { state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: true, appAccents: false, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' }; savePrefs(); applyTheme(); } catch {}
+  try { state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: false, appAccents: false, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' }; savePrefs(); applyTheme(); } catch {}
   try { renderView(); } catch {}
   toast('Privacy reset', 'Queue, results, caches and preferences cleared. Note: browser/OS may retain other copies.', 'success');
 }
@@ -15301,6 +15327,27 @@ function bindEvents() {
     if (!typing && !mod && event.key === 'a' && state.tool === 'mediaapp') {
       event.preventDefault();
       pickFiles('converter');
+      return;
+    }
+    // Documents: m = merge
+    if (!typing && !mod && event.key === 'm' && state.tool === 'docsapp') {
+      event.preventDefault();
+      const b = document.querySelector('[data-action="docs-op"][data-op="merge"]');
+      if (b) b.click();
+      return;
+    }
+    // AI: / focuses composer
+    if (!typing && !mod && event.key === '/' && state.tool === 'aiapp') {
+      event.preventDefault();
+      const input = document.getElementById('ai-chat-input');
+      if (input) input.focus();
+      return;
+    }
+    // Developer: Ctrl+Enter runs (already global), j = JSON
+    if (!typing && !mod && event.key === 'j' && state.tool === 'devapp') {
+      event.preventDefault();
+      const b = document.querySelector('[data-devtab="json"]');
+      if (b) b.click();
       return;
     }
     if (!typing && !mod && event.key === '?') {
