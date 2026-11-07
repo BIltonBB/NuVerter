@@ -389,6 +389,7 @@ const state = {
     borderColor: '',
     textColor: '',
     buttonColor: '',
+    appSidebarSwap: false,
     radiusScale: 1,
     glow: true,
     fontFamily: 'inter',
@@ -10965,7 +10966,13 @@ function syncAppSidebar(appCfg) {
   const nav = scroll ? scroll.querySelector('.nav') : null;
   if (!scroll) return;
   let panel = document.getElementById('app-sidebar-panel');
-  if (appCfg && appCfg.group) {
+  // Disabled by default: only swap when the user opts in via settings.
+  const enabled = !!(state.prefs && state.prefs.appSidebarSwap);
+  if (!enabled || !appCfg || !appCfg.group) {
+    if (panel) panel.remove();
+    if (nav) nav.style.display = '';
+    return;
+  }
     if (!panel) {
       panel = document.createElement('div');
       panel.id = 'app-sidebar-panel';
@@ -11000,10 +11007,6 @@ function syncAppSidebar(appCfg) {
         </button>
       </div>`;
     if (nav) nav.style.display = 'none';
-  } else {
-    if (panel) panel.remove();
-    if (nav) nav.style.display = '';
-  }
 }
 
 function renderView() {
@@ -11065,7 +11068,12 @@ function renderView() {
   const _appCfg = APP_DASHBOARDS[state.tool];
   if (_appCfg && _appCfg.group && typeof window.applyCategoryFilter === 'function') window.applyCategoryFilter(_appCfg.group);
   try {
-    document.body.dataset.app = (_appCfg && _appCfg.group) ? _appCfg.group : 'all';
+    // Per-app accent only when the user hasn't chosen a custom accent color.
+    if (state.prefs && state.prefs.accentColor) {
+      delete document.body.dataset.app;
+    } else {
+      document.body.dataset.app = (_appCfg && _appCfg.group) ? _appCfg.group : 'all';
+    }
   } catch { document.body.dataset.app = 'all'; }
   // Per-app sidebar swap (cool stuff): replace global nav with an app-focused panel.
   try { syncAppSidebar(_appCfg); } catch (e) { /* ignore */ }
@@ -13122,6 +13130,10 @@ function settingsBody() {
           <div class="settings-item-copy"><strong>Audio-reactive theme</strong><small>Subtle visual response to audio playback (experimental)</small></div>
           <button class="switch" role="switch" aria-checked="${state.prefs.audioReactive}" aria-label="Audio-reactive theme" data-toggle="prefs.audioReactive"></button>
         </div>
+        <div class="settings-item">
+          <div class="settings-item-copy"><strong>App-focused sidebar</strong><small>When opening an app, replace the sidebar with that app's tools and actions (off by default)</small></div>
+          <button class="switch" role="switch" aria-checked="${state.prefs.appSidebarSwap}" aria-label="App-focused sidebar" data-toggle="prefs.appSidebarSwap"></button>
+        </div>
       </div>
     </div>
 
@@ -13275,7 +13287,7 @@ function openSettings() {
 }
 
 function resetPreferences() {
-  state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false };
+  state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: false };
   savePrefs();
   applyTheme();
   renderSettingsBody();
@@ -13289,7 +13301,7 @@ async function privacyReset() {
   try { if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.map((k) => caches.delete(k))); } } catch {}
   try { localStorage.removeItem('NuVerter-converter'); localStorage.removeItem('NuVerter-prefs'); localStorage.removeItem('NuVerter-ai-chat'); localStorage.removeItem('NuVerter-workflows'); } catch {}
 try { const db = await openDB(); const tx = db.transaction(DB_WORKFLOWS_STORE, 'readwrite'); tx.objectStore(DB_WORKFLOWS_STORE).clear(); } catch {}
-  try { state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false }; savePrefs(); applyTheme(); } catch {}
+  try { state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: false }; savePrefs(); applyTheme(); } catch {}
   try { renderView(); } catch {}
   toast('Privacy reset', 'Queue, results, caches and preferences cleared. Note: browser/OS may retain other copies.', 'success');
 }
@@ -13882,6 +13894,7 @@ function handleToggle(el) {
     applyAppearance();
     if (path === 'prefs.reduceMotion') applyTheme();
     if (path === 'prefs.audioReactive') applyAudioReactiveTheme();
+    if (path === 'prefs.appSidebarSwap') renderView();
   }
   if (path.startsWith('converter.')) {
     saveConverter();
@@ -15156,6 +15169,11 @@ function bindEvents() {
     if (mod && event.key.toLowerCase() === 'l') {
       event.preventDefault();
       window.openLaunchOverlay?.();
+      return;
+    }
+    if (!typing && !mod && event.key === 'a' && state.tool === 'mediaapp') {
+      event.preventDefault();
+      pickFiles('converter');
       return;
     }
     if (!typing && !mod && event.key === '?') {
