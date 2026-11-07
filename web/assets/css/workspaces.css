@@ -1,0 +1,176 @@
+/* NuVerter — shared workspace primitives (Phase 1)
+   Consumed by the four specialized app workspaces (Phases 2-5).
+   All colors via existing CSS variables; honors prefers-reduced-motion. */
+
+.ws-shell {
+  display: grid;
+  gap: 12px;
+  align-items: start;
+}
+.ws-media { grid-template-columns: 220px minmax(0, 1fr) 260px; }
+.ws-docs { grid-template-columns: 200px minmax(0, 1fr) 260px; }
+.ws-ai { grid-template-columns: 220px minmax(0, 1fr); }
+.ws-dev { grid-template-columns: 200px minmax(0, 1fr) 260px; }
+
+.ws-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  background: var(--surface-2, rgba(0,0,0,.04));
+  border: 1px solid var(--border, rgba(0,0,0,.08));
+  border-radius: 12px;
+  min-width: 0;
+}
+.ws-rail-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-3, #888);
+  margin: 4px 6px;
+}
+.ws-rail-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--text, inherit);
+  transition: background .12s ease, transform .12s ease;
+}
+.ws-rail-item:hover { background: var(--accent-soft, rgba(0,0,0,.06)); }
+.ws-rail-item.is-active { background: var(--accent-soft, rgba(0,0,0,.1)); font-weight: 600; }
+.ws-rail-icon { width: 16px; height: 16px; flex: 0 0 16px; }
+.ws-quickstarts { display: grid; gap: 6px; }
+.ws-quickstart {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border, rgba(0,0,0,.08));
+  background: var(--surface, transparent);
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.ws-quickstart strong { font-size: 12px; }
+.ws-quickstart span { font-size: 11px; color: var(--text-3, #888); }
+
+.ws-main { min-width: 0; }
+.ws-embed { min-width: 0; }
+.ws-inspector, .ws-output {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.ws-panel {
+  background: var(--surface, transparent);
+  border: 1px solid var(--border, rgba(0,0,0,.08));
+  border-radius: 12px;
+  padding: 12px;
+}
+.ws-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.ws-panel-title { font-weight: 700; font-size: 13px; }
+.ws-panel-actions { display: flex; gap: 6px; }
+.ws-panel-body { font-size: 13px; }
+
+.ws-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 28px 16px;
+  border: 2px dashed var(--border, rgba(0,0,0,.15));
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: center;
+  background: var(--surface-2, rgba(0,0,0,.02));
+  transition: border-color .12s ease, background .12s ease;
+}
+.ws-drop:hover { border-color: var(--accent, #6d28d9); background: var(--accent-soft, rgba(0,0,0,.04)); }
+.ws-drop-title { font-weight: 700; font-size: 15px; }
+.ws-drop-sub { font-size: 12px; color: var(--text-3, #888); }
+.ws-drop .drop-foot { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; margin-top: 8px; }
+.ws-drop .drop-browse { font-size: 12px; color: var(--accent, #6d28d9); }
+
+.ws-results { margin-top: 4px; }
+.ws-result-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--border, rgba(0,0,0,.06));
+}
+.ws-result-row:last-child { border-bottom: 0; }
+.ws-result-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-result-meta { font-size: 11px; color: var(--text-3, #888); }
+
+.ws-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--text-3, #888);
+}
+.ws-empty strong { color: var(--text, inherit); font-size: 14px; }
+.ws-empty p { margin: 0; font-size: 12px; max-width: 320px; }
+.ws-empty-ico { width: 28px; height: 28px; opacity: .7; }
+.ws-empty-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; justify-content: center; }
+
+.ws-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ws-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border: 1px solid var(--border, rgba(0,0,0,.1));
+  background: var(--surface, transparent);
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+  font: inherit;
+}
+.ws-chip:hover { background: var(--accent-soft, rgba(0,0,0,.06)); }
+
+.ws-statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-3, #888);
+  padding: 6px 2px;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .ws-media, .ws-docs, .ws-ai, .ws-dev { grid-template-columns: 1fr; }
+  .ws-rail { flex-direction: row; flex-wrap: wrap; }
+  .ws-rail-item { flex: 1 1 auto; min-width: 120px; }
+}
+@media (max-width: 600px) {
+  .ws-panel { padding: 10px; }
+  .ws-drop { padding: 20px 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ws-rail-item, .ws-drop { transition: none; }
+}
