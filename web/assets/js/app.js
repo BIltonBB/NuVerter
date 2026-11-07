@@ -381,7 +381,7 @@ const state = {
     processingMode: 'eco',
     audioReactive: false,
     accentColor: '',
-    appAccents: true,
+    appAccents: false,
     appAccentMedia: '#0ea5e9',
     appAccentDocs: '#f59e0b',
     appAccentAI: '#8b5cf6',
@@ -394,7 +394,7 @@ const state = {
     borderColor: '',
     textColor: '',
     buttonColor: '',
-    appSidebarSwap: true,
+    appSidebarSwap: false,
     radiusScale: 1,
     glow: true,
     fontFamily: 'inter',
@@ -10826,35 +10826,39 @@ function documentsWorkspace(app) {
   const pdfRecs = (state.history || []).filter((r) => r.tool === 'pdftools').slice(0, 6);
   const results = pdfRecs.length ? pdfRecs.map((r) => wsResult({ record: r })).join('') : wsEmpty({ icon: 'file', title: 'No outputs yet', copy: 'PDF results appear here after an operation.' });
   const inspector = wsPanel({ title: 'Output', body: `<p class="muted" style="font-size:12px;margin:0 0 10px">Run an operation in the center panel. Results download directly and are listed below.</p>${results}` });
-  const shell = wsShell({ layout: 'docs', rail, main, inspector });
+  const shell = wsShell({ layout: 'docs', rail, main }); // docs: 2-pane, output inline below
   return `
     ${viewHead({ index: 'A2', kicker: 'Documents', title: 'Documents <span class="accent">desk.</span>', sub: app.desc, actions: `<button class="btn btn-primary btn-sm" data-tool="pdftools">${icon('plus')}<span>Open PDF tools</span></button>` })}
-    ${shell}`;
+    ${shell}
+    <div class="ws-panel" style="margin-top:8px">
+      <div class="ws-panel-head"><span class="ws-panel-title">Recent output</span></div>
+      <div class="ws-panel-body">${results}</div>
+    </div>`;
 }
 function aiWorkspace(app) {
   const tools = [
-    { id: 'aichat', label: 'AI Chat', tab: null, icon: 'cpu' },
-    { id: 'aitools', label: 'AI Image', tab: 'aiimg', icon: 'sparkles' },
-    { id: 'aitools', label: 'Background removal', tab: 'aibg', icon: 'sparkles' },
+    { id: 'aichat', label: 'Chat', tab: null, icon: 'cpu' },
+    { id: 'aitools', label: 'Image', tab: 'aiimg', icon: 'sparkles' },
+    { id: 'aitools', label: 'BG remove', tab: 'aibg', icon: 'sparkles' },
     { id: 'aitools', label: 'Upscale', tab: 'aiup', icon: 'sparkles' },
     { id: 'aitools', label: 'OCR', tab: 'ocr', icon: 'scan-line' },
     { id: 'aitools', label: 'TTS', tab: 'tts', icon: 'volume-2' },
-    { id: 'aitools', label: 'Embeddings', tab: 'emb', icon: 'hash' },
+    { id: 'aitools', label: 'Embed', tab: 'emb', icon: 'hash' },
     { id: 'aitools', label: 'Doc search', tab: 'docs', icon: 'search' },
     { id: 'aitools', label: 'Doc Q&A', tab: 'docqa', icon: 'command' }
   ];
-  const rail = `
-    <div class="ws-rail-title">AI tools</div>
-    ${tools.map((t) => {
-      const extra = t.tab ? ` data-aitab="${t.tab}"` : '';
-      return `<button type="button" class="ws-rail-item" data-tool="${t.id}"${extra}>${icon(t.icon, 'ws-rail-icon')}<span>${esc(t.label)}</span></button>`;
-    }).join('')}
-    <div class="ws-rail-title" style="margin-top:8px">Context</div>
-    <div class="ws-chips">
-      <button type="button" class="ws-chip" data-action="ai-chat-attach-image">${icon('image')}<span>Image</span></button>
-      <button type="button" class="ws-chip" data-action="ai-chat-attach-file">${icon('file')}<span>Document</span></button>
-    </div>`;
+  const topChips = tools.map((t) => {
+    const extra = t.tab ? ` data-aitab="${t.tab}"` : '';
+    return `<button type="button" class="ws-chip" data-tool="${t.id}"${extra}>${icon(t.icon)}<span>${esc(t.label)}</span></button>`;
+  }).join('');
+  const contextChips = `
+    <button type="button" class="ws-chip" data-action="ai-chat-attach-image">${icon('image')}<span>Image</span></button>
+    <button type="button" class="ws-chip" data-action="ai-chat-attach-file">${icon('file')}<span>Document</span></button>`;
   const main = `
+    <div class="ws-panel" style="margin-bottom:8px">
+      <div class="ws-panel-head"><span class="ws-panel-title">Tools</span></div>
+      <div class="ws-panel-body"><div class="ws-chips">${topChips}</div></div>
+    </div>
     <div class="ws-panel" style="margin-bottom:8px">
       <div class="ws-panel-head"><span class="ws-panel-title">Starter prompts</span></div>
       <div class="ws-panel-body">
@@ -10866,11 +10870,17 @@ function aiWorkspace(app) {
         ] })}
       </div>
     </div>
+    <div class="ws-panel" style="margin-bottom:8px">
+      <div class="ws-panel-head"><span class="ws-panel-title">Context</span></div>
+      <div class="ws-panel-body"><div class="ws-chips">${contextChips}</div></div>
+    </div>
     <div class="ws-embed">${aiChatView()}</div>`;
-  const shell = wsShell({ layout: 'ai', rail, main });
+  // AI lab: chat-first, single column, no side rail.
   return `
     ${viewHead({ index: 'A3', kicker: 'AI Lab', title: 'AI Lab <span class="accent">assistant.</span>', sub: app.desc, actions: `<button class="btn btn-secondary btn-sm" data-tool="aitools">${icon('sparkles')}<span>AI tools</span></button>` })}
-    ${shell}`;
+    <div class="ws-shell ws-ai" style="grid-template-columns:1fr">
+      <section class="ws-main">${main}</section>
+    </div>`;
 }
 function developerWorkspace(app) {
   const devOps = [
@@ -10882,20 +10892,27 @@ function developerWorkspace(app) {
     { id: 'wc', label: 'WebCodecs' },
     { id: 'clip', label: 'Clipboard' }
   ];
-  const rail = `
-    <div class="ws-rail-title">Operations</div>
-    ${devOps.map((o) => `<button type="button" class="ws-rail-item" data-tool="devtools" data-devtab="${o.id}">${icon('command', 'ws-rail-icon')}<span>${esc(o.label)}</span></button>`).join('')}
-    <div class="ws-rail-title" style="margin-top:8px">More</div>
-    <button type="button" class="ws-rail-item" data-tool="utilities">${icon('settings', 'ws-rail-icon')}<span>Utilities</span></button>
-    <button type="button" class="ws-rail-item" data-tool="practical">${icon('settings', 'ws-rail-icon')}<span>Practical</span></button>`;
-  const main = `<div class="ws-embed">${devToolsView()}</div>`;
+  const opChips = devOps.map((o) => `<button type="button" class="ws-chip" data-tool="devtools" data-devtab="${o.id}">${icon('command')}<span>${esc(o.label)}</span></button>`).join('')
+    + `<button type="button" class="ws-chip" data-tool="utilities">${icon('settings')}<span>Utilities</span></button>`
+    + `<button type="button" class="ws-chip" data-tool="practical">${icon('settings')}<span>Practical</span></button>`;
   const devRecs = (state.history || []).filter((r) => r.tool === 'devtools' || r.tool === 'utilities' || r.tool === 'practical').slice(0, 6);
   const results = devRecs.length ? devRecs.map((r) => wsResult({ record: r })).join('') : wsEmpty({ icon: 'command', title: 'No outputs yet', copy: 'Developer tool results appear here.' });
-  const inspector = wsPanel({ title: 'Output', body: `<p class="muted" style="font-size:12px;margin:0 0 10px">Run an operation in the center panel. Copy/download actions stay in the tool view.</p>${results}` });
-  const shell = wsShell({ layout: 'dev', rail, main, inspector });
+  // Developer: console layout — ops as top chip bar, then input/output split.
   return `
     ${viewHead({ index: 'A4', kicker: 'Developer Tools', title: 'Developer <span class="accent">console.</span>', sub: app.desc, actions: `<button class="btn btn-primary btn-sm" data-tool="devtools">${icon('command')}<span>Open dev tools</span></button>` })}
-    ${shell}`;
+    <div class="ws-shell ws-dev" style="grid-template-columns:1fr">
+      <section class="ws-main">
+        <div class="ws-panel" style="margin-bottom:8px">
+          <div class="ws-panel-head"><span class="ws-panel-title">Operations</span></div>
+          <div class="ws-panel-body"><div class="ws-chips">${opChips}</div></div>
+        </div>
+        <div class="ws-embed">${devToolsView()}</div>
+      </section>
+    </div>
+    <div class="ws-panel" style="margin-top:8px">
+      <div class="ws-panel-head"><span class="ws-panel-title">Recent output</span></div>
+      <div class="ws-panel-body">${results}</div>
+    </div>`;
 }
 function appView(key) {
   const app = APP_DASHBOARDS[key];
@@ -11091,29 +11108,33 @@ function renderView() {
   $$('input[type="range"]').forEach((input) => setCssPct(input));
   updateEngineUI();
   const _appCfg = APP_DASHBOARDS[state.tool];
-  if (_appCfg && _appCfg.group && typeof window.applyCategoryFilter === 'function') window.applyCategoryFilter(_appCfg.group);
+  // Sidebar scoping + per-app identity are opt-in (off by default) so the classic UI stays default.
+  const identityOn = !!(state.prefs && state.prefs.appAccents);
+  const sidebarSwapOn = !!(state.prefs && state.prefs.appSidebarSwap);
+  if (identityOn && _appCfg && _appCfg.group && typeof window.applyCategoryFilter === 'function') window.applyCategoryFilter(_appCfg.group);
   try {
-    const group = (_appCfg && _appCfg.group) ? _appCfg.group : 'all';
-    document.body.dataset.app = group;
-    // Per-app accent (customizable, toggleable): apply inline override when enabled and no global custom accent.
-    const usePerApp = !!(state.prefs && state.prefs.appAccents !== false);
-    const hasCustomGlobal = !!(state.prefs && state.prefs.accentColor);
-    const colorKey = group === 'media' ? 'appAccentMedia' : group === 'documents' ? 'appAccentDocs' : group === 'ai' ? 'appAccentAI' : group === 'developer' ? 'appAccentDev' : '';
-    if (usePerApp && !hasCustomGlobal && colorKey && state.prefs && state.prefs[colorKey]) {
-      const c = state.prefs[colorKey];
-      document.body.style.setProperty('--accent', c);
-      document.body.style.setProperty('--accent-strong', 'color-mix(in srgb, ' + c + ' 82%, black)');
-      document.body.style.setProperty('--accent-bright', 'color-mix(in srgb, ' + c + ' 70%, white)');
-      document.body.style.setProperty('--accent-text', 'color-mix(in srgb, ' + c + ' 78%, white)');
-      document.body.style.setProperty('--accent-soft', 'color-mix(in srgb, ' + c + ' 14%, transparent)');
-      document.body.style.setProperty('--accent-border', 'color-mix(in srgb, ' + c + ' 28%, transparent)');
+    if (identityOn && _appCfg && _appCfg.group) {
+      document.body.dataset.app = _appCfg.group;
+      const hasCustomGlobal = !!(state.prefs && state.prefs.accentColor);
+      const colorKey = _appCfg.group === 'media' ? 'appAccentMedia' : _appCfg.group === 'documents' ? 'appAccentDocs' : _appCfg.group === 'ai' ? 'appAccentAI' : _appCfg.group === 'developer' ? 'appAccentDev' : '';
+      if (!hasCustomGlobal && colorKey && state.prefs && state.prefs[colorKey]) {
+        const c = state.prefs[colorKey];
+        document.body.style.setProperty('--accent', c);
+        document.body.style.setProperty('--accent-strong', 'color-mix(in srgb, ' + c + ' 82%, black)');
+        document.body.style.setProperty('--accent-bright', 'color-mix(in srgb, ' + c + ' 70%, white)');
+        document.body.style.setProperty('--accent-text', 'color-mix(in srgb, ' + c + ' 78%, white)');
+        document.body.style.setProperty('--accent-soft', 'color-mix(in srgb, ' + c + ' 14%, transparent)');
+        document.body.style.setProperty('--accent-border', 'color-mix(in srgb, ' + c + ' 28%, transparent)');
+      } else {
+        ['--accent','--accent-strong','--accent-bright','--accent-text','--accent-soft','--accent-border'].forEach((v) => document.body.style.removeProperty(v));
+      }
     } else {
-      // Clear per-app override so global/custom accent takes over.
+      delete document.body.dataset.app;
       ['--accent','--accent-strong','--accent-bright','--accent-text','--accent-soft','--accent-border'].forEach((v) => document.body.style.removeProperty(v));
     }
-  } catch { document.body.dataset.app = 'all'; }
-  // Per-app sidebar swap (cool stuff): replace global nav with an app-focused panel.
-  try { syncAppSidebar(_appCfg); } catch (e) { /* ignore */ }
+  } catch { delete document.body.dataset.app; }
+  // Per-app sidebar swap (opt-in).
+  try { if (sidebarSwapOn) syncAppSidebar(_appCfg); else { const p = document.getElementById('app-sidebar-panel'); if (p) p.remove(); const n = document.querySelector('.nav'); if (n) n.style.display = ''; } } catch (e) { /* ignore */ }
   if (state.tool === 'aitools') {
     if (state.aiTools.tab === 'models') refreshAiModelsInfo();
     const keyInput = document.getElementById('aiimg-api-key');
@@ -13340,7 +13361,7 @@ function openSettings() {
 }
 
 function resetPreferences() {
-  state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: true, appAccents: true, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' };
+  state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: false, appAccents: false, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' };
   savePrefs();
   applyTheme();
   renderSettingsBody();
@@ -13354,7 +13375,7 @@ async function privacyReset() {
   try { if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.map((k) => caches.delete(k))); } } catch {}
   try { localStorage.removeItem('NuVerter-converter'); localStorage.removeItem('NuVerter-prefs'); localStorage.removeItem('NuVerter-ai-chat'); localStorage.removeItem('NuVerter-workflows'); } catch {}
 try { const db = await openDB(); const tx = db.transaction(DB_WORKFLOWS_STORE, 'readwrite'); tx.objectStore(DB_WORKFLOWS_STORE).clear(); } catch {}
-  try { state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: true, appAccents: true, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' }; savePrefs(); applyTheme(); } catch {}
+  try { state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: false, appAccents: false, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' }; savePrefs(); applyTheme(); } catch {}
   try { renderView(); } catch {}
   toast('Privacy reset', 'Queue, results, caches and preferences cleared. Note: browser/OS may retain other copies.', 'success');
 }
