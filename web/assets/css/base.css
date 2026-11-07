@@ -367,7 +367,7 @@ html.appearance-glow-off .ambient { display: none; }
   text-overflow: ellipsis;
 }
 .nav-item:hover {
-  background: var(--surface-hover);
+  background: var(--accent-soft);
   color: var(--text);
 }
 .nav-item:hover .icon { color: var(--text-2); }

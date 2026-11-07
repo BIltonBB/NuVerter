@@ -215,6 +215,7 @@ body[data-app="developer"] {
 @media (max-width: 600px) {
   .ws-panel { padding: 10px; }
   .ws-drop { padding: 20px 12px; }
+  .ws-inspector, .ws-output { max-height: 45vh; overflow-y: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {
