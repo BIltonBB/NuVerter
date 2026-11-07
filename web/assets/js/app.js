@@ -9211,10 +9211,10 @@ function videoEditorView() {
         <div id="ve-progress" class="progress-wrap" hidden><div class="progress"><span style="width:0%"></span></div><span class="pct">0%</span></div>
       </aside>
     </div>
-    <div class="stage-card" style="margin-top:12px;position:sticky;bottom:8px;z-index:5;box-shadow:0 -8px 24px rgba(0,0,0,.25)">
+    <div class="stage-card" style="margin-top:12px">
       <div class="stage-head"><div class="stage-head-copy"><strong>Timeline</strong><span>Multi-track · drag clips · click to scrub</span></div></div>
       <div class="stage-body" style="padding:8px">
-        <div id="ve-timeline" style="position:relative;height:220px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer">
+        <div id="ve-timeline" style="position:relative;height:220px;min-height:120px;max-height:420px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;overflow:auto;cursor:pointer;resize:vertical;scrollbar-width:none">
           <div id="ve-timeline-ruler" style="position:absolute;top:0;left:0;right:0;height:18px;background:var(--surface-3);border-bottom:1px solid var(--border);font-size:10px;color:var(--text-3)"></div>
           <div id="ve-track-video" style="position:absolute;top:18px;left:0;right:0;height:24px;background:rgba(124,58,237,0.12)"></div>
           <div id="ve-track-overlays" style="position:absolute;top:44px;left:0;right:0;height:24px"></div>
@@ -11185,11 +11185,18 @@ function renderView() {
   const _appCfg = APP_DASHBOARDS[state.tool];
   // Sidebar scoping + per-app identity are opt-in (off by default) so the classic UI stays default.
   const identityOn = !!(state.prefs && state.prefs.appAccents);
+  const uniqueUIOn = !!(state.prefs && state.prefs.appUniqueUI !== false);
+  const uniqueUI2On = !!(state.prefs && state.prefs.appUniqueUI2 !== false);
   const sidebarSwapOn = !!(state.prefs && state.prefs.appSidebarSwap);
   if (identityOn && _appCfg && _appCfg.group && typeof window.applyCategoryFilter === 'function') window.applyCategoryFilter(_appCfg.group);
+  const appMode = !!(_appCfg && _appCfg.group);
+  // App-unique UI: typography, density, motion and layout identity (one switch).
+  const uniqueAny = uniqueUIOn || uniqueUI2On;
+  document.body.classList.toggle('app-unique', appMode && uniqueAny);
+  document.body.classList.toggle('app-unique-2', appMode && uniqueUI2On);
+  if (uniqueAny && _appCfg && _appCfg.group) document.body.dataset.app = _appCfg.group; else if (!identityOn) delete document.body.dataset.app;
   try {
     if (identityOn && _appCfg && _appCfg.group) {
-      document.body.dataset.app = _appCfg.group;
       const hasCustomGlobal = !!(state.prefs && state.prefs.accentColor);
       const colorKey = _appCfg.group === 'media' ? 'appAccentMedia' : _appCfg.group === 'documents' ? 'appAccentDocs' : _appCfg.group === 'ai' ? 'appAccentAI' : _appCfg.group === 'developer' ? 'appAccentDev' : '';
       if (!hasCustomGlobal && colorKey && state.prefs && state.prefs[colorKey]) {
@@ -11203,13 +11210,12 @@ function renderView() {
       } else {
         ['--accent','--accent-strong','--accent-bright','--accent-text','--accent-soft','--accent-border'].forEach((v) => document.body.style.removeProperty(v));
       }
-    } else {
+    } else if (!uniqueUIOn) {
       delete document.body.dataset.app;
       ['--accent','--accent-strong','--accent-bright','--accent-text','--accent-soft','--accent-border'].forEach((v) => document.body.style.removeProperty(v));
     }
-  } catch { delete document.body.dataset.app; }
+  } catch { if (!uniqueUIOn) delete document.body.dataset.app; }
   // App mode: app's own rail becomes navigation; sidebar follows the user's position choice.
-  const appMode = !!(_appCfg && _appCfg.group);
   document.body.classList.toggle('app-mode', appMode);
   applySidebarPosition();
   // Per-app sidebar swap (opt-in, independent).
@@ -13271,6 +13277,14 @@ function settingsBody() {
           <div class="settings-item-copy"><strong>App-focused sidebar</strong><small>Replace the global sidebar with an app-specific one when opening an app</small></div>
           <button class="switch" role="switch" aria-checked="${state.prefs.appSidebarSwap}" aria-label="App-focused sidebar" data-toggle="prefs.appSidebarSwap"></button>
         </div>
+        <div class="settings-item">
+          <div class="settings-item-copy"><strong>App-unique UI</strong><small>Per-app typography, density, motion and layout identity (one switch)</small></div>
+          <button class="switch" role="switch" aria-checked="${state.prefs.appUniqueUI !== false}" aria-label="App-unique UI" data-toggle="prefs.appUniqueUI"></button>
+        </div>
+        <div class="settings-item">
+          <div class="settings-item-copy"><strong>App-unique UI #2</strong><small>Advanced differentiation: anchoring, icons, empty states, shortcuts (second switch)</small></div>
+          <button class="switch" role="switch" aria-checked="${state.prefs.appUniqueUI2 !== false}" aria-label="App-unique UI #2" data-toggle="prefs.appUniqueUI2"></button>
+        </div>
       </div>
     </div>
 
@@ -13451,7 +13465,7 @@ function openSettings() {
 }
 
 function resetPreferences() {
-  state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: false, sidebarPosition: 'left', appAccents: false, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' };
+  state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: false, appUniqueUI: true, appUniqueUI2: true, sidebarPosition: 'left', appAccents: false, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' };
   savePrefs();
   applyTheme();
   renderSettingsBody();
@@ -13465,7 +13479,7 @@ async function privacyReset() {
   try { if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.map((k) => caches.delete(k))); } } catch {}
   try { localStorage.removeItem('NuVerter-converter'); localStorage.removeItem('NuVerter-prefs'); localStorage.removeItem('NuVerter-ai-chat'); localStorage.removeItem('NuVerter-workflows'); } catch {}
 try { const db = await openDB(); const tx = db.transaction(DB_WORKFLOWS_STORE, 'readwrite'); tx.objectStore(DB_WORKFLOWS_STORE).clear(); } catch {}
-  try { state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: false, sidebarPosition: 'left', appAccents: false, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' }; savePrefs(); applyTheme(); } catch {}
+  try { state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: false, appUniqueUI: true, appUniqueUI2: true, sidebarPosition: 'left', appAccents: false, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' }; savePrefs(); applyTheme(); } catch {}
   try { renderView(); } catch {}
   toast('Privacy reset', 'Queue, results, caches and preferences cleared. Note: browser/OS may retain other copies.', 'success');
 }
@@ -14061,6 +14075,8 @@ function handleToggle(el) {
     if (path === 'prefs.audioReactive') applyAudioReactiveTheme();
     if (path === 'prefs.appSidebarSwap') renderView();
     if (path === 'prefs.appAccents') renderView();
+    if (path === 'prefs.appUniqueUI') renderView();
+    if (path === 'prefs.appUniqueUI2') renderView();
   }
   if (path.startsWith('converter.')) {
     saveConverter();
@@ -14609,7 +14625,17 @@ async function handleAction(action, el) {
           const tauri = window.__TAURI__ || window.__TAURI_INTERNALS__;
           const inv = tauri?.core?.invoke || tauri?.invoke;
           if (typeof inv !== 'function') { toast('Not available', 'Updates are only available in the desktop app.', 'info'); return; }
-          const newVersion = await inv.call(tauri?.core || tauri, 'check_update');
+          let newVersion = null;
+           try { newVersion = await inv.call(tauri?.core || tauri, 'check_update'); } catch (e) { newVersion = null; }
+           let latestUrl = 'https://github.com/BIltonBB/NuVerter/releases/latest';
+           if (!newVersion) {
+             try {
+               const installed = await inv.call(tauri?.core || tauri, 'get_app_version');
+               const latest = await fetchLatestGitHubRelease();
+               if (latest && cmpVersions(latest.version, installed) > 0) { newVersion = latest.version; latestUrl = latest.url; }
+             } catch {}
+           }
+           window.__latestUpdateUrl = latestUrl;
           if (newVersion) {
             const modal = document.createElement('div');
             modal.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);backdrop-filter:blur(4px)';
@@ -14635,7 +14661,7 @@ async function handleAction(action, el) {
             modal.querySelector('#upd-yes').onclick = async () => {
               const btn = modal.querySelector('#upd-yes');
               if (btn) { btn.disabled = true; btn.textContent = 'Updating...'; }
-              try { await inv.call(tauri?.core || tauri, 'install_update'); } catch (e) { modal.remove(); }
+              try { await inv.call(tauri?.core || tauri, 'install_update'); } catch (e) { try { window.open(window.__latestUpdateUrl || 'https://github.com/BIltonBB/NuVerter/releases/latest', '_blank'); } catch {} modal.remove(); }
             };
           } else {
             toast('Up to date', 'You are running the latest version.', 'success');
@@ -15416,6 +15442,30 @@ function showLocalWarning() {
   else $('#view')?.before(banner);
 }
 
+async function fetchLatestGitHubRelease() {
+  try {
+    const res = await fetch('https://api.github.com/repos/BIltonBB/NuVerter/releases/latest');
+    if (!res.ok) return null;
+    const data = await res.json();
+    const version = String(data.tag_name || '').replace(/^v/, '');
+    const url = data.html_url || 'https://github.com/BIltonBB/NuVerter/releases/latest';
+    return version ? { version, url } : null;
+  } catch {
+    return null;
+  }
+}
+
+function cmpVersions(a, b) {
+  const pa = String(a || '').split('.').map((n) => Number(n) || 0);
+  const pb = String(b || '').split('.').map((n) => Number(n) || 0);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const x = pa[i] || 0, y = pb[i] || 0;
+    if (x !== y) return x > y ? 1 : -1;
+  }
+  return 0;
+}
+
 function initDesktopUpdates() {
   try {
     if (!window.electronAPI || typeof window.electronAPI.onUpdateStatus !== 'function') return;
@@ -15530,7 +15580,15 @@ bindEvents();
     const inv = tauri?.core?.invoke || tauri?.invoke;
     if (typeof inv !== 'function') return;
     const bind = (tauri?.core || tauri);
-    const newVersion = await inv.call(bind, 'check_update');
+    let newVersion = null;
+    try { newVersion = await inv.call(bind, 'check_update'); } catch (e) { newVersion = null; }
+    if (!newVersion) {
+      try {
+        const installed = await inv.call(bind, 'get_app_version');
+        const latest = await fetchLatestGitHubRelease();
+        if (latest && cmpVersions(latest.version, installed) > 0) newVersion = latest.version;
+      } catch {}
+    }
     if (newVersion) {
       const modal = document.createElement('div');
       modal.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);backdrop-filter:blur(4px)';
@@ -15555,14 +15613,14 @@ bindEvents();
         badge.onclick = async () => {
           badge.disabled = true;
           badge.textContent = '^';
-          try { await inv.call(bind, 'install_update'); } catch (e) { badge.remove(); }
+          try { await inv.call(bind, 'install_update'); } catch (e) { try { window.open(window.__latestUpdateUrl || 'https://github.com/BIltonBB/NuVerter/releases/latest', '_blank'); } catch {} badge.remove(); }
         };
         document.body.appendChild(badge);
       };
       modal.querySelector('#upd-yes').onclick = async () => {
         const btn = modal.querySelector('#upd-yes');
         if (btn) { btn.disabled = true; btn.textContent = 'Updating...'; }
-        try { await inv.call(bind, 'install_update'); } catch (e) { cleanup(); }
+        try { await inv.call(bind, 'install_update'); } catch (e) { try { window.open(window.__latestUpdateUrl || 'https://github.com/BIltonBB/NuVerter/releases/latest', '_blank'); } catch {} cleanup(); }
       };
     }
   } catch (e) { console.warn('[updater] check failed', e); }

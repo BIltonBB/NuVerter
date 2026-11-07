@@ -1,6 +1,6 @@
 [package]
 name = "nuverter-tauri"
-version = "1.0.9"
+version = "1.1.22"
 description = "NuVerter desktop (Tauri)"
 edition = "2021"
 
@@ -9,6 +9,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
+window-vibrancy = "0.8"
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"
