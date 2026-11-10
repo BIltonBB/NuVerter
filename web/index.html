@@ -747,6 +747,26 @@
 
           <div class="nav-group" data-navgroup="documents">
             <p class="nav-label" data-action="nav-group-toggle">Documents <span class="nav-group-chev">▾</span></p>
+            <button class="nav-item" data-action="docs-op" data-op="merge">
+              <svg class="icon"><use href="#i-file" /></svg>
+              <span>Merge PDFs</span>
+            </button>
+            <button class="nav-item" data-action="docs-op" data-op="split">
+              <svg class="icon"><use href="#i-file" /></svg>
+              <span>Split PDF</span>
+            </button>
+            <button class="nav-item" data-action="docs-op" data-op="img2pdf">
+              <svg class="icon"><use href="#i-file" /></svg>
+              <span>Images to PDF</span>
+            </button>
+            <button class="nav-item" data-action="docs-op" data-op="pdf2img">
+              <svg class="icon"><use href="#i-file" /></svg>
+              <span>PDF to Images</span>
+            </button>
+            <button class="nav-item" data-action="docs-op" data-op="redact">
+              <svg class="icon"><use href="#i-file" /></svg>
+              <span>Redact</span>
+            </button>
             <button class="nav-item" data-tool="pdftools">
               <svg class="icon"><use href="#i-file" /></svg>
               <span>PDF Tools</span>
@@ -755,6 +775,38 @@
 
           <div class="nav-group" data-navgroup="developer">
             <p class="nav-label" data-action="nav-group-toggle">Developer <span class="nav-group-chev">▾</span></p>
+            <button class="nav-item" data-tool="devtools" data-devtab="json">
+              <svg class="icon"><use href="#i-command" /></svg>
+              <span>JSON</span>
+            </button>
+            <button class="nav-item" data-tool="devtools" data-devtab="base64">
+              <svg class="icon"><use href="#i-command" /></svg>
+              <span>Base64</span>
+            </button>
+            <button class="nav-item" data-tool="devtools" data-devtab="regex">
+              <svg class="icon"><use href="#i-command" /></svg>
+              <span>Regex</span>
+            </button>
+            <button class="nav-item" data-tool="devtools" data-devtab="hash">
+              <svg class="icon"><use href="#i-command" /></svg>
+              <span>File hash</span>
+            </button>
+            <button class="nav-item" data-tool="devtools" data-devtab="mock">
+              <svg class="icon"><use href="#i-command" /></svg>
+              <span>Mock data</span>
+            </button>
+            <button class="nav-item" data-tool="devtools" data-devtab="pii">
+              <svg class="icon"><use href="#i-command" /></svg>
+              <span>PII scrub</span>
+            </button>
+            <button class="nav-item" data-tool="devtools" data-devtab="clip">
+              <svg class="icon"><use href="#i-command" /></svg>
+              <span>Clipboard</span>
+            </button>
+            <button class="nav-item" data-tool="devtools" data-devtab="wc">
+              <svg class="icon"><use href="#i-command" /></svg>
+              <span>WebCodecs</span>
+            </button>
             <button class="nav-item" data-tool="devtools">
               <svg class="icon"><use href="#i-command" /></svg>
               <span>Dev Tools</span>
@@ -763,6 +815,34 @@
 
           <div class="nav-group" data-navgroup="ai">
             <p class="nav-label" data-action="nav-group-toggle">AI <span class="nav-group-chev">▾</span></p>
+            <button class="nav-item" data-tool="aitools" data-aitab="aiimg">
+              <svg class="icon"><use href="#i-sparkles" /></svg>
+              <span>AI Image</span>
+            </button>
+            <button class="nav-item" data-tool="aitools" data-aitab="aibg">
+              <svg class="icon"><use href="#i-sparkles" /></svg>
+              <span>AI BG remove</span>
+            </button>
+            <button class="nav-item" data-tool="aitools" data-aitab="aiup">
+              <svg class="icon"><use href="#i-sparkles" /></svg>
+              <span>AI Upscale</span>
+            </button>
+            <button class="nav-item" data-tool="aitools" data-aitab="ocr">
+              <svg class="icon"><use href="#i-sparkles" /></svg>
+              <span>OCR</span>
+            </button>
+            <button class="nav-item" data-tool="aitools" data-aitab="tts">
+              <svg class="icon"><use href="#i-sparkles" /></svg>
+              <span>TTS</span>
+            </button>
+            <button class="nav-item" data-tool="aitools" data-aitab="emb">
+              <svg class="icon"><use href="#i-sparkles" /></svg>
+              <span>Embeddings</span>
+            </button>
+            <button class="nav-item" data-tool="aitools" data-aitab="docqa">
+              <svg class="icon"><use href="#i-sparkles" /></svg>
+              <span>Doc Q&amp;A</span>
+            </button>
             <button class="nav-item" data-tool="aitools">
               <svg class="icon"><use href="#i-sparkles" /></svg>
               <span>AI Tools</span>
@@ -970,7 +1050,7 @@
       }, 50);
     })();
   </script>
-  <script type="module" src="assets/js/app.js?v=266"></script>
+  <script type="module" src="assets/js/app.js?v=267"></script>
   <script>
     // Clear legacy (non-COI) service workers / PWA caches, but keep coi-serviceworker.
     if ('serviceWorker' in navigator) {
