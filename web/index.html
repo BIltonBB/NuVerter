@@ -85,7 +85,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="assets/css/base.css?v=28" />
+  <link rel="stylesheet" href="assets/css/base.css?v=29" />
   <link rel="stylesheet" href="assets/css/components.css?v=5" />
   <link rel="stylesheet" href="assets/css/views.css?v=29" />
   <link rel="stylesheet" href="assets/css/extra.css?v=7" />
@@ -747,23 +747,23 @@
 
           <div class="nav-group" data-navgroup="documents">
             <p class="nav-label" data-action="nav-group-toggle">Documents <span class="nav-group-chev">▾</span></p>
-            <button class="nav-item is-sub" data-action="docs-op" data-op="merge">
+            <button class="nav-item is-sub" data-action="docs-op" data-op="merge" data-tool="pdftools" data-navkey="merge">
               <svg class="icon"><use href="#i-file" /></svg>
               <span>Merge PDFs</span>
             </button>
-            <button class="nav-item is-sub" data-action="docs-op" data-op="split">
+            <button class="nav-item is-sub" data-action="docs-op" data-op="split" data-tool="pdftools" data-navkey="split">
               <svg class="icon"><use href="#i-file" /></svg>
               <span>Split PDF</span>
             </button>
-            <button class="nav-item is-sub" data-action="docs-op" data-op="img2pdf">
+            <button class="nav-item is-sub" data-action="docs-op" data-op="img2pdf" data-tool="pdftools" data-navkey="img2pdf">
               <svg class="icon"><use href="#i-file" /></svg>
               <span>Images to PDF</span>
             </button>
-            <button class="nav-item is-sub" data-action="docs-op" data-op="pdf2img">
+            <button class="nav-item is-sub" data-action="docs-op" data-op="pdf2img" data-tool="pdftools" data-navkey="pdf2img">
               <svg class="icon"><use href="#i-file" /></svg>
               <span>PDF to Images</span>
             </button>
-            <button class="nav-item is-sub" data-action="docs-op" data-op="redact">
+            <button class="nav-item is-sub" data-action="docs-op" data-op="redact" data-tool="pdftools" data-navkey="redact">
               <svg class="icon"><use href="#i-file" /></svg>
               <span>Redact</span>
             </button>
@@ -775,35 +775,35 @@
 
           <div class="nav-group" data-navgroup="developer">
             <p class="nav-label" data-action="nav-group-toggle">Developer <span class="nav-group-chev">▾</span></p>
-            <button class="nav-item is-sub" data-tool="devtools" data-devtab="json">
+            <button class="nav-item is-sub" data-tool="devtools" data-devtab="json" data-navkey="json">
               <svg class="icon"><use href="#i-command" /></svg>
               <span>JSON</span>
             </button>
-            <button class="nav-item is-sub" data-tool="devtools" data-devtab="base64">
+            <button class="nav-item is-sub" data-tool="devtools" data-devtab="base64" data-navkey="base64">
               <svg class="icon"><use href="#i-command" /></svg>
               <span>Base64</span>
             </button>
-            <button class="nav-item is-sub" data-tool="devtools" data-devtab="regex">
+            <button class="nav-item is-sub" data-tool="devtools" data-devtab="regex" data-navkey="regex">
               <svg class="icon"><use href="#i-command" /></svg>
               <span>Regex</span>
             </button>
-            <button class="nav-item is-sub" data-tool="devtools" data-devtab="hash">
+            <button class="nav-item is-sub" data-tool="devtools" data-devtab="hash" data-navkey="hash">
               <svg class="icon"><use href="#i-command" /></svg>
               <span>File hash</span>
             </button>
-            <button class="nav-item is-sub" data-tool="devtools" data-devtab="mock">
+            <button class="nav-item is-sub" data-tool="devtools" data-devtab="mock" data-navkey="mock">
               <svg class="icon"><use href="#i-command" /></svg>
               <span>Mock data</span>
             </button>
-            <button class="nav-item is-sub" data-tool="devtools" data-devtab="pii">
+            <button class="nav-item is-sub" data-tool="devtools" data-devtab="pii" data-navkey="pii">
               <svg class="icon"><use href="#i-command" /></svg>
               <span>PII scrub</span>
             </button>
-            <button class="nav-item is-sub" data-tool="devtools" data-devtab="clip">
+            <button class="nav-item is-sub" data-tool="devtools" data-devtab="clip" data-navkey="clip">
               <svg class="icon"><use href="#i-command" /></svg>
               <span>Clipboard</span>
             </button>
-            <button class="nav-item is-sub" data-tool="devtools" data-devtab="wc">
+            <button class="nav-item is-sub" data-tool="devtools" data-devtab="wc" data-navkey="wc">
               <svg class="icon"><use href="#i-command" /></svg>
               <span>WebCodecs</span>
             </button>
@@ -815,31 +815,31 @@
 
           <div class="nav-group" data-navgroup="ai">
             <p class="nav-label" data-action="nav-group-toggle">AI <span class="nav-group-chev">▾</span></p>
-            <button class="nav-item is-sub" data-tool="aitools" data-aitab="aiimg">
+            <button class="nav-item is-sub" data-tool="aitools" data-aitab="aiimg" data-navkey="aiimg">
               <svg class="icon"><use href="#i-sparkles" /></svg>
               <span>AI Image</span>
             </button>
-            <button class="nav-item is-sub" data-tool="aitools" data-aitab="aibg">
+            <button class="nav-item is-sub" data-tool="aitools" data-aitab="aibg" data-navkey="aibg">
               <svg class="icon"><use href="#i-sparkles" /></svg>
               <span>AI BG remove</span>
             </button>
-            <button class="nav-item is-sub" data-tool="aitools" data-aitab="aiup">
+            <button class="nav-item is-sub" data-tool="aitools" data-aitab="aiup" data-navkey="aiup">
               <svg class="icon"><use href="#i-sparkles" /></svg>
               <span>AI Upscale</span>
             </button>
-            <button class="nav-item is-sub" data-tool="aitools" data-aitab="ocr">
+            <button class="nav-item is-sub" data-tool="aitools" data-aitab="ocr" data-navkey="ocr">
               <svg class="icon"><use href="#i-sparkles" /></svg>
               <span>OCR</span>
             </button>
-            <button class="nav-item is-sub" data-tool="aitools" data-aitab="tts">
+            <button class="nav-item is-sub" data-tool="aitools" data-aitab="tts" data-navkey="tts">
               <svg class="icon"><use href="#i-sparkles" /></svg>
               <span>TTS</span>
             </button>
-            <button class="nav-item is-sub" data-tool="aitools" data-aitab="emb">
+            <button class="nav-item is-sub" data-tool="aitools" data-aitab="emb" data-navkey="emb">
               <svg class="icon"><use href="#i-sparkles" /></svg>
               <span>Embeddings</span>
             </button>
-            <button class="nav-item is-sub" data-tool="aitools" data-aitab="docqa">
+            <button class="nav-item is-sub" data-tool="aitools" data-aitab="docqa" data-navkey="docqa">
               <svg class="icon"><use href="#i-sparkles" /></svg>
               <span>Doc Q&amp;A</span>
             </button>
@@ -1050,7 +1050,7 @@
       }, 50);
     })();
   </script>
-  <script type="module" src="assets/js/app.js?v=267"></script>
+  <script type="module" src="assets/js/app.js?v=268"></script>
   <script>
     // Clear legacy (non-COI) service workers / PWA caches, but keep coi-serviceworker.
     if ('serviceWorker' in navigator) {

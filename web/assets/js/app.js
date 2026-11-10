@@ -3378,7 +3378,28 @@ function updateEngineProgress(value) {
 
 function updateChrome() {
   const tool = toolById(state.tool);
-  $$('.nav-item[data-tool]').forEach((btn) => btn.classList.toggle('is-active', btn.dataset.tool === state.tool));
+  // Nav highlighting: grouped sub-items (AI / Developer / Documents) share one
+  // data-tool, so highlight only the exact entry for the active tool + tab.
+  const activeTab = state.tool === 'aitools' ? (state.aiTools?.tab || '')
+    : state.tool === 'devtools' ? (state.devTools?.tab || '')
+      : state.tool === 'pdftools' ? (state.pdfTools?.tab || '')
+        : '';
+  const keyedSiblings = new Map();
+  $$('.nav-item[data-tool][data-navkey]').forEach((btn) => {
+    const list = keyedSiblings.get(btn.dataset.tool) || [];
+    list.push(btn.dataset.navkey);
+    keyedSiblings.set(btn.dataset.tool, list);
+  });
+  $$('.nav-item[data-tool]').forEach((btn) => {
+    const t = btn.dataset.tool;
+    let active = t === state.tool;
+    if (active && btn.dataset.navkey) active = btn.dataset.navkey === activeTab;
+    if (active && !btn.dataset.navkey && activeTab) {
+      const keys = keyedSiblings.get(t) || [];
+      active = !keys.includes(activeTab);
+    }
+    btn.classList.toggle('is-active', active);
+  });
   const crumb = $('#crumb-current');
   if (crumb) crumb.textContent = tool.label;
   const count = $('#history-count');
