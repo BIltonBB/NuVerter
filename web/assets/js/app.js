@@ -19786,7 +19786,7 @@ function nuEncodeWav(chL, chR, sampleRate) {
 
 function desktopOnlyNotice(toolName, modelSize, detail) {
   if (isDesktopApp()) {
-    return '<div class="modal-note" style="margin:8px 0;padding:10px 12px;border-radius:8px;background:var(--accent-soft,rgba(124,58,237,.08));border:1px solid var(--accent-border,rgba(124,58,237,.2));font-size:11.5px;line-height:1.55"><strong>Desktop engine required:</strong> ' + (detail || (toolName + ' needs a ' + modelSize + ' model.')) + ' Add it under Settings &rarr; AI models to enable this tool.</div>';
+    return '<div class="modal-note" style="margin:8px 0;padding:10px 12px;border-radius:8px;background:var(--accent-soft,rgba(124,58,237,.08));border:1px solid var(--accent-border,rgba(124,58,237,.2));font-size:11.5px;line-height:1.55"><strong>Desktop engine required:</strong> ' + (detail || (toolName + ' needs a ' + modelSize + ' model.')) + ' Add it under AI Tools &rarr; Models to enable this tool.</div>';
   }
   return '<div class="modal-note" style="margin:8px 0;padding:10px 12px;border-radius:8px;background:var(--accent-soft,rgba(124,58,237,.08));border:1px solid var(--accent-border,rgba(124,58,237,.2));font-size:11.5px;line-height:1.55"><strong>Desktop only:</strong> ' + toolName + ' needs a ' + modelSize + ' model, which is too large to load reliably in a browser tab. The desktop app stores it on disk and keeps it between launches. <button class="btn btn-ghost btn-sm" data-action="download-app" style="margin-left:6px;padding:2px 8px;font-size:11px">Get desktop app</button></div>';
 }
@@ -19857,7 +19857,7 @@ function utilVoiceCloneBody() {
       <div class="stage-head"><div class="stage-head-copy"><strong>AI voice cloning</strong><span>Clone a voice from a short sample</span></div></div>
       <div class="stage-body">
         ${desktopOnlyNotice('Voice cloning', '2GB', 'Voice cloning uses Coqui XTTS-class models (~2GB) that are too large for a browser tab.')}
-        <p class="muted" style="font-size:12px">Available in the desktop app once the model is added under Settings &rarr; AI models.</p>
+        <p class="muted" style="font-size:12px">Available in the desktop app once the model is added under AI Tools &rarr; Models.</p>
       </div>
     </div>`;
 }
@@ -19897,7 +19897,7 @@ function utilTalkingHeadBody() {
       <div class="stage-head"><div class="stage-head-copy"><strong>AI talking head</strong><span>Animate a face from audio</span></div></div>
       <div class="stage-body">
         ${desktopOnlyNotice('Talking head', '1GB+', 'Talking-head animation needs Wav2Lip/SadTalker-class models (1GB+) and a native video pipeline.')}
-        <p class="muted" style="font-size:12px">Available in the desktop app once the model is added under Settings &rarr; AI models.</p>
+        <p class="muted" style="font-size:12px">Available in the desktop app once the model is added under AI Tools &rarr; Models.</p>
       </div>
     </div>`;
 }
@@ -20109,7 +20109,7 @@ function utilImg2ImgBody() {
       <div class="stage-head"><div class="stage-head-copy"><strong>AI image-to-image</strong><span>Transform images with text prompts</span></div></div>
       <div class="stage-body">
         ${desktopOnlyNotice('Image-to-image', '2GB', 'Stable Diffusion image-to-image needs a VAE encoder plus the 2.5GB SD-Turbo weights.')}
-        <p class="muted" style="font-size:12px">Text-to-image already works offline from AI Image. Add a VAE encoder in Settings &rarr; AI models to enable img2img on desktop.</p>
+        <p class="muted" style="font-size:12px">Text-to-image already works offline from AI Image. Add a VAE encoder in AI Tools &rarr; Models to enable img2img on desktop.</p>
       </div>
     </div>`;
 }
