@@ -349,10 +349,6 @@
   .segmented button { min-height: 36px; }
   .segmented button { font-size: 12px; }
   .segmented { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .util-cats { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
-  .util-cat { flex: none; }
-  .util-tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
-  .util-tabs button { flex: none; }
   input.input, select.select, textarea.input { max-width: 100%; box-sizing: border-box; }
   .util-tabs button, .settings-tabs button { white-space: nowrap; }
   .stage-head-copy strong, .view-title, .ws-rail-label { word-break: break-word; overflow-wrap: anywhere; }
