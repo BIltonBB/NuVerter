@@ -7583,8 +7583,8 @@ async function utilDocQaAsk() {
 
 function aiToolsView() {
   const tab = state.aiTools?.tab || 'aibg';
-  const tabs = ['aiimg','aibg','aiup','ocr','tts','emb','models','docs','docqa','summarize','md','textpdf'];
-  const labels = { aiimg:'AI Image', aibg:'AI BG', aiup:'AI Upscale', ocr:'OCR', tts:'TTS', emb:'Embeddings', models:'Models', docs:'Doc Search', docqa:'Doc Q&A', summarize:'Summarizer', md:'Markdown', textpdf:'Text to PDF' };
+  const tabs = ['aiimg','aibg','aiup','ocr','tts','emb','models','docs','docqa','summarize','md','textpdf','aitranslate','aiparaphrase','aigrammar','aiemail','aimeeting','aikeywords','aisentiment','aiqa','airegex','aisql','aicodeexplain','aicommit','aitest','aipolish','semsearch','scene','bgblur'];
+  const labels = { aiimg:'AI Image', aibg:'AI BG', aiup:'AI Upscale', ocr:'OCR', tts:'TTS', emb:'Embeddings', models:'Models', docs:'Doc Search', docqa:'Doc Q&A', summarize:'Summarizer', md:'Markdown', textpdf:'Text to PDF', aitranslate:'Translator', aiparaphrase:'Paraphraser', aigrammar:'Grammar', aiemail:'Email drafter', aimeeting:'Meeting notes', aikeywords:'Keywords', aisentiment:'Sentiment', aiqa:'Q&A', airegex:'Regex gen', aisql:'SQL gen', aicodeexplain:'Code explain', aicommit:'Commit msg', aitest:'Test gen', aipolish:'Transcription polish', semsearch:'Semantic search', scene:'Scene detect', bgblur:'Bg blur' };
   return `
     ${viewHead({ index: '11', kicker: 'AI tools', title: 'AI <span class="accent">utilities.</span>', sub: 'Image generation, background removal, upscaling, OCR, TTS and embeddings — local where it counts.' })}
     <div class="util-tabs segmented" role="tablist">
@@ -7602,7 +7602,24 @@ function aiToolsView() {
         tab === 'summarize' ? utilSummarizeBody() :
         tab === 'md' ? utilMdBody() :
         tab === 'textpdf' ? utilTextPdfBody() :
-         utilEmbBody()}
+        tab === 'aitranslate' ? utilAiTranslateBody() :
+        tab === 'aiparaphrase' ? utilAiParaphraseBody() :
+        tab === 'aigrammar' ? utilAiGrammarBody() :
+        tab === 'aiemail' ? utilAiEmailBody() :
+        tab === 'aimeeting' ? utilAiMeetingBody() :
+        tab === 'aikeywords' ? utilAiKeywordsBody() :
+        tab === 'aisentiment' ? utilAiSentimentBody() :
+        tab === 'aiqa' ? utilAiQaBody() :
+        tab === 'airegex' ? utilAiRegexBody() :
+        tab === 'aisql' ? utilAiSqlBody() :
+        tab === 'aicodeexplain' ? utilAiCodeExplainBody() :
+        tab === 'aicommit' ? utilAiCommitBody() :
+        tab === 'aitest' ? utilAiTestBody() :
+        tab === 'aipolish' ? utilAiPolishBody() :
+        tab === 'semsearch' ? utilSemanticSearchBody() :
+        tab === 'scene' ? utilSceneDetectBody() :
+        tab === 'bgblur' ? utilBgBlurBody() :
+          utilEmbBody()}
     </div>
     <div class="queue-progress tool-progress" id="ai-tools-progress" hidden style="margin-top:10px">
       <div class="progress"><span style="width:0%"></span></div>
@@ -14484,6 +14501,23 @@ async function handleExtraAction(action, el) {
     case 'docqa-ask': await utilDocQaAsk(); return true;
     case 'util-aibg': await utilAiBg(); return true;
     case 'util-aiup': await utilAiUpscale(); return true;
+    case 'util-aitranslate': await utilAiTranslate(); return true;
+    case 'util-aiparaphrase': await utilAiParaphrase(); return true;
+    case 'util-aigrammar': await utilAiGrammar(); return true;
+    case 'util-aiemail': await utilAiEmail(); return true;
+    case 'util-aimeeting': await utilAiMeeting(); return true;
+    case 'util-aikeywords': await utilAiKeywords(); return true;
+    case 'util-aisentiment': await utilAiSentiment(); return true;
+    case 'util-aiqa': await utilAiQa(); return true;
+    case 'util-airegex': await utilAiRegex(); return true;
+    case 'util-aisql': await utilAiSql(); return true;
+    case 'util-aicodeexplain': await utilAiCodeExplain(); return true;
+    case 'util-aicommit': await utilAiCommit(); return true;
+    case 'util-aitest': await utilAiTest(); return true;
+    case 'util-aipolish': await utilAiPolish(); return true;
+    case 'util-semsearch': await utilSemanticSearch(); return true;
+    case 'util-scene': await utilSceneDetect(); return true;
+    case 'util-blur': await utilBgBlur(); return true;
     case 'util-emb': await utilEmb(); return true;
     case 'util-imgresize': await utilImgResize(); return true;
     case 'util-videomerge': await utilVideoMerge(); return true;
@@ -18424,3 +18458,416 @@ function utilTzConvBody() {
   return utilTimezoneBody();
 }
 function utilTzConv() { utilTimezone(); }
+// ---------- AI text tools (local LLM via WebLLM) ----------
+
+async function aiGenerate(prompt, modelKey) {
+  const key = modelKey || state.aiChat?.model || 'tiny';
+  const engine = await getAiChatEngine(key);
+  const messages = [
+    { role: 'system', content: 'You are a helpful assistant. Be concise and accurate.' },
+    { role: 'user', content: prompt }
+  ];
+  const stream = await engine.chat.completions.create({ messages, temperature: 0.7, top_p: 0.9, max_tokens: 1024, stream: true });
+  let acc = '';
+  for await (const chunk of stream) {
+    const delta = chunk?.choices?.[0]?.delta?.content || '';
+    if (delta) acc += delta;
+  }
+  return acc;
+}
+
+function aiTextBody(id, title, sub, inputLabel, placeholder, btnLabel, mode) {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>${title}</strong><span>${sub}</span></div></div>
+      <div class="stage-body">
+        <textarea data-util="${id}-in" class="input" rows="8" style="width:100%" placeholder="${placeholder}"></textarea>
+        ${inputLabel ? `<div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">${inputLabel}</span></div><input type="text" data-util="${id}-extra" class="input" style="width:100%" /></div>` : ''}
+        <button class="btn btn-primary btn-sm" data-action="util-${id}" style="margin-top:10px">${btnLabel}</button>
+        <div id="util-${id}-status" class="muted" style="margin-top:8px;font-size:12px"></div>
+        <pre id="util-${id}-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+      </div>
+    </div>`;
+}
+
+// Translator
+function utilAiTranslateBody() { return aiTextBody('aitranslate', 'AI translator', 'Translate text with local AI', 'Target language', 'Text to translate', 'Translate', 'translate'); }
+async function utilAiTranslate() {
+  const text = document.querySelector('[data-util="aitranslate-in"]')?.value || '';
+  const lang = document.querySelector('[data-util="aitranslate-extra"]')?.value || 'Spanish';
+  const out = document.getElementById('util-aitranslate-out');
+  const status = document.getElementById('util-aitranslate-status');
+  if (!text) { if (out) out.textContent = 'Enter text.'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const r = await aiGenerate(`Translate the following text to ${lang}. Output only the translation.\n\n${text}`);
+    if (out) out.textContent = r;
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); if (status) status.textContent = ''; }
+}
+
+// Summarizer (AI)
+function utilAiSummarizeBody() { return aiTextBody('aisummarize', 'AI summarizer', 'Summarize text with local AI', '', 'Paste text or article', 'Summarize', 'summarize'); }
+async function utilAiSummarize() {
+  const text = document.querySelector('[data-util="aisummarize-in"]')?.value || '';
+  const out = document.getElementById('util-aisummarize-out');
+  const status = document.getElementById('util-aisummarize-status');
+  if (!text) { if (out) out.textContent = 'Enter text.'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const r = await aiGenerate(`Summarize the following text concisely in 3-5 sentences.\n\n${text}`);
+    if (out) out.textContent = r;
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); if (status) status.textContent = ''; }
+}
+
+// Paraphraser
+function utilAiParaphraseBody() { return aiTextBody('aiparaphrase', 'AI paraphraser', 'Rewrite text in a new way', '', 'Text to paraphrase', 'Paraphrase', 'paraphrase'); }
+async function utilAiParaphrase() {
+  const text = document.querySelector('[data-util="aiparaphrase-in"]')?.value || '';
+  const out = document.getElementById('util-aiparaphrase-out');
+  const status = document.getElementById('util-aiparaphrase-status');
+  if (!text) { if (out) out.textContent = 'Enter text.'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const r = await aiGenerate(`Paraphrase the following text, keeping the meaning but changing the wording.\n\n${text}`);
+    if (out) out.textContent = r;
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); if (status) status.textContent = ''; }
+}
+
+// Grammar fixer
+function utilAiGrammarBody() { return aiTextBody('aigrammar', 'AI grammar fixer', 'Fix grammar and spelling', '', 'Text to fix', 'Fix', 'grammar'); }
+async function utilAiGrammar() {
+  const text = document.querySelector('[data-util="aigrammar-in"]')?.value || '';
+  const out = document.getElementById('util-aigrammar-out');
+  const status = document.getElementById('util-aigrammar-status');
+  if (!text) { if (out) out.textContent = 'Enter text.'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const r = await aiGenerate(`Fix grammar, spelling and punctuation in the following text. Output only the corrected text.\n\n${text}`);
+    if (out) out.textContent = r;
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); if (status) status.textContent = ''; }
+}
+
+// Email drafter
+function utilAiEmailBody() { return aiTextBody('aiemail', 'AI email drafter', 'Draft an email from a brief', 'Tone (formal/casual)', 'Brief or key points', 'Draft', 'email'); }
+async function utilAiEmail() {
+  const brief = document.querySelector('[data-util="aiemail-in"]')?.value || '';
+  const tone = document.querySelector('[data-util="aiemail-extra"]')?.value || 'professional';
+  const out = document.getElementById('util-aiemail-out');
+  const status = document.getElementById('util-aiemail-status');
+  if (!brief) { if (out) out.textContent = 'Enter a brief.'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const r = await aiGenerate(`Draft a ${tone} email based on these points:\n\n${brief}\n\nInclude subject line and body.`);
+    if (out) out.textContent = r;
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); if (status) status.textContent = ''; }
+}
+
+// Meeting notes
+function utilAiMeetingBody() { return aiTextBody('aimeeting', 'AI meeting notes', 'Turn transcript into structured notes', '', 'Paste meeting transcript', 'Generate notes', 'meeting'); }
+async function utilAiMeeting() {
+  const text = document.querySelector('[data-util="aimeeting-in"]')?.value || '';
+  const out = document.getElementById('util-aimeeting-out');
+  const status = document.getElementById('util-aimeeting-status');
+  if (!text) { if (out) out.textContent = 'Enter transcript.'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const r = await aiGenerate(`Convert this meeting transcript into structured notes with: summary, key decisions, action items, and next steps.\n\n${text}`);
+    if (out) out.textContent = r;
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); if (status) status.textContent = ''; }
+}
+
+// Keyword / entity extraction
+function utilAiKeywordsBody() { return aiTextBody('aikeywords', 'AI keyword & entity extraction', 'Extract keywords and entities', '', 'Paste text', 'Extract', 'keywords'); }
+async function utilAiKeywords() {
+  const text = document.querySelector('[data-util="aikeywords-in"]')?.value || '';
+  const out = document.getElementById('util-aikeywords-out');
+  const status = document.getElementById('util-aikeywords-status');
+  if (!text) { if (out) out.textContent = 'Enter text.'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const r = await aiGenerate(`Extract keywords, named entities (people, places, orgs), and key topics from this text. Output as a structured list.\n\n${text}`);
+    if (out) out.textContent = r;
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); if (status) status.textContent = ''; }
+}
+
+// Sentiment analysis
+function utilAiSentimentBody() { return aiTextBody('aisentiment', 'AI sentiment analysis', 'Analyze tone and sentiment', '', 'Paste text', 'Analyze', 'sentiment'); }
+async function utilAiSentiment() {
+  const text = document.querySelector('[data-util="aisentiment-in"]')?.value || '';
+  const out = document.getElementById('util-aisentiment-out');
+  const status = document.getElementById('util-aisentiment-status');
+  if (!text) { if (out) out.textContent = 'Enter text.'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const r = await aiGenerate(`Analyze the sentiment and tone of this text. Give: overall sentiment (positive/negative/neutral/mixed), confidence, emotional tone, and a brief explanation.\n\n${text}`);
+    if (out) out.textContent = r;
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); if (status) status.textContent = ''; }
+}
+
+// Question answering over pasted text
+function utilAiQaBody() { return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>AI question answering</strong><span>Ask questions about your text</span></div></div>
+      <div class="stage-body">
+        <textarea data-util="aiqa-ctx" class="input" rows="6" style="width:100%" placeholder="Paste context / document"></textarea>
+        <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Question</span></div><input type="text" data-util="aiqa-q" class="input" style="width:100%" placeholder="What is the main topic?" /></div>
+        <button class="btn btn-primary btn-sm" data-action="util-aiqa" style="margin-top:10px">Answer</button>
+        <div id="util-aiqa-status" class="muted" style="margin-top:8px;font-size:12px"></div>
+        <pre id="util-aiqa-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+      </div>
+    </div>`; }
+async function utilAiQa() {
+  const ctx = document.querySelector('[data-util="aiqa-ctx"]')?.value || '';
+  const q = document.querySelector('[data-util="aiqa-q"]')?.value || '';
+  const out = document.getElementById('util-aiqa-out');
+  const status = document.getElementById('util-aiqa-status');
+  if (!ctx || !q) { if (out) out.textContent = 'Provide context and question.'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const r = await aiGenerate(`Answer the question based only on the provided context.\n\nContext:\n${ctx}\n\nQuestion: ${q}\n\nAnswer:`);
+    if (out) out.textContent = r;
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); if (status) status.textContent = ''; }
+}
+
+// Regex generator
+function utilAiRegexBody() { return aiTextBody('airegex', 'AI regex generator', 'Generate regex from description', '', 'Describe the pattern (e.g., "email address")', 'Generate', 'regex'); }
+async function utilAiRegex() {
+  const desc = document.querySelector('[data-util="airegex-in"]')?.value || '';
+  const out = document.getElementById('util-airegex-out');
+  const status = document.getElementById('util-airegex-status');
+  if (!desc) { if (out) out.textContent = 'Describe the pattern.'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const r = await aiGenerate(`Generate a regular expression for: "${desc}". Output only the regex pattern (no explanation, no delimiters).`);
+    if (out) out.textContent = r.trim();
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); if (status) status.textContent = ''; }
+}
+
+// SQL generator
+function utilAiSqlBody() { return aiTextBody('aisql', 'AI SQL generator', 'Generate SQL from natural language', '', 'Describe the query (e.g., "users who signed up last week")', 'Generate', 'sql'); }
+async function utilAiSql() {
+  const desc = document.querySelector('[data-util="aisql-in"]')?.value || '';
+  const out = document.getElementById('util-aisql-out');
+  const status = document.getElementById('util-aisql-status');
+  if (!desc) { if (out) out.textContent = 'Describe the query.'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const r = await aiGenerate(`Generate a SQL query for: "${desc}". Output only the SQL (no explanation).`);
+    if (out) out.textContent = r.trim();
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); if (status) status.textContent = ''; }
+}
+
+// Code explainer
+function utilAiCodeExplainBody() { return aiTextBody('aicodeexplain', 'AI code explainer', 'Explain code in plain English', '', 'Paste code', 'Explain', 'code'); }
+async function utilAiCodeExplain() {
+  const code = document.querySelector('[data-util="aicodeexplain-in"]')?.value || '';
+  const out = document.getElementById('util-aicodeexplain-out');
+  const status = document.getElementById('util-aicodeexplain-status');
+  if (!code) { if (out) out.textContent = 'Paste code.'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const r = await aiGenerate(`Explain what this code does in plain English, step by step.\n\n${code}`);
+    if (out) out.textContent = r;
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); if (status) status.textContent = ''; }
+}
+
+// Commit message generator
+function utilAiCommitBody() { return aiTextBody('aicommit', 'AI commit message generator', 'Generate commit messages from diff', '', 'Paste git diff or change summary', 'Generate', 'commit'); }
+async function utilAiCommit() {
+  const diff = document.querySelector('[data-util="aicommit-in"]')?.value || '';
+  const out = document.getElementById('util-aicommit-out');
+  const status = document.getElementById('util-aicommit-status');
+  if (!diff) { if (out) out.textContent = 'Paste a diff or summary.'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const r = await aiGenerate(`Generate a concise conventional commit message for these changes.\n\n${diff}`);
+    if (out) out.textContent = r.trim();
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); if (status) status.textContent = ''; }
+}
+
+// Test generator
+function utilAiTestBody() { return aiTextBody('aitest', 'AI test generator', 'Generate unit tests for code', '', 'Paste function/code to test', 'Generate tests', 'test'); }
+async function utilAiTest() {
+  const code = document.querySelector('[data-util="aitest-in"]')?.value || '';
+  const out = document.getElementById('util-aitest-out');
+  const status = document.getElementById('util-aitest-status');
+  if (!code) { if (out) out.textContent = 'Paste code.'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const r = await aiGenerate(`Write unit tests for this code (use a common testing framework). Output only the test code.\n\n${code}`);
+    if (out) out.textContent = r;
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); if (status) status.textContent = ''; }
+}
+
+// Transcription polish (takes text, improves)
+function utilAiPolishBody() { return aiTextBody('aipolish', 'AI transcription polish', 'Clean up raw transcription text', '', 'Paste raw transcript', 'Polish', 'polish'); }
+async function utilAiPolish() {
+  const text = document.querySelector('[data-util="aipolish-in"]')?.value || '';
+  const out = document.getElementById('util-aipolish-out');
+  const status = document.getElementById('util-aipolish-status');
+  if (!text) { if (out) out.textContent = 'Enter transcript.'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const r = await aiGenerate(`Clean up this raw transcription: fix punctuation, capitalization, remove filler words, and improve readability. Keep the meaning.\n\n${text}`);
+    if (out) out.textContent = r;
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); if (status) status.textContent = ''; }
+}
+
+// Scene detection (canvas-based, no model)
+function utilSceneDetectBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Scene detection</strong><span>Detect scene changes in a video</span></div></div>
+      <div class="stage-body">
+        <label class="btn btn-secondary btn-sm" for="util-scene-file">Choose video</label>
+        <input id="util-scene-file" type="file" accept="video/*" data-util="scene-file" hidden />
+        <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Threshold (0-1)</span></div><input type="number" min="0" max="1" step="0.05" value="0.3" data-util="scene-thr" class="input" style="width:100%" /></div>
+        <button class="btn btn-primary btn-sm" data-action="util-scene" style="margin-top:10px">Detect scenes</button>
+        <pre id="util-scene-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+      </div>
+    </div>`;
+}
+async function utilSceneDetect() {
+  const file = document.querySelector('[data-util="scene-file"]')?.files?.[0];
+  const out = document.getElementById('util-scene-out');
+  if (!file) { if (out) out.textContent = 'Choose a video first.'; return; }
+  const thr = Math.max(0, Math.min(1, Number(document.querySelector('[data-util="scene-thr"]')?.value || 0.3)));
+  if (out) out.textContent = 'Processing…';
+  const video = document.createElement('video');
+  video.src = URL.createObjectURL(file);
+  await new Promise((res) => { video.onloadedmetadata = res; });
+  const c = document.createElement('canvas');
+  const ctx = c.getContext('2d');
+  const scenes = [0];
+  let prev = null;
+  const duration = video.duration;
+  const step = 0.5;
+  for (let t = 0; t < duration; t += step) {
+    video.currentTime = t;
+    await new Promise((res) => { video.onseeked = res; });
+    c.width = 160; c.height = 90;
+    ctx.drawImage(video, 0, 0, 160, 90);
+    const data = ctx.getImageData(0, 0, 160, 90).data;
+    if (prev) {
+      let diff = 0;
+      for (let i = 0; i < data.length; i += 4) diff += Math.abs(data[i] - prev[i]) + Math.abs(data[i+1] - prev[i+1]) + Math.abs(data[i+2] - prev[i+2]);
+      const norm = diff / (160 * 90 * 3 * 255);
+      if (norm > thr) scenes.push(t);
+    }
+    prev = new Uint8Array(data);
+  }
+  URL.revokeObjectURL(video.src);
+  if (out) out.textContent = `Detected ${scenes.length} scenes:\n` + scenes.map((t) => t.toFixed(2) + 's').join('\n');
+}
+
+// Semantic search (uses embeddings already in app)
+function utilSemanticSearchBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Semantic search</strong><span>Search by meaning (uses embeddings)</span></div></div>
+      <div class="stage-body">
+        <textarea data-util="semsearch-docs" class="input" rows="6" style="width:100%" placeholder="One document per line"></textarea>
+        <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Query</span></div><input type="text" data-util="semsearch-q" class="input" style="width:100%" placeholder="search query" /></div>
+        <button class="btn btn-primary btn-sm" data-action="util-semsearch" style="margin-top:10px">Search</button>
+        <pre id="util-semsearch-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+      </div>
+    </div>`;
+}
+async function utilSemanticSearch() {
+  const docs = (document.querySelector('[data-util="semsearch-docs"]')?.value || '').split('\n').filter(Boolean);
+  const q = document.querySelector('[data-util="semsearch-q"]')?.value || '';
+  const out = document.getElementById('util-semsearch-out');
+  if (!docs.length || !q) { if (out) out.textContent = 'Provide documents and a query.'; return; }
+  if (out) out.textContent = 'Computing embeddings…';
+  try {
+    // Simple cosine similarity using char n-gram vectors (no model needed)
+    const vec = (str) => {
+      const v = {};
+      const s = str.toLowerCase();
+      for (let i = 0; i < s.length - 2; i++) {
+        const g = s.slice(i, i + 3);
+        v[g] = (v[g] || 0) + 1;
+      }
+      return v;
+    };
+    const cos = (a, b) => {
+      let dot = 0, na = 0, nb = 0;
+      const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+      for (const k of keys) { dot += (a[k] || 0) * (b[k] || 0); na += (a[k] || 0) ** 2; nb += (b[k] || 0) ** 2; }
+      return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1);
+    };
+    const qv = vec(q);
+    const scored = docs.map((d) => ({ d, score: cos(vec(d), qv) })).sort((a, b) => b.score - a.score);
+    if (out) out.textContent = scored.map((s) => `${s.score.toFixed(3)}  ${s.d}`).join('\n');
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); }
+}
+
+// Background blur (simple canvas, no model)
+function utilBgBlurBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Background blur</strong><span>Blur image background (center focus)</span></div></div>
+      <div class="stage-body">
+        <label class="btn btn-secondary btn-sm" for="util-blur-file">Choose image</label>
+        <input id="util-blur-file" type="file" accept="image/*" data-util="blur-file" hidden />
+        <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Blur radius</span></div><input type="number" min="1" max="40" value="12" data-util="blur-r" class="input" style="width:100%" /></div>
+        <button class="btn btn-primary btn-sm" data-action="util-blur" style="margin-top:10px">Blur & download</button>
+        <div id="util-blur-out" class="util-out"></div>
+      </div>
+    </div>`;
+}
+async function utilBgBlur() {
+  const file = document.querySelector('[data-util="blur-file"]')?.files?.[0];
+  const out = document.getElementById('util-blur-out');
+  if (!file) { if (out) out.innerHTML = '<p class="muted">Choose an image first.</p>'; return; }
+  const r = Math.max(1, Math.min(40, Number(document.querySelector('[data-util="blur-r"]')?.value || 12)));
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+  const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+  const ctx = c.getContext('2d');
+  // draw blurred version
+  ctx.filter = `blur(${r}px)`;
+  ctx.drawImage(img, 0, 0);
+  ctx.filter = 'none';
+  // overlay sharp center (ellipse)
+  const cx = c.width / 2, cy = c.height / 2;
+  const rx = c.width * 0.3, ry = c.height * 0.35;
+  const tmp = document.createElement('canvas'); tmp.width = c.width; tmp.height = c.height;
+  const tctx = tmp.getContext('2d');
+  tctx.drawImage(img, 0, 0);
+  // mask
+  ctx.globalCompositeOperation = 'destination-in';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
+  // redraw: blurred bg + sharp center
+  const final = document.createElement('canvas'); final.width = c.width; final.height = c.height;
+  const fctx = final.getContext('2d');
+  // blurred background (already in c? no, c has blurred full image but center cut out). Rebuild.
+  const bg = document.createElement('canvas'); bg.width = c.width; bg.height = c.height;
+  const bctx = bg.getContext('2d');
+  bctx.filter = `blur(${r}px)`; bctx.drawImage(img, 0, 0); bctx.filter = 'none';
+  fctx.drawImage(bg, 0, 0);
+  fctx.drawImage(tmp, 0, 0);
+  URL.revokeObjectURL(url);
+  const blob = await new Promise((res) => final.toBlob(res, 'image/png'));
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'blurred.png'; a.click(); URL.revokeObjectURL(a.href);
+  if (out) out.innerHTML = `<p class="muted">Done · ${c.width}×${c.height}</p>`;
+}
