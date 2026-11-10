@@ -3376,30 +3376,67 @@ function updateEngineProgress(value) {
   if (bar) bar.style.width = `${pct}%`;
 }
 
+// ---- shared sub-category system -------------------------------------------------
+// One key format is used everywhere (sidebar nav, workspace rails, chips and the
+// tool tab bars): "<family>:<tab>" e.g. ai:aiimg, developer:json, documents:merge.
+// Families match the sidebar groups: ai | developer | documents.
+function activeSubcatKey() {
+  const tool = state.tool;
+  if (tool === 'aitools') return 'ai:' + (state.aiTools?.tab || '');
+  if (tool === 'aichat' || tool === 'aiapp') return 'ai:chat';
+  if (tool === 'devtools') return 'developer:' + (state.devTools?.tab || '');
+  if (tool === 'devapp') return 'developer:' + (state.devTools?.tab || '');
+  if (tool === 'utilities' || tool === 'practical') return 'developer:' + tool;
+  if (tool === 'pdftools' || tool === 'docsapp') return 'documents:' + (state.pdfTools?.tab || '');
+  return '';
+}
+function activeSubcatFamily() {
+  const key = activeSubcatKey();
+  return key ? key.split(':')[0] : '';
+}
+function syncSubCategoryState() {
+  const key = activeSubcatKey();
+  const family = activeSubcatFamily();
+  const nodes = Array.from(document.querySelectorAll('[data-navkey]'));
+  // A family entry (data-navfamily) only lights up when no exact key matched.
+  const exactFamilies = new Set();
+  nodes.forEach((el) => {
+    const k = el.dataset.navkey || '';
+    const tab = k.split(':')[1] || '';
+    if (tab && k === key) exactFamilies.add(k.split(':')[0]);
+  });
+  nodes.forEach((el) => {
+    const k = el.dataset.navkey || '';
+    const kFam = k.split(':')[0];
+    const kTab = k.split(':')[1] || '';
+    const active = kTab ? (!!key && k === key) : (kFam === family && !exactFamilies.has(kFam));
+    el.classList.toggle('is-active', active);
+  });
+  document.querySelectorAll('[data-navfamily]').forEach((el) => {
+    const fam = el.dataset.navfamily;
+    // The generic family entry lights only when no sibling in the same group
+    // claims the exact active key (e.g. the "AI Tools" entry vs "AI Upscale").
+    const scope = el.closest('[data-navgroup]') || el.parentElement;
+    const siblingMatch = scope
+      ? Array.from(scope.querySelectorAll('[data-navkey]')).some((k) => k.dataset.navkey === key)
+      : exactFamilies.has(fam);
+    el.classList.toggle('is-active', !!family && fam === family && !siblingMatch);
+  });
+  // Parent categories light up when one of their sub-categories is selected.
+  document.querySelectorAll('[data-navcat]').forEach((el) => {
+    el.classList.toggle('is-active', !!family && el.dataset.navcat === family);
+  });
+}
+
 function updateChrome() {
   const tool = toolById(state.tool);
   // Nav highlighting: grouped sub-items (AI / Developer / Documents) share one
-  // data-tool, so highlight only the exact entry for the active tool + tab.
-  const activeTab = state.tool === 'aitools' ? (state.aiTools?.tab || '')
-    : state.tool === 'devtools' ? (state.devTools?.tab || '')
-      : state.tool === 'pdftools' ? (state.pdfTools?.tab || '')
-        : '';
-  const keyedSiblings = new Map();
-  $$('.nav-item[data-tool][data-navkey]').forEach((btn) => {
-    const list = keyedSiblings.get(btn.dataset.tool) || [];
-    list.push(btn.dataset.navkey);
-    keyedSiblings.set(btn.dataset.tool, list);
-  });
+  // data-tool, so the shared sub-category system decides what is active.
   $$('.nav-item[data-tool]').forEach((btn) => {
-    const t = btn.dataset.tool;
-    let active = t === state.tool;
-    if (active && btn.dataset.navkey) active = btn.dataset.navkey === activeTab;
-    if (active && !btn.dataset.navkey && activeTab) {
-      const keys = keyedSiblings.get(t) || [];
-      active = !keys.includes(activeTab);
-    }
-    btn.classList.toggle('is-active', active);
+    if (btn.dataset.navkey || btn.dataset.navfamily) return;
+    btn.classList.toggle('is-active', btn.dataset.tool === state.tool);
   });
+  syncSubCategoryState();
   const crumb = $('#crumb-current');
   if (crumb) crumb.textContent = tool.label;
   const count = $('#history-count');
@@ -5795,7 +5832,7 @@ function devToolsView() {
     ${viewHead({ index: '10', kicker: 'Developer tools', title: 'Dev <span class="accent">utilities.</span>', sub: 'JSON, base64, regex and hashing — all local.' })}
     ${utilCatBar(DEV_TAB_GROUPS, cats.cat, 'dev-cat')}
     <div class="util-tabs segmented" role="tablist">
-      ${tabs.map((t) => `<button data-action="dev-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${DEV_TAB_LABELS[t] || t}</button>`).join('')}
+      ${tabs.map((t) => `<button data-action="dev-tab" data-tab="${t}" data-navkey="developer:${t}" class="${tab === t ? 'is-active' : ''}">${DEV_TAB_LABELS[t] || t}</button>`).join('')}
     </div>
     <div class="util-body">
       ${tab === 'json' ? devJsonBody() : tab === 'base64' ? devBase64Body() : tab === 'regex' ? devRegexBody() : tab === 'pii' ? devPiiBody() : tab === 'mock' ? devMockBody() : tab === 'wc' ? devWebCodecsBody() : tab === 'clip' ? devClipboardBody() : tab === 'caseconv' ? utilCaseBody() : tab === 'slug' ? utilSlugBody() : tab === 'lorem' ? utilLoremBody() : tab === 'passgen' ? utilPassgenBody() : tab === 'baseconv' ? utilBaseConvBody() : tab === 'roman' ? utilRomanBody() : tab === 'urlenc' ? utilUrlencBody() : tab === 'htmlent' ? utilHtmlentBody() : tab === 'cron' ? utilCronBody() : tab === 'chmod' ? utilChmodBody() : tab === 'semver' ? utilSemverBody() : tab === 'unitconv' ? utilUnitBody() : tab === 'timezone' ? utilTimezoneBody() : tab === 'asciitable' ? utilAsciiTableBody() : tab === 'ua' ? utilUaBody() : tab === 'mdtable' ? utilMdTableBody() : tab === 'fmtcode' ? utilFmtCodeBody() : tab === 'xmlfmt' ? utilXmlBody() : tab === 'yamlconv' ? utilYamlBody() : tab === 'sqlfmt' ? utilSqlBody() : tab === 'curlbuild' ? utilCurlBody() : tab === 'img2pdf' ? utilImg2PdfBody() : tab === 'doccompare' ? utilDocCompareBody() : tab === 'mdeditor' ? utilMdEditorBody() : tab === 'cronhuman' ? utilCronHumanBody() : tab === 'jsonfmt' ? utilJsonFmtBody() : tab === 'minify' ? utilMinifyBody() : tab === 'uuid' ? utilUuidBody() : tab === 'timestamp' ? utilTimestampBody() : tab === 'colorconv' ? utilColorConvBody() : tab === 'diffview' ? utilDiffViewBody() : tab === 'hash' ? utilHashBody() : tab === 'textpaper' ? utilTextPaperBody() : devJsonBody()}
@@ -7666,7 +7703,7 @@ function aiToolsView() {
     ${viewHead({ index: '11', kicker: 'AI tools', title: 'AI <span class="accent">utilities.</span>', sub: 'Image generation, background removal, upscaling, OCR, TTS and embeddings — local where it counts.' })}
     ${utilCatBar(AI_TAB_GROUPS, cats.cat, 'ai-cat')}
     <div class="util-tabs segmented" role="tablist">
-      ${tabs.map((t) => `<button data-action="ai-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${labels[t]}</button>`).join('')}
+      ${tabs.map((t) => `<button data-action="ai-tab" data-tab="${t}" data-navkey="ai:${t}" class="${tab === t ? 'is-active' : ''}">${labels[t]}</button>`).join('')}
     </div>
     <div class="util-body">
       ${tab === 'aiimg' ? utilAiImageBody() :
@@ -7739,7 +7776,7 @@ function pdfToolsView() {
     ${viewHead({ index: '13', kicker: 'PDF tools', title: 'PDF <span class="accent">utilities.</span>', sub: 'Merge, split and convert PDFs — 100% local.' })}
     ${utilCatBar(PDF_TAB_GROUPS, cats.cat, 'pdf-cat')}
     <div class="util-tabs segmented" role="tablist">
-      ${tabs.map((t) => `<button data-action="pdf-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${labels[t]}</button>`).join('')}
+      ${tabs.map((t) => `<button data-action="pdf-tab" data-tab="${t}" data-navkey="documents:${t}" class="${tab === t ? 'is-active' : ''}">${labels[t]}</button>`).join('')}
     </div>
     <div class="util-body">
       ${tab === 'merge' ? pdfMergeBody() :
@@ -11124,7 +11161,7 @@ function documentsWorkspace(app) {
   ];
   const pdfRecs = (state.history || []).filter((r) => r.tool === 'pdftools').slice(0, 8);
   const fileList = pdfRecs.length ? pdfRecs.map((r) => wsResult({ record: r })).join('') : wsEmpty({ icon: 'file', title: 'No documents yet', copy: 'PDF results appear here after an operation.' });
-  const opsRail = ops.map((o) => '<button type="button" class="ws-rail-item" data-action="docs-op" data-op="' + o.id + '">' + o.label + '</button>').join('');
+  const opsRail = ops.map((o) => '<button type="button" class="ws-rail-item" data-action="docs-op" data-op="' + o.id + '" data-navkey="documents:' + o.id + '">' + o.label + '</button>').join('');
   const main = '<div class="ws-embed">' + pdfToolsView() + '</div>';
   const inspector = wsPanel({ title: 'Operations', body: '<div class="ws-quickstarts">' + ops.map((o) => '<button type="button" class="ws-quickstart" data-action="docs-op" data-op="' + o.id + '"><strong>' + o.label + '</strong><span>Run this operation</span></button>').join('') + '</div>' })
     + '<div class="ws-panel" style="margin-top:8px"><div class="ws-panel-head"><span class="ws-panel-title">Recent output</span></div><div class="ws-panel-body">' + (pdfRecs.length ? pdfRecs.map((r) => wsResult({ record: r })).join('') : wsEmpty({ icon: 'file', title: 'No outputs yet', copy: 'Results appear here.' })) + '</div></div>';
@@ -11132,12 +11169,12 @@ function documentsWorkspace(app) {
     + '<div class="ws-acrobat">'
     + '<aside class="ws-acrobat-files"><div class="ws-rail-title">Recent files</div><div class="ws-panel-body">' + fileList + '</div></aside>'
     + '<section class="ws-acrobat-desk">' + main + '</section>'
-    + '<aside class="ws-acrobat-ops">' + opsRail + inspector + '</aside>'
+    + '<aside class="ws-acrobat-ops" data-navcat="documents">' + opsRail + inspector + '</aside>'
     + '</div>'
     + '<div class="ws-panel" style="margin-top:8px"><div class="ws-panel-head"><span class="ws-panel-title">Getting started</span></div><div class="ws-panel-body"><div class="ws-chips">'
-    + '<button type="button" class="ws-chip" data-action="docs-op" data-op="merge">' + icon('file') + '<span>Merge two PDFs</span></button>'
-    + '<button type="button" class="ws-chip" data-action="docs-op" data-op="split">' + icon('file') + '<span>Split a PDF</span></button>'
-    + '<button type="button" class="ws-chip" data-action="docs-op" data-op="redact">' + icon('file') + '<span>Redact sensitive info</span></button>'
+    + '<button type="button" class="ws-chip" data-action="docs-op" data-op="merge" data-navkey="documents:merge">' + icon('file') + '<span>Merge two PDFs</span></button>'
+    + '<button type="button" class="ws-chip" data-action="docs-op" data-op="split" data-navkey="documents:split">' + icon('file') + '<span>Split a PDF</span></button>'
+    + '<button type="button" class="ws-chip" data-action="docs-op" data-op="redact" data-navkey="documents:redact">' + icon('file') + '<span>Redact sensitive info</span></button>'
     + '</div></div></div>';
 }
 
@@ -11153,7 +11190,7 @@ function aiWorkspace(app) {
     { id: 'aitools', label: 'Doc Q&A', tab: 'docqa', icon: 'command' }
   ];
   const topChips = tools.map((t) => {
-    const extra = t.tab ? ` data-aitab="${t.tab}"` : '';
+    const extra = t.tab ? ` data-aitab="${t.tab}" data-navkey="ai:${t.tab}"` : '';
     return `<button type="button" class="ws-chip" data-tool="${t.id}"${extra}>${icon(t.icon)}<span>${esc(t.label)}</span></button>`;
   }).join('');
   const contextChips = `
@@ -11169,7 +11206,7 @@ function aiWorkspace(app) {
           <span class="ws-claude-thread-title">Current conversation</span>
           <span class="ws-claude-thread-meta">${(state.aiChat?.messages || []).length} messages</span>
         </div>
-        <div class="ws-rail-title" style="margin-top:10px">Tools</div>
+        <div class="ws-rail-title" data-navcat="ai" style="margin-top:10px">Tools</div>
         <div class="ws-chips" style="padding:0 8px">${topChips}</div>
         <div class="ws-rail-title" style="margin-top:10px">Context</div>
         <div class="ws-chips" style="padding:0 8px">${contextChips}</div>
@@ -11202,8 +11239,8 @@ function developerWorkspace(app) {
   ];
   // Postman-style: left collections (ops), center request (input), right response (output).
   const opsRail = `
-    <div class="ws-rail-title">Operations</div>
-    ${devOps.map((o) => `<button type="button" class="ws-rail-item" data-tool="devtools" data-devtab="${o.id}">${icon('command', 'ws-rail-icon')}<span>${esc(o.label)}</span></button>`).join('')}
+    <div class="ws-rail-title" data-navcat="developer">Operations</div>
+    ${devOps.map((o) => `<button type="button" class="ws-rail-item" data-tool="devtools" data-devtab="${o.id}" data-navkey="developer:${o.id}">${icon('command', 'ws-rail-icon')}<span>${esc(o.label)}</span></button>`).join('')}
     <div class="ws-rail-title" style="margin-top:8px">More</div>
     <button type="button" class="ws-rail-item" data-tool="utilities">${icon('settings', 'ws-rail-icon')}<span>Utilities</span></button>
     <button type="button" class="ws-rail-item" data-tool="practical">${icon('settings', 'ws-rail-icon')}<span>Practical</span></button>`;
@@ -11230,9 +11267,9 @@ function developerWorkspace(app) {
           <div class="ws-panel-head"><span class="ws-panel-title">Getting started</span></div>
           <div class="ws-panel-body">
             <div class="ws-chips">
-              <button type="button" class="ws-chip" data-tool="devtools" data-devtab="json">${icon('command')}<span>Format JSON</span></button>
-              <button type="button" class="ws-chip" data-tool="devtools" data-devtab="base64">${icon('command')}<span>Encode Base64</span></button>
-              <button type="button" class="ws-chip" data-tool="devtools" data-devtab="pii">${icon('command')}<span>Scrub PII</span></button>
+              <button type="button" class="ws-chip" data-tool="devtools" data-devtab="json" data-navkey="developer:json">${icon('command')}<span>Format JSON</span></button>
+              <button type="button" class="ws-chip" data-tool="devtools" data-devtab="base64" data-navkey="developer:base64">${icon('command')}<span>Encode Base64</span></button>
+              <button type="button" class="ws-chip" data-tool="devtools" data-devtab="pii" data-navkey="developer:pii">${icon('command')}<span>Scrub PII</span></button>
             </div>
           </div>
         </div>
@@ -11387,10 +11424,10 @@ function syncAppSidebar(appCfg) {
     content = '<div class="nav-group" data-navgroup="app"><p class="nav-label" style="color:var(--accent-text)">Developer</p>'
       + '<button class="nav-item" data-action="launch-open"><svg class="icon"><use href="#i-layout-grid"></use></svg><span>All tools</span></button></div>'
       + '<div class="nav-group" data-navgroup="app-ops"><p class="nav-label">Operations</p>'
-      + '<button class="nav-item" data-tool="devtools" data-devtab="json"><svg class="icon"><use href="#i-command"></use></svg><span>JSON</span></button>'
-      + '<button class="nav-item" data-tool="devtools" data-devtab="base64"><svg class="icon"><use href="#i-command"></use></svg><span>Base64</span></button>'
+      + '<button class="nav-item" data-tool="devtools" data-devtab="json" data-navkey="developer:json"><svg class="icon"><use href="#i-command"></use></svg><span>JSON</span></button>'
+      + '<button class="nav-item" data-tool="devtools" data-devtab="base64" data-navkey="developer:base64"><svg class="icon"><use href="#i-command"></use></svg><span>Base64</span></button>'
       + '<button class="nav-item" data-tool="devtools" data-devtab="regex"><svg class="icon"><use href="#i-command"></use></svg><span>Regex</span></button>'
-      + '<button class="nav-item" data-tool="devtools" data-devtab="pii"><svg class="icon"><use href="#i-command"></use></svg><span>PII scrub</span></button>'
+      + '<button class="nav-item" data-tool="devtools" data-devtab="pii" data-navkey="developer:pii"><svg class="icon"><use href="#i-command"></use></svg><span>PII scrub</span></button>'
       + '<button class="nav-item" data-tool="utilities"><svg class="icon"><use href="#i-settings"></use></svg><span>Utilities</span></button></div>'
       + '<div class="nav-group" data-navgroup="app-quick"><p class="nav-label">Quick</p>'
       + '<button class="nav-item" data-action="launch-all"><svg class="icon"><use href="#i-layout-grid"></use></svg><span>Show all tools</span></button></div>';
@@ -11431,6 +11468,7 @@ function renderView() {
   view.innerHTML = html;
   enhanceCustomSelects();
   enhanceTextareas();
+  syncSubCategoryState();
   view.classList.remove('is-switching');
   void view.offsetWidth;
   view.classList.add('is-switching');
