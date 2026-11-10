@@ -15,6 +15,42 @@ body.has-bg-gradient .ambient { opacity: .35; }
 *, *::before, *::after { transition-duration: calc(var(--anim-scale, 1) * 150ms) !important; }
 .wf-node, #wf-svg, #wf-svg line { transition: none !important; }
 .reduce-motion *, .reduce-motion *::before, .reduce-motion *::after { transition-duration: 0ms !important; }
+.motion-off *, .motion-off *::before, .motion-off *::after { transition: none !important; animation: none !important; }
+.live-off .is-live, .live-off .live-dot { animation: none !important; }
+
+/* ---------- micro-interactions (web alive) ---------- */
+.btn, .nav-item, .launch-card, .ws-rail-item, .ws-chip, .format-chip {
+  transition: transform .16s var(--ease-out, ease), box-shadow .16s var(--ease-out, ease), background .16s, color .16s;
+}
+.btn:hover:not(:disabled), .nav-item:hover, .launch-card:hover, .ws-rail-item:hover, .ws-chip:hover, .format-chip:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+.btn:active:not(:disabled), .nav-item:active, .launch-card:active, .ws-rail-item:active {
+  transform: translateY(0) scale(.97);
+}
+@keyframes nu-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .65; transform: scale(1.06); }
+}
+.is-live, .live-dot { animation: nu-pulse 1.6s ease-in-out infinite; }
+@keyframes nu-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);
+  background-size: 200% 100%;
+  animation: nu-shimmer 1.4s linear infinite;
+  border-radius: var(--radius-sm, 8px);
+}
+/* live activity: animated progress bar sheen */
+.progress-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.25), transparent);
+  animation: nu-shimmer 1.8s linear infinite;
+}
 
 .tauri-native { background: transparent !important; }
 .tauri-native .workspace, .tauri-native .stage-card { background: rgba(255,255,255,0.06) !important; backdrop-filter: blur(8px); }
