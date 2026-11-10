@@ -15333,9 +15333,9 @@ function bindEvents() {
   ];
   const CATEGORY_GROUPS = {
     media: ['convert','create','edit','audio'],
-    documents: ['documents','convert','create'],
-    ai: ['ai','create','edit','audio'],
-    developer: ['developer','library','convert','create']
+    documents: ['documents'],
+    ai: ['ai'],
+    developer: ['developer','library']
   };
   const CATEGORY_SUGGESTIONS = {
     media: ['Video Compressor', 'GIF Maker', 'Auto Reframe', 'Audio Extractor'],
