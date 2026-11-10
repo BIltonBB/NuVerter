@@ -5768,10 +5768,13 @@ async function utilOcr() {
 
 function devToolsView() {
   const tab = state.devTools?.tab || 'json';
+  const cats = utilCatState(state.devTools, DEV_TAB_GROUPS);
+  const tabs = cats.visible;
   return `
     ${viewHead({ index: '10', kicker: 'Developer tools', title: 'Dev <span class="accent">utilities.</span>', sub: 'JSON, base64, regex and hashing — all local.' })}
+    ${utilCatBar(DEV_TAB_GROUPS, cats.cat, 'dev-cat')}
     <div class="util-tabs segmented" role="tablist">
-      ${['json','base64','regex','pii','mock','wc','clip','caseconv','slug','lorem','passgen','baseconv','roman','urlenc','htmlent','cron','chmod','semver','unitconv','timezone','asciitable','ua','mdtable','fmtcode','xmlfmt','yamlconv','sqlfmt','curlbuild','img2pdf','doccompare','mdeditor','cronhuman','jsonfmt','minify','uuid','timestamp','colorconv','diffview','hash','textpaper'].map((t) => `<button data-action="dev-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${t}</button>`).join('')}
+      ${tabs.map((t) => `<button data-action="dev-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${DEV_TAB_LABELS[t] || t}</button>`).join('')}
     </div>
     <div class="util-body">
       ${tab === 'json' ? devJsonBody() : tab === 'base64' ? devBase64Body() : tab === 'regex' ? devRegexBody() : tab === 'pii' ? devPiiBody() : tab === 'mock' ? devMockBody() : tab === 'wc' ? devWebCodecsBody() : tab === 'clip' ? devClipboardBody() : tab === 'caseconv' ? utilCaseBody() : tab === 'slug' ? utilSlugBody() : tab === 'lorem' ? utilLoremBody() : tab === 'passgen' ? utilPassgenBody() : tab === 'baseconv' ? utilBaseConvBody() : tab === 'roman' ? utilRomanBody() : tab === 'urlenc' ? utilUrlencBody() : tab === 'htmlent' ? utilHtmlentBody() : tab === 'cron' ? utilCronBody() : tab === 'chmod' ? utilChmodBody() : tab === 'semver' ? utilSemverBody() : tab === 'unitconv' ? utilUnitBody() : tab === 'timezone' ? utilTimezoneBody() : tab === 'asciitable' ? utilAsciiTableBody() : tab === 'ua' ? utilUaBody() : tab === 'mdtable' ? utilMdTableBody() : tab === 'fmtcode' ? utilFmtCodeBody() : tab === 'xmlfmt' ? utilXmlBody() : tab === 'yamlconv' ? utilYamlBody() : tab === 'sqlfmt' ? utilSqlBody() : tab === 'curlbuild' ? utilCurlBody() : tab === 'img2pdf' ? utilImg2PdfBody() : tab === 'doccompare' ? utilDocCompareBody() : tab === 'mdeditor' ? utilMdEditorBody() : tab === 'cronhuman' ? utilCronHumanBody() : tab === 'jsonfmt' ? utilJsonFmtBody() : tab === 'minify' ? utilMinifyBody() : tab === 'uuid' ? utilUuidBody() : tab === 'timestamp' ? utilTimestampBody() : tab === 'colorconv' ? utilColorConvBody() : tab === 'diffview' ? utilDiffViewBody() : tab === 'hash' ? utilHashBody() : tab === 'textpaper' ? utilTextPaperBody() : devJsonBody()}
@@ -7581,12 +7584,66 @@ async function utilDocQaAsk() {
   }
 }
 
+const AI_TAB_GROUPS = [
+  { id: 'image', label: 'Image', tabs: ['aiimg','aibg','aiup','aibgremove','aiseg','aiobjremove','inpaint','img2img','aistyle','aisuperres','realesrgan','facerestore','colorize','aidepth','bgblur'] },
+  { id: 'vision', label: 'Vision AI', tabs: ['aicaption','aiclassify','aidetect','aizsic','aizsod','scene'] },
+  { id: 'text', label: 'Text AI', tabs: ['summarize','aitranslate','aiparaphrase','aigrammar','aiemail','aimeeting','aikeywords','aisentiment','aiqa','aipolish','ainer','aitextcls'] },
+  { id: 'code', label: 'Code', tabs: ['airegex','aisql','aicodeexplain','aicommit','aitest'] },
+  { id: 'audio', label: 'Audio', tabs: ['tts','aiaudiocls','a2m','stem','voiceclone','musicgen','talkinghead'] },
+  { id: 'docs', label: 'Documents', tabs: ['ocr','docs','docqa','emb','semsearch','md','textpdf'] },
+  { id: 'system', label: 'Models', tabs: ['models'] }
+];
+const DEV_TAB_GROUPS = [
+  { id: 'data', label: 'Data & JSON', tabs: ['json','jsonfmt','minify','yamlconv','xmlfmt','sqlfmt','diffview','doccompare'] },
+  { id: 'encoding', label: 'Encoding', tabs: ['base64','urlenc','htmlent','hash','colorconv'] },
+  { id: 'text', label: 'Text', tabs: ['caseconv','slug','lorem','regex','mdtable','fmtcode'] },
+  { id: 'generators', label: 'Generators', tabs: ['passgen','uuid','mock','timestamp','cron','cronhuman','semver'] },
+  { id: 'convert', label: 'Convert', tabs: ['baseconv','roman','unitconv','timezone','asciitable'] },
+  { id: 'web', label: 'Web & browser', tabs: ['ua','curlbuild','clip','wc','pii'] },
+  { id: 'files', label: 'Files', tabs: ['img2pdf','textpaper','mdeditor','chmod'] }
+];
+const DEV_TAB_LABELS = {
+  json:'JSON', jsonfmt:'JSON format', minify:'Minify', yamlconv:'YAML', xmlfmt:'XML', sqlfmt:'SQL', diffview:'Diff', doccompare:'Doc compare',
+  base64:'Base64', urlenc:'URL encode', htmlent:'HTML entities', hash:'Hash', colorconv:'Color',
+  caseconv:'Case', slug:'Slug', lorem:'Lorem', regex:'Regex', mdtable:'MD table', fmtcode:'Format code',
+  passgen:'Password', uuid:'UUID', mock:'Mock data', timestamp:'Timestamp', cron:'Cron', cronhuman:'Cron explain', semver:'Semver',
+  baseconv:'Base', roman:'Roman', unitconv:'Units', timezone:'Timezone', asciitable:'ASCII table',
+  ua:'User agent', curlbuild:'cURL', clip:'Clipboard', wc:'WebCodecs', pii:'PII scrub',
+  img2pdf:'Image→PDF', textpaper:'Text paper', mdeditor:'MD editor', chmod:'chmod'
+};
+const PDF_TAB_GROUPS = [
+  { id: 'pdf', label: 'PDF', tabs: ['merge','split','pdf2img','redact'] },
+  { id: 'convert', label: 'Convert', tabs: ['img2pdf','textpdf'] },
+  { id: 'docs', label: 'Documents', tabs: ['mdeditor','doccompare','filesize'] }
+];
+
+// Resolve the active category + visible tabs for a categorised tool view.
+function utilCatState(scope, groups) {
+  const tab = scope?.tab || '';
+  const current = groups.find((g) => g.tabs.includes(tab));
+  let cat = scope?.cat;
+  if (!cat) cat = current ? current.id : 'all';
+  if (cat !== 'all' && !groups.some((g) => g.id === cat)) cat = 'all';
+  if (cat !== 'all' && current && !groups.find((g) => g.id === cat).tabs.includes(tab)) cat = current.id;
+  const visible = cat === 'all' ? groups.reduce((all, g) => all.concat(g.tabs), []) : groups.find((g) => g.id === cat).tabs;
+  return { cat, visible };
+}
+function utilCatBar(groups, activeCat, action) {
+  const items = [{ id: 'all', label: 'All', count: groups.reduce((n, g) => n + g.tabs.length, 0) }]
+    .concat(groups.map((g) => ({ id: g.id, label: g.label, count: g.tabs.length })));
+  return `<div class="util-cats" role="tablist">
+    ${items.map((it) => `<button type="button" data-action="${action}" data-cat="${it.id}" class="util-cat${activeCat === it.id ? ' is-active' : ''}">${esc(it.label)}<span class="util-cat-count">${it.count}</span></button>`).join('')}
+  </div>`;
+}
+
 function aiToolsView() {
   const tab = state.aiTools?.tab || 'aibg';
-  const tabs = ['aiimg','aibg','aiup','ocr','tts','emb','models','docs','docqa','summarize','md','textpdf','aitranslate','aiparaphrase','aigrammar','aiemail','aimeeting','aikeywords','aisentiment','aiqa','airegex','aisql','aicodeexplain','aicommit','aitest','aipolish','semsearch','scene','bgblur','aicaption','aiclassify','aidetect','aiseg','aibgremove','aidepth','aizsic','aizsod','aisuperres','aistyle','aiobjremove','aiaudiocls','ainer','aitextcls','facerestore','colorize','realesrgan','a2m','stem','voiceclone','musicgen','talkinghead','inpaint','img2img'];
+  const cats = utilCatState(state.aiTools, AI_TAB_GROUPS);
+  const tabs = cats.visible;
   const labels = { aiimg:'AI Image', aibg:'AI BG', aiup:'AI Upscale', ocr:'OCR', tts:'TTS', emb:'Embeddings', models:'Models', docs:'Doc Search', docqa:'Doc Q&A', summarize:'Summarizer', md:'Markdown', textpdf:'Text to PDF', aitranslate:'Translator', aiparaphrase:'Paraphraser', aigrammar:'Grammar', aiemail:'Email drafter', aimeeting:'Meeting notes', aikeywords:'Keywords', aisentiment:'Sentiment', aiqa:'Q&A', airegex:'Regex gen', aisql:'SQL gen', aicodeexplain:'Code explain', aicommit:'Commit msg', aitest:'Test gen', aipolish:'Transcription polish', semsearch:'Semantic search', scene:'Scene detect', bgblur:'Bg blur', aicaption:'Image caption', aiclassify:'Image classify', aidetect:'Object detect', aiseg:'Segmentation', aibgremove:'BG remove (AI)', aidepth:'Depth map', aizsic:'Zero-shot classify', aizsod:'Zero-shot detect', aisuperres:'Super-res', aistyle:'Style transfer', aiobjremove:'Object remove', aiaudiocls:'Audio classify', ainer:'NER', aitextcls:'Text classify', facerestore:'Face restore', colorize:'Colorize', realesrgan:'Real-ESRGAN', a2m:'Audio to MIDI', stem:'Stem separation', voiceclone:'Voice clone', musicgen:'Music gen', talkinghead:'Talking head', inpaint:'Inpainting', img2img:'Img2img' };
   return `
     ${viewHead({ index: '11', kicker: 'AI tools', title: 'AI <span class="accent">utilities.</span>', sub: 'Image generation, background removal, upscaling, OCR, TTS and embeddings — local where it counts.' })}
+    ${utilCatBar(AI_TAB_GROUPS, cats.cat, 'ai-cat')}
     <div class="util-tabs segmented" role="tablist">
       ${tabs.map((t) => `<button data-action="ai-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${labels[t]}</button>`).join('')}
     </div>
@@ -7654,10 +7711,12 @@ function aiToolsView() {
 
 function pdfToolsView() {
   const tab = state.pdfTools?.tab || 'merge';
-  const tabs = ['merge','split','img2pdf','pdf2img','redact','mdeditor','doccompare','textpdf','filesize'];
+  const cats = utilCatState(state.pdfTools, PDF_TAB_GROUPS);
+  const tabs = cats.visible;
   const labels = { merge:'Merge', split:'Split', img2pdf:'Images→PDF', pdf2img:'PDF→Images', redact:'Redact', mdeditor:'MD Editor', doccompare:'Compare', textpdf:'Text to PDF', filesize:'File Size' };
   return `
     ${viewHead({ index: '13', kicker: 'PDF tools', title: 'PDF <span class="accent">utilities.</span>', sub: 'Merge, split and convert PDFs — 100% local.' })}
+    ${utilCatBar(PDF_TAB_GROUPS, cats.cat, 'pdf-cat')}
     <div class="util-tabs segmented" role="tablist">
       ${tabs.map((t) => `<button data-action="pdf-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${labels[t]}</button>`).join('')}
     </div>
@@ -14418,6 +14477,30 @@ async function handleExtraAction(action, el) {
     case 'util-tab':
       state.utilities.tab = el.dataset.tab || 'frames';
       if (state.tool === 'practical' || state.tool === 'audiotools') state.tool = 'utilities';
+      renderView();
+      return true;
+    case 'ai-cat':
+      state.aiTools.cat = el.dataset.cat || 'all';
+      if (state.aiTools.cat !== 'all') {
+        const g = AI_TAB_GROUPS.find((x) => x.id === state.aiTools.cat);
+        if (g && g.tabs.length) state.aiTools.tab = g.tabs[0];
+      }
+      renderView();
+      return true;
+    case 'dev-cat':
+      state.devTools.cat = el.dataset.cat || 'all';
+      if (state.devTools.cat !== 'all') {
+        const g = DEV_TAB_GROUPS.find((x) => x.id === state.devTools.cat);
+        if (g && g.tabs.length) state.devTools.tab = g.tabs[0];
+      }
+      renderView();
+      return true;
+    case 'pdf-cat':
+      state.pdfTools.cat = el.dataset.cat || 'all';
+      if (state.pdfTools.cat !== 'all') {
+        const g = PDF_TAB_GROUPS.find((x) => x.id === state.pdfTools.cat);
+        if (g && g.tabs.length) state.pdfTools.tab = g.tabs[0];
+      }
       renderView();
       return true;
     case 'ai-tab':
