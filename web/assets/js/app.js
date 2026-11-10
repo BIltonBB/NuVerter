@@ -14561,6 +14561,9 @@ async function handleExtraAction(action, el) {
     case 'util-realesrgan': await utilRealEsrgan(); return true;
     case 'util-a2m': await utilAudio2Midi(); return true;
     case 'util-stem': await utilStemSep(); return true;
+    case 'util-inpaint': await utilInpaint(); return true;
+    case 'util-inpaint-clear': utilInpaintClear(); return true;
+    case 'util-musicgen': await utilMusicGen(); return true;
     case 'util-emb': await utilEmb(); return true;
     case 'util-imgresize': await utilImgResize(); return true;
     case 'util-videomerge': await utilVideoMerge(); return true;
@@ -19299,19 +19302,58 @@ async function utilAiTextCls() {
 
 async function getOrt() {
   if (window.__ort) return window.__ort;
-  const ort = await import('https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/esm/ort.min.js');
+  const ort = await import('https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/ort.min.mjs');
   ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/';
   window.__ort = ort;
   return ort;
 }
 
-// Helper: load an ONNX model from URL, cache in IndexedDB-ish via Cache API
-async function loadOnnxModel(url, statusCb) {
-  if (statusCb) statusCb('Downloading model…');
+// Helper: fetch a model once and keep it in the Cache API so it survives reloads.
+async function fetchModelBuffer(url, statusCb) {
+  let cache = null;
+  try { cache = await caches.open('nuverter-models-v1'); } catch {}
+  if (cache) {
+    try {
+      const hit = await cache.match(url);
+      if (hit) {
+        if (statusCb) statusCb('Loading cached model...');
+        return await hit.arrayBuffer();
+      }
+    } catch {}
+  }
+  if (statusCb) statusCb('Downloading model...');
   const resp = await fetch(url);
   if (!resp.ok) throw new Error('Model download failed: ' + resp.status);
-  const buf = await resp.arrayBuffer();
-  if (statusCb) statusCb('Loading model…');
+  const total = Number(resp.headers.get('content-length')) || 0;
+  let buf;
+  if (resp.body && total && resp.body.getReader) {
+    const reader = resp.body.getReader();
+    const chunks = [];
+    let received = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      if (statusCb) statusCb('Downloading model... ' + Math.round((received / total) * 100) + '%');
+    }
+    const merged = new Uint8Array(received);
+    let off = 0;
+    for (const chunk of chunks) { merged.set(chunk, off); off += chunk.length; }
+    buf = merged.buffer;
+  } else {
+    buf = await resp.arrayBuffer();
+  }
+  if (cache) {
+    try { await cache.put(url, new Response(buf.slice(0), { headers: { 'Content-Type': 'application/octet-stream' } })); } catch {}
+  }
+  return buf;
+}
+
+// Helper: load an ONNX model from URL, cached by the browser after the first run.
+async function loadOnnxModel(url, statusCb) {
+  const buf = await fetchModelBuffer(url, statusCb);
+  if (statusCb) statusCb('Compiling model...');
   const ort = await getOrt();
   const session = await ort.InferenceSession.create(buf, { executionProviders: ['wasm'] });
   return { ort, session };
@@ -19335,10 +19377,24 @@ function tensorToImage(tensor, w, h) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const ctx = c.getContext('2d');
   const imgData = ctx.createImageData(w, h);
-  for (let i = 0; i < w * h; i++) {
-    imgData.data[i * 4] = Math.round(((tensor[i] + 1) / 2) * 255);
-    imgData.data[i * 4 + 1] = Math.round(((tensor[w * h + i] + 1) / 2) * 255);
-    imgData.data[i * 4 + 2] = Math.round(((tensor[2 * w * h + i] + 1) / 2) * 255);
+  // Detect the output range from a sample: [-1,1], [0,1] or [0,255].
+  let lo = -1, hi = 1;
+  let min = Infinity, max = -Infinity;
+  const step = Math.max(1, Math.floor(tensor.length / 4096));
+  for (let i = 0; i < tensor.length; i += step) {
+    const v = tensor[i];
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  if (min >= -0.05 && max <= 1.05) { lo = 0; hi = 1; }
+  else if (max > 1.5) { lo = 0; hi = 255; }
+  const span = (hi - lo) || 1;
+  const to255 = (v) => Math.max(0, Math.min(255, Math.round(((v - lo) / span) * 255)));
+  const plane = w * h;
+  for (let i = 0; i < plane; i++) {
+    imgData.data[i * 4] = to255(tensor[i]);
+    imgData.data[i * 4 + 1] = to255(tensor[plane + i]);
+    imgData.data[i * 4 + 2] = to255(tensor[2 * plane + i]);
     imgData.data[i * 4 + 3] = 255;
   }
   ctx.putImageData(imgData, 0, 0);
@@ -19351,10 +19407,10 @@ function utilFaceRestoreBody() {
     <div class="stage-card">
       <div class="stage-head"><div class="stage-head-copy"><strong>AI face restoration</strong><span>Restore degraded faces (GFPGAN)</span></div></div>
       <div class="stage-body">
-        ${desktopHint('170MB', 'Face restoration')}
+        ${desktopHint('340MB', 'Face restoration')}
         <label class="btn btn-secondary btn-sm" for="util-facerestore-file">Choose image</label>
         <input id="util-facerestore-file" type="file" accept="image/*" data-util="facerestore-file" hidden />
-        <p class="muted" style="font-size:11px;margin-top:6px">Model: ~170MB, downloaded once and cached. Works best on front-facing faces.</p>
+        <p class="muted" style="font-size:11px;margin-top:6px">Model: ~340MB, downloaded once and cached. Works best on front-facing faces.</p>
         <button class="btn btn-primary btn-sm" data-action="util-facerestore" style="margin-top:10px">Restore face</button>
         <div id="util-facerestore-status" class="muted" style="margin-top:8px;font-size:12px"></div>
         <div id="util-facerestore-out" class="util-out" style="margin-top:10px"></div>
@@ -19376,8 +19432,8 @@ async function utilFaceRestore() {
     const c = document.createElement('canvas'); c.width = 512; c.height = 512;
     const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0, 512, 512);
     const tensor = imageToTensor(c, 512, 512);
-    if (status) status.textContent = 'Loading model (170MB, first run only)…';
-    const { ort, session } = await loadOnnxModel('https://huggingface.co/sidkonduru/gfpgan-v1.4-onnx/resolve/main/gfpgan_1.4.onnx', (m) => { if (status) status.textContent = m; });
+    if (status) status.textContent = 'Loading model (340MB, first run only)…';
+    const { ort, session } = await loadOnnxModel('https://huggingface.co/HowToSD/GFPGAN-ONNX/resolve/main/GFPGANv1.4.onnx', (m) => { if (status) status.textContent = m; });
     if (status) status.textContent = 'Running inference…';
     const inputTensor = new ort.Tensor('float32', tensor, [1, 3, 512, 512]);
     const feeds = { [session.inputNames[0]]: inputTensor };
@@ -19398,39 +19454,137 @@ function utilColorizeBody() {
     <div class="stage-card">
       <div class="stage-head"><div class="stage-head-copy"><strong>AI colorization</strong><span>Colorize grayscale photos (DDColor)</span></div></div>
       <div class="stage-body">
-        ${desktopHint('115MB', 'Colorization')}
+        ${desktopHint('135MB', 'Colorization')}
         <label class="btn btn-secondary btn-sm" for="util-colorize-file">Choose image</label>
         <input id="util-colorize-file" type="file" accept="image/*" data-util="colorize-file" hidden />
-        <p class="muted" style="font-size:11px;margin-top:6px">Model: ~115MB, downloaded once and cached.</p>
+        <p class="muted" style="font-size:11px;margin-top:6px">Model: ~135MB, downloaded once and cached.</p>
         <button class="btn btn-primary btn-sm" data-action="util-colorize" style="margin-top:10px">Colorize</button>
         <div id="util-colorize-status" class="muted" style="margin-top:8px;font-size:12px"></div>
         <div id="util-colorize-out" class="util-out" style="margin-top:10px"></div>
       </div>
     </div>`;
 }
+
+// ---------- CIE Lab (D65) helpers for DDColor ----------
+function nuSrgbToLinear(c) {
+  c /= 255;
+  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+function nuLinearToSrgb(c) {
+  return c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+}
+function nuRGBToLab(r, g, b) {
+  const lr = nuSrgbToLinear(r), lg = nuSrgbToLinear(g), lb = nuSrgbToLinear(b);
+  let x = lr * 0.4124564 + lg * 0.3575761 + lb * 0.1804375;
+  let y = lr * 0.2126729 + lg * 0.7151522 + lb * 0.0721750;
+  let z = lr * 0.0193339 + lg * 0.1191920 + lb * 0.9503041;
+  x /= 0.95047; z /= 1.08883;
+  const f = (t) => t > 0.008856 ? Math.cbrt(t) : (7.787 * t + 16 / 116);
+  const fx = f(x), fy = f(y), fz = f(z);
+  return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+}
+function nuLabToRGB(L, a, b) {
+  const fy = (L + 16) / 116, fx = fy + a / 500, fz = fy - b / 200;
+  const finv = (t) => { const t3 = t * t * t; return t3 > 0.008856 ? t3 : (t - 16 / 116) / 7.787; };
+  const x = finv(fx) * 0.95047, y = finv(fy), z = finv(fz) * 1.08883;
+  const r = x * 3.2404542 + y * -1.5371385 + z * -0.4985314;
+  const g = x * -0.9692660 + y * 1.8760108 + z * 0.0415560;
+  const bb = x * 0.0556434 + y * -0.2040259 + z * 1.0572252;
+  const enc = (c) => Math.max(0, Math.min(255, Math.round(nuLinearToSrgb(c) * 255)));
+  return [enc(r), enc(g), enc(bb)];
+}
+
 async function utilColorize() {
   const file = document.querySelector('[data-util="colorize-file"]')?.files?.[0];
   const out = document.getElementById('util-colorize-out');
   const status = document.getElementById('util-colorize-status');
   if (!file) { if (out) out.innerHTML = '<p class="muted">Choose an image first.</p>'; return; }
-  if (status) status.textContent = 'Loading model…';
+  if (status) status.textContent = 'Preparing...';
   try {
-    // DDColor is complex (needs specific preprocessing). Use a simpler approach: apply a color tint.
-    // For now, use a basic colorization via canvas (sepia + hue rotate) as a placeholder.
     const img = new Image();
     const url = URL.createObjectURL(file);
     await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
     URL.revokeObjectURL(url);
-    const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
-    const ctx = c.getContext('2d');
-    ctx.filter = 'sepia(0.6) saturate(1.4) hue-rotate(-10deg) brightness(1.05)';
-    ctx.drawImage(img, 0, 0);
-    ctx.filter = 'none';
-    const blob = await new Promise((res) => c.toBlob(res, 'image/png'));
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'colorized.png'; a.click(); URL.revokeObjectURL(a.href);
-    if (out) out.innerHTML = '<p class="muted">Colorized (basic filter). For AI colorization, DDColor model integration pending.</p>';
+
+    const MAX = 1280;
+    const scale = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+    const W = Math.max(1, Math.round(img.naturalWidth * scale));
+    const H = Math.max(1, Math.round(img.naturalHeight * scale));
+    const S = 512;
+
+    const src = document.createElement('canvas');
+    src.width = W; src.height = H;
+    const sctx = src.getContext('2d');
+    sctx.drawImage(img, 0, 0, W, H);
+    const srcData = sctx.getImageData(0, 0, W, H).data;
+
+    // DDColor takes a grayscale image (L only, a=b=0) at 512x512.
+    const small = document.createElement('canvas');
+    small.width = S; small.height = S;
+    const smctx = small.getContext('2d');
+    smctx.drawImage(src, 0, 0, S, S);
+    const smData = smctx.getImageData(0, 0, S, S).data;
+    const input = new Float32Array(3 * S * S);
+    for (let i = 0; i < S * S; i++) {
+      const lab = nuRGBToLab(smData[i * 4], smData[i * 4 + 1], smData[i * 4 + 2]);
+      const gray = nuLabToRGB(lab[0], 0, 0);
+      input[i] = gray[0] / 255;
+      input[S * S + i] = gray[1] / 255;
+      input[2 * S * S + i] = gray[2] / 255;
+    }
+
+    const { ort, session } = await loadOnnxModel(
+      'https://huggingface.co/edgetools/ddcolor/resolve/main/ddcolor-tiny-fp16.onnx',
+      (m) => { if (status) status.textContent = m; }
+    );
+    if (status) status.textContent = 'Colorizing...';
+
+    const feeds = {};
+    feeds[session.inputNames[0]] = new ort.Tensor('float32', input, [1, 3, S, S]);
+    const results = await session.run(feeds);
+    const outName = session.outputNames?.[0] || Object.keys(results)[0];
+    const ab = results[outName].data;
+    const plane = S * S;
+    let maxAbs = 0;
+    for (let i = 0; i < plane * 2; i++) { const v = Math.abs(ab[i]); if (v > maxAbs) maxAbs = v; }
+    // Some exports normalise ab to [-1, 1]; others keep Lab units.
+    const abScale = maxAbs <= 2 ? 110 : 1;
+
+    const outCanvas = document.createElement('canvas');
+    outCanvas.width = W; outCanvas.height = H;
+    const octx = outCanvas.getContext('2d');
+    const outImg = octx.createImageData(W, H);
+    for (let y = 0; y < H; y++) {
+      const sy = H > 1 ? (y / (H - 1)) * (S - 1) : 0;
+      const y0 = Math.floor(sy), y1 = Math.min(S - 1, y0 + 1), fy = sy - y0;
+      for (let x = 0; x < W; x++) {
+        const sx = W > 1 ? (x / (W - 1)) * (S - 1) : 0;
+        const x0 = Math.floor(sx), x1 = Math.min(S - 1, x0 + 1), fx = sx - x0;
+        const i00 = y0 * S + x0, i10 = y0 * S + x1, i01 = y1 * S + x0, i11 = y1 * S + x1;
+        const wa = (1 - fx) * (1 - fy), wb = fx * (1 - fy), wc = (1 - fx) * fy, wd = fx * fy;
+        const a = (ab[i00] * wa + ab[i10] * wb + ab[i01] * wc + ab[i11] * wd) * abScale;
+        const b = (ab[plane + i00] * wa + ab[plane + i10] * wb + ab[plane + i01] * wc + ab[plane + i11] * wd) * abScale;
+        const o = y * W + x;
+        const lab = nuRGBToLab(srcData[o * 4], srcData[o * 4 + 1], srcData[o * 4 + 2]);
+        const rgb = nuLabToRGB(lab[0], a, b);
+        outImg.data[o * 4] = rgb[0];
+        outImg.data[o * 4 + 1] = rgb[1];
+        outImg.data[o * 4 + 2] = rgb[2];
+        outImg.data[o * 4 + 3] = 255;
+      }
+    }
+    octx.putImageData(outImg, 0, 0);
+
+    const blob = await new Promise((res) => outCanvas.toBlob(res, 'image/png'));
+    const dlUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = dlUrl; a.download = 'colorized.png'; a.click();
+    if (out) out.innerHTML = '<p class="muted">Colorized ' + W + 'x' + H + '. Downloaded colorized.png.</p><img src="' + dlUrl + '" alt="Colorized result" style="max-width:100%;border-radius:8px;margin-top:8px" />';
     if (status) status.textContent = 'Done.';
-  } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; if (status) status.textContent = ''; }
+  } catch (e) {
+    if (out) out.innerHTML = '<p class="muted">Failed: ' + esc(e?.message || e) + '</p>';
+    if (status) status.textContent = '';
+  }
 }
 
 // 3. Super-resolution (Real-ESRGAN via ONNX) - upgrade from swin2SR
@@ -19601,16 +19755,55 @@ function varLen(value) {
 }
 
 // 5. Stem separation (HTDemucs) - too large (166MB+), placeholder with instructions
+// ---------- WAV encoder + stem / music helpers ----------
+function nuEncodeWav(chL, chR, sampleRate) {
+  const n = chL.length;
+  const buffer = new ArrayBuffer(44 + n * 4);
+  const view = new DataView(buffer);
+  const writeStr = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + n * 4, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 2, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 4, true);
+  view.setUint16(32, 4, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, 'data');
+  view.setUint32(40, n * 4, true);
+  let off = 44;
+  for (let i = 0; i < n; i++) {
+    const l = Math.max(-1, Math.min(1, chL[i]));
+    const r = Math.max(-1, Math.min(1, chR[i]));
+    view.setInt16(off, l < 0 ? l * 0x8000 : l * 0x7fff, true); off += 2;
+    view.setInt16(off, r < 0 ? r * 0x8000 : r * 0x7fff, true); off += 2;
+  }
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+function desktopOnlyNotice(toolName, modelSize, detail) {
+  if (isDesktopApp()) {
+    return '<div class="modal-note" style="margin:8px 0;padding:10px 12px;border-radius:8px;background:var(--accent-soft,rgba(124,58,237,.08));border:1px solid var(--accent-border,rgba(124,58,237,.2));font-size:11.5px;line-height:1.55"><strong>Desktop engine required:</strong> ' + (detail || (toolName + ' needs a ' + modelSize + ' model.')) + ' Add it under Settings &rarr; AI models to enable this tool.</div>';
+  }
+  return '<div class="modal-note" style="margin:8px 0;padding:10px 12px;border-radius:8px;background:var(--accent-soft,rgba(124,58,237,.08));border:1px solid var(--accent-border,rgba(124,58,237,.2));font-size:11.5px;line-height:1.55"><strong>Desktop only:</strong> ' + toolName + ' needs a ' + modelSize + ' model, which is too large to load reliably in a browser tab. The desktop app stores it on disk and keeps it between launches. <button class="btn btn-ghost btn-sm" data-action="download-app" style="margin-left:6px;padding:2px 8px;font-size:11px">Get desktop app</button></div>';
+}
+
 function utilStemSepBody() {
   return `
     <div class="stage-card">
-      <div class="stage-head"><div class="stage-head-copy"><strong>AI stem separation</strong><span>Split audio into vocals, drums, bass, other</span></div></div>
+      <div class="stage-head"><div class="stage-head-copy"><strong>Stem separation</strong><span>Isolate vocals and instrumental (center-channel DSP)</span></div></div>
       <div class="stage-body">
-        ${desktopHint('166MB+', 'Stem separation')}
         <label class="btn btn-secondary btn-sm" for="util-stem-file">Choose audio</label>
         <input id="util-stem-file" type="file" accept="audio/*" data-util="stem-file" hidden />
-        <p class="muted" style="font-size:11px;margin-top:6px">Uses HTDemucs (~166MB). First run downloads the model. CPU inference may be slow.</p>
-        <button class="btn btn-primary btn-sm" data-action="util-stem" style="margin-top:10px">Separate stems</button>
+        <div class="field" style="margin-top:10px">
+          <div class="field-head"><span class="field-label">Center width</span><span class="field-value" id="util-stem-width-val">100%</span></div>
+          <input id="util-stem-width" type="range" min="0" max="100" value="100" />
+        </div>
+        <p class="muted" style="font-size:11px;margin-top:6px">Mid/side center extraction. Fully offline and instant. AI 4-stem separation (drums/bass/vocals/other) needs a 166MB+ model and is desktop-only.</p>
+        <button class="btn btn-primary btn-sm" data-action="util-stem" style="margin-top:10px">Separate</button>
         <div id="util-stem-status" class="muted" style="margin-top:8px;font-size:12px"></div>
         <div id="util-stem-out" class="util-out" style="margin-top:10px"></div>
       </div>
@@ -19621,19 +19814,50 @@ async function utilStemSep() {
   const out = document.getElementById('util-stem-out');
   const status = document.getElementById('util-stem-status');
   if (!file) { if (out) out.innerHTML = '<p class="muted">Choose an audio file first.</p>'; return; }
-  if (status) status.textContent = 'Stem separation requires HTDemucs (~166MB). Implementation pending ONNX model integration.';
-  if (out) out.innerHTML = '<p class="muted">Stem separation is not yet fully implemented. The model download and ONNX inference pipeline is in progress.</p>';
+  if (status) status.textContent = 'Decoding audio...';
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const buf = await file.arrayBuffer();
+    const audio = await ctx.decodeAudioData(buf);
+    const L = audio.getChannelData(0);
+    const R = audio.numberOfChannels > 1 ? audio.getChannelData(1) : L;
+    const n = audio.length;
+    const sr = audio.sampleRate;
+    const width = Number(document.getElementById('util-stem-width')?.value || 100) / 100;
+    const vocalsL = new Float32Array(n);
+    const vocalsR = new Float32Array(n);
+    const instL = new Float32Array(n);
+    const instR = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const mid = (L[i] + R[i]) / 2;
+      const sideL = (L[i] - R[i]) / 2;
+      const sideR = (R[i] - L[i]) / 2;
+      vocalsL[i] = mid;
+      vocalsR[i] = mid;
+      instL[i] = sideL * width * 2;
+      instR[i] = sideR * width * 2;
+    }
+    const vBlob = nuEncodeWav(vocalsL, vocalsR, sr);
+    const iBlob = nuEncodeWav(instL, instR, sr);
+    const vUrl = URL.createObjectURL(vBlob);
+    const iUrl = URL.createObjectURL(iBlob);
+    if (out) out.innerHTML = '<p class="muted">Center channel isolated (vocals). The instrumental is the side signal.</p><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><a class="btn btn-secondary btn-sm" download="vocals.wav" href="' + vUrl + '">Download vocals.wav</a><a class="btn btn-secondary btn-sm" download="instrumental.wav" href="' + iUrl + '">Download instrumental.wav</a></div>';
+    if (status) status.textContent = 'Done.';
+    await ctx.close();
+  } catch (e) {
+    if (out) out.innerHTML = '<p class="muted">Failed: ' + esc(e?.message || e) + '</p>';
+    if (status) status.textContent = '';
+  }
 }
 
 // 6. Voice cloning (placeholder)
 function utilVoiceCloneBody() {
   return `
     <div class="stage-card">
-      <div class="stage-head"><div class="stage-head-copy"><strong>AI voice cloning</strong><span>Clone a voice from a sample</span></div></div>
+      <div class="stage-head"><div class="stage-head-copy"><strong>AI voice cloning</strong><span>Clone a voice from a short sample</span></div></div>
       <div class="stage-body">
-        ${desktopHint('2GB', 'Voice cloning')}
-        <p class="muted" style="font-size:12px">Voice cloning requires a TTS model with voice cloning support (e.g., Coqui XTTS). Desktop app recommended.</p>
-        <div id="util-vc-out" class="util-out" style="margin-top:10px"></div>
+        ${desktopOnlyNotice('Voice cloning', '2GB', 'Voice cloning uses Coqui XTTS-class models (~2GB) that are too large for a browser tab.')}
+        <p class="muted" style="font-size:12px">Available in the desktop app once the model is added under Settings &rarr; AI models.</p>
       </div>
     </div>`;
 }
@@ -19642,10 +19866,25 @@ function utilVoiceCloneBody() {
 function utilMusicGenBody() {
   return `
     <div class="stage-card">
-      <div class="stage-head"><div class="stage-head-copy"><strong>AI music generation</strong><span>Generate music from text (MusicGen)</span></div></div>
+      <div class="stage-head"><div class="stage-head-copy"><strong>Music generator</strong><span>Procedural composition - offline, no model</span></div></div>
       <div class="stage-body">
-        ${desktopHint('2GB', 'Music generation')}
-        <p class="muted" style="font-size:12px">MusicGen requires ~2GB model. Desktop app recommended.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <label class="field" style="flex:1;min-width:110px"><span class="field-label">Key</span>
+            <select id="util-music-key" class="select">${['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'].map((k) => `<option value="${k}">${k}</option>`).join('')}</select>
+          </label>
+          <label class="field" style="flex:1;min-width:110px"><span class="field-label">Tempo (BPM)</span>
+            <input id="util-music-tempo" class="input" type="number" min="60" max="180" value="110" />
+          </label>
+          <label class="field" style="flex:1;min-width:110px"><span class="field-label">Bars</span>
+            <select id="util-music-bars" class="select"><option>4</option><option selected>8</option><option>16</option></select>
+          </label>
+        </div>
+        <label class="field" style="margin-top:8px"><span class="field-label">Mood</span>
+          <select id="util-music-mood" class="select"><option value="uplift">Uplifting</option><option value="calm">Calm</option><option value="dark">Dark</option></select>
+        </label>
+        <p class="muted" style="font-size:11px;margin-top:6px">Builds a chord progression, bass, melody and drums in the browser. Text-to-music models (MusicGen, ~2GB) are desktop-only.</p>
+        <button class="btn btn-primary btn-sm" data-action="util-musicgen" style="margin-top:10px">Generate</button>
+        <div id="util-musicgen-status" class="muted" style="margin-top:8px;font-size:12px"></div>
         <div id="util-musicgen-out" class="util-out" style="margin-top:10px"></div>
       </div>
     </div>`;
@@ -19657,9 +19896,8 @@ function utilTalkingHeadBody() {
     <div class="stage-card">
       <div class="stage-head"><div class="stage-head-copy"><strong>AI talking head</strong><span>Animate a face from audio</span></div></div>
       <div class="stage-body">
-        ${desktopHint('1GB+', 'Talking head')}
-        <p class="muted" style="font-size:12px">Talking head requires specialized models. Desktop app recommended.</p>
-        <div id="util-talkinghead-out" class="util-out" style="margin-top:10px"></div>
+        ${desktopOnlyNotice('Talking head', '1GB+', 'Talking-head animation needs Wav2Lip/SadTalker-class models (1GB+) and a native video pipeline.')}
+        <p class="muted" style="font-size:12px">Available in the desktop app once the model is added under Settings &rarr; AI models.</p>
       </div>
     </div>`;
 }
@@ -19668,13 +19906,200 @@ function utilTalkingHeadBody() {
 function utilInpaintBody() {
   return `
     <div class="stage-card">
-      <div class="stage-head"><div class="stage-head-copy"><strong>AI inpainting</strong><span>Fill regions in an image</span></div></div>
+      <div class="stage-head"><div class="stage-head-copy"><strong>AI inpainting</strong><span>Remove objects with LaMa (local ONNX model)</span></div></div>
       <div class="stage-body">
-        ${desktopHint('2GB', 'Inpainting')}
-        <p class="muted" style="font-size:12px">Inpainting requires Stable Diffusion. Desktop app recommended.</p>
+        ${desktopHint('200MB', 'AI inpainting')}
+        <label class="btn btn-secondary btn-sm" for="util-inpaint-file">Choose image</label>
+        <input id="util-inpaint-file" type="file" accept="image/*" data-util="inpaint-file" hidden />
+        <p class="muted" style="font-size:11px;margin-top:6px">Paint over what you want removed, then run. Model: LaMa ~200MB, cached after the first download.</p>
+        <div id="util-inpaint-wrap" hidden style="position:relative;display:inline-block;max-width:100%;margin-top:10px">
+          <canvas id="util-inpaint-base" style="display:block;max-width:100%;border-radius:8px"></canvas>
+          <canvas id="util-inpaint-mask" style="position:absolute;left:0;top:0;width:100%;height:100%;cursor:crosshair;touch-action:none"></canvas>
+        </div>
+        <div id="util-inpaint-tools" hidden style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
+          <span class="muted" style="font-size:12px">Brush</span>
+          <input id="util-inpaint-brush" type="range" min="8" max="90" value="34" />
+          <button class="btn btn-ghost btn-sm" data-action="util-inpaint-clear">Clear mask</button>
+        </div>
+        <button class="btn btn-primary btn-sm" data-action="util-inpaint" style="margin-top:10px">Inpaint</button>
+        <div id="util-inpaint-status" class="muted" style="margin-top:8px;font-size:12px"></div>
         <div id="util-inpaint-out" class="util-out" style="margin-top:10px"></div>
       </div>
     </div>`;
+}
+
+var NU_INPAINT = { img: null, w: 0, h: 0, drawing: false, last: null };
+
+async function utilInpaintLoad(file) {
+  const wrap = document.getElementById('util-inpaint-wrap');
+  const base = document.getElementById('util-inpaint-base');
+  const mask = document.getElementById('util-inpaint-mask');
+  const tools = document.getElementById('util-inpaint-tools');
+  const status = document.getElementById('util-inpaint-status');
+  const out = document.getElementById('util-inpaint-out');
+  if (!wrap || !base || !mask) return;
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  try {
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+  const MAX = 1200;
+  const scale = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.max(1, Math.round(img.naturalWidth * scale));
+  const h = Math.max(1, Math.round(img.naturalHeight * scale));
+  base.width = w; base.height = h;
+  base.getContext('2d').drawImage(img, 0, 0, w, h);
+  mask.width = w; mask.height = h;
+  mask.getContext('2d').clearRect(0, 0, w, h);
+  NU_INPAINT.img = img; NU_INPAINT.w = w; NU_INPAINT.h = h;
+  NU_INPAINT.drawing = false; NU_INPAINT.last = null;
+  wrap.hidden = false;
+  if (tools) tools.hidden = false;
+  if (out) out.innerHTML = '';
+  if (status) status.textContent = 'Paint over the area to remove.';
+}
+
+function utilInpaintPoint(e, phase) {
+  const mask = document.getElementById('util-inpaint-mask');
+  if (!mask) return;
+  if (phase === 'down') {
+    NU_INPAINT.drawing = true;
+    NU_INPAINT.last = null;
+    try { mask.setPointerCapture(e.pointerId); } catch {}
+  }
+  if (!NU_INPAINT.drawing) return;
+  const rect = mask.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  const x = (e.clientX - rect.left) * (mask.width / rect.width);
+  const y = (e.clientY - rect.top) * (mask.height / rect.height);
+  const brush = Number(document.getElementById('util-inpaint-brush')?.value || 34);
+  const radius = Math.max(2, (brush / 2) * (mask.width / rect.width));
+  const ctx = mask.getContext('2d');
+  ctx.strokeStyle = 'rgba(255,64,64,0.65)';
+  ctx.fillStyle = 'rgba(255,64,64,0.65)';
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = radius * 2;
+  if (NU_INPAINT.last) {
+    ctx.beginPath();
+    ctx.moveTo(NU_INPAINT.last.x, NU_INPAINT.last.y);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  NU_INPAINT.last = { x, y };
+  e.preventDefault();
+}
+
+function utilInpaintClear() {
+  const mask = document.getElementById('util-inpaint-mask');
+  if (mask) mask.getContext('2d').clearRect(0, 0, mask.width, mask.height);
+  const status = document.getElementById('util-inpaint-status');
+  if (status) status.textContent = 'Mask cleared.';
+}
+
+async function utilInpaint() {
+  const out = document.getElementById('util-inpaint-out');
+  const status = document.getElementById('util-inpaint-status');
+  if (!NU_INPAINT.img) { if (out) out.innerHTML = '<p class="muted">Choose an image first.</p>'; return; }
+  const base = document.getElementById('util-inpaint-base');
+  const mask = document.getElementById('util-inpaint-mask');
+  if (!base || !mask) return;
+  const w = NU_INPAINT.w, h = NU_INPAINT.h;
+  const md = mask.getContext('2d').getImageData(0, 0, w, h).data;
+  let hasMask = false;
+  for (let i = 3; i < md.length; i += 4) { if (md[i] > 12) { hasMask = true; break; } }
+  if (!hasMask) { if (out) out.innerHTML = '<p class="muted">Paint over the area to remove first.</p>'; return; }
+
+  const S = 512;
+  const inputCanvas = document.createElement('canvas');
+  inputCanvas.width = S; inputCanvas.height = S;
+  inputCanvas.getContext('2d').drawImage(base, 0, 0, S, S);
+  const idata = inputCanvas.getContext('2d').getImageData(0, 0, S, S).data;
+  const imgT = new Float32Array(3 * S * S);
+  for (let i = 0; i < S * S; i++) {
+    imgT[i] = idata[i * 4] / 255;
+    imgT[S * S + i] = idata[i * 4 + 1] / 255;
+    imgT[2 * S * S + i] = idata[i * 4 + 2] / 255;
+  }
+
+  const maskCanvas = document.createElement('canvas');
+  maskCanvas.width = S; maskCanvas.height = S;
+  const mctx = maskCanvas.getContext('2d');
+  mctx.drawImage(mask, 0, 0, S, S);
+  const mdata = mctx.getImageData(0, 0, S, S).data;
+  const maskT = new Float32Array(S * S);
+  for (let i = 0; i < S * S; i++) maskT[i] = mdata[i * 4 + 3] > 12 ? 1 : 0;
+
+  if (status) status.textContent = 'Loading LaMa (~200MB, first run only)...';
+  try {
+    const { ort, session } = await loadOnnxModel(
+      'https://huggingface.co/Carve/LaMa-ONNX/resolve/main/lama_fp32.onnx',
+      (m) => { if (status) status.textContent = m; }
+    );
+    if (status) status.textContent = 'Inpainting...';
+    const names = session.inputNames || [];
+    const imgName = names.includes('image') ? 'image' : names[0];
+    const maskName = names.includes('mask') ? 'mask' : (names.length > 1 ? names[1] : null);
+    const feeds = {};
+    feeds[imgName] = new ort.Tensor('float32', imgT, [1, 3, S, S]);
+    if (maskName) feeds[maskName] = new ort.Tensor('float32', maskT, [1, 1, S, S]);
+    const res = await session.run(feeds);
+    const outName = session.outputNames?.[0] || Object.keys(res)[0];
+    const td = res[outName].data;
+    let maxV = 0;
+    for (let i = 0; i < td.length; i++) { if (td[i] > maxV) maxV = td[i]; }
+    const mul = maxV <= 1.5 ? 255 : 1;
+
+    const modelCanvas = document.createElement('canvas');
+    modelCanvas.width = S; modelCanvas.height = S;
+    const moctx = modelCanvas.getContext('2d');
+    const moimg = moctx.createImageData(S, S);
+    for (let i = 0; i < S * S; i++) {
+      moimg.data[i * 4] = Math.max(0, Math.min(255, Math.round(td[i] * mul)));
+      moimg.data[i * 4 + 1] = Math.max(0, Math.min(255, Math.round(td[S * S + i] * mul)));
+      moimg.data[i * 4 + 2] = Math.max(0, Math.min(255, Math.round(td[2 * S * S + i] * mul)));
+      moimg.data[i * 4 + 3] = 255;
+    }
+    moctx.putImageData(moimg, 0, 0);
+
+    const feather = document.createElement('canvas');
+    feather.width = w; feather.height = h;
+    const fctx = feather.getContext('2d');
+    fctx.filter = 'blur(2px)';
+    fctx.drawImage(mask, 0, 0, w, h);
+    fctx.filter = 'none';
+
+    const patch = document.createElement('canvas');
+    patch.width = w; patch.height = h;
+    const pctx = patch.getContext('2d');
+    pctx.drawImage(modelCanvas, 0, 0, w, h);
+    pctx.globalCompositeOperation = 'destination-in';
+    pctx.drawImage(feather, 0, 0);
+    pctx.globalCompositeOperation = 'source-over';
+
+    const result = document.createElement('canvas');
+    result.width = w; result.height = h;
+    const rctx = result.getContext('2d');
+    rctx.drawImage(base, 0, 0);
+    rctx.drawImage(patch, 0, 0);
+
+    const blob = await new Promise((r) => result.toBlob(r, 'image/png'));
+    const dlUrl = URL.createObjectURL(blob);
+    const previewUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = dlUrl; a.download = 'inpainted.png'; a.click();
+    if (out) out.innerHTML = '<p class="muted">Inpainted ' + w + 'x' + h + '. Downloaded inpainted.png.</p><img src="' + previewUrl + '" alt="Inpainted result" style="max-width:100%;border-radius:8px;margin-top:8px" />';
+    if (status) status.textContent = 'Done.';
+  } catch (e) {
+    if (out) out.innerHTML = '<p class="muted">Failed: ' + esc(e?.message || e) + '</p>';
+    if (status) status.textContent = '';
+  }
 }
 
 // 10. Image-to-image (SD) - placeholder
@@ -19683,9 +20108,8 @@ function utilImg2ImgBody() {
     <div class="stage-card">
       <div class="stage-head"><div class="stage-head-copy"><strong>AI image-to-image</strong><span>Transform images with text prompts</span></div></div>
       <div class="stage-body">
-        ${desktopHint('2GB', 'Image-to-image')}
-        <p class="muted" style="font-size:12px">Image-to-image requires Stable Diffusion. Desktop app recommended.</p>
-        <div id="util-img2img-out" class="util-out" style="margin-top:10px"></div>
+        ${desktopOnlyNotice('Image-to-image', '2GB', 'Stable Diffusion image-to-image needs a VAE encoder plus the 2.5GB SD-Turbo weights.')}
+        <p class="muted" style="font-size:12px">Text-to-image already works offline from AI Image. Add a VAE encoder in Settings &rarr; AI models to enable img2img on desktop.</p>
       </div>
     </div>`;
 }
@@ -19705,4 +20129,123 @@ function desktopHint(modelSize, toolName) {
     <strong>Desktop recommended:</strong> ${toolName || 'This tool'} works best in the desktop app. Large models${size} download and cache on disk there, avoiding painful browser cache loads.
     <button class="btn btn-ghost btn-sm" data-action="download-app" style="margin-left:6px;padding:2px 8px;font-size:11px">Get desktop app</button>
   </div>`;
+}
+
+// Inpainting canvas + brush wiring (delegated so it survives re-renders).
+document.addEventListener('change', (e) => {
+  const t = e.target;
+  if (t && t.matches && t.matches('[data-util="inpaint-file"]')) {
+    const f = t.files && t.files[0];
+    if (f) utilInpaintLoad(f);
+  }
+});
+document.addEventListener('pointerdown', (e) => {
+  if (e.target && e.target.id === 'util-inpaint-mask') utilInpaintPoint(e, 'down');
+});
+document.addEventListener('pointermove', (e) => {
+  if (e.target && e.target.id === 'util-inpaint-mask') utilInpaintPoint(e, 'move');
+});
+
+document.addEventListener('pointerup', () => { NU_INPAINT.drawing = false; NU_INPAINT.last = null; });
+document.addEventListener('pointercancel', () => { NU_INPAINT.drawing = false; NU_INPAINT.last = null; });
+document.addEventListener('input', (e) => {
+  if (e.target && e.target.id === 'util-stem-width') {
+    const el = document.getElementById('util-stem-width-val');
+    if (el) el.textContent = e.target.value + '%';
+  }
+});
+
+async function utilMusicGen() {
+  const out = document.getElementById('util-musicgen-out');
+  const status = document.getElementById('util-musicgen-status');
+  const key = document.getElementById('util-music-key')?.value || 'C';
+  const tempo = Math.max(60, Math.min(180, Number(document.getElementById('util-music-tempo')?.value || 110)));
+  const bars = Number(document.getElementById('util-music-bars')?.value || 8);
+  const mood = document.getElementById('util-music-mood')?.value || 'uplift';
+  if (status) status.textContent = 'Composing...';
+  try {
+    const sr = 44100;
+    const beat = 60 / tempo;
+    const total = Math.ceil(bars * 4 * beat * sr) + sr;
+    const L = new Float32Array(total);
+    const R = new Float32Array(total);
+    const KEYS = { C: 0, 'C#': 1, D: 2, 'D#': 3, E: 4, F: 5, 'F#': 6, G: 7, 'G#': 8, A: 9, 'A#': 10, B: 11 };
+    const root = 48 + (KEYS[key] ?? 0);
+    const major = [0, 2, 4, 5, 7, 9, 11];
+    const minor = [0, 2, 3, 5, 7, 8, 10];
+    const scale = mood === 'dark' ? minor : major;
+    const progressions = {
+      uplift: [0, 4, 5, 3],
+      calm: [0, 5, 3, 4],
+      dark: [0, 5, 2, 6]
+    };
+    const prog = progressions[mood] || progressions.uplift;
+    const midiToFreq = (m) => 440 * Math.pow(2, (m - 69) / 12);
+    const addTone = (freq, start, dur, amp, pan, type) => {
+      const s0 = Math.max(0, Math.floor(start * sr));
+      const n = Math.max(1, Math.floor(dur * sr));
+      const wl = amp * Math.sqrt(0.5 * (1 - pan));
+      const wr = amp * Math.sqrt(0.5 * (1 + pan));
+      for (let i = 0; i < n && s0 + i < total; i++) {
+        const t = i / sr;
+        const env = Math.min(1, t / 0.01) * Math.exp(-t * (type === 'bass' ? 1.6 : 2.8));
+        let v = Math.sin(2 * Math.PI * freq * t);
+        if (type === 'saw') v = (2 / Math.PI) * Math.asin(Math.sin(2 * Math.PI * freq * t));
+        else if (type === 'bell') v = Math.sin(2 * Math.PI * freq * t) * 0.7 + Math.sin(2 * Math.PI * freq * 2 * t) * 0.2;
+        v *= env;
+        L[s0 + i] += v * wl;
+        R[s0 + i] += v * wr;
+      }
+    };
+    const addNoise = (start, dur, amp, pan) => {
+      const s0 = Math.max(0, Math.floor(start * sr));
+      const n = Math.max(1, Math.floor(dur * sr));
+      const wl = amp * Math.sqrt(0.5 * (1 - pan));
+      const wr = amp * Math.sqrt(0.5 * (1 + pan));
+      for (let i = 0; i < n && s0 + i < total; i++) {
+        const env = Math.exp(-(i / sr) * 60);
+        const v = (Math.random() * 2 - 1) * env;
+        L[s0 + i] += v * wl;
+        R[s0 + i] += v * wr;
+      }
+    };
+    for (let bar = 0; bar < bars; bar++) {
+      const chordDeg = prog[bar % prog.length];
+      const barStart = bar * 4 * beat;
+      for (let d = 0; d < 3; d++) {
+        const deg = chordDeg + d * 2;
+        const semi = scale[deg % scale.length] + Math.floor(deg / scale.length) * 12;
+        addTone(midiToFreq(root + 12 + semi), barStart, beat * 3.8, 0.06, (d - 1) * 0.5, 'saw');
+      }
+      for (let b = 0; b < 4; b++) {
+        const semi = scale[chordDeg % scale.length] + Math.floor(chordDeg / scale.length) * 12;
+        addTone(midiToFreq(root + semi), barStart + b * beat, beat * 0.85, b % 2 === 0 ? 0.16 : 0.1, 0, 'bass');
+      }
+      for (let e = 0; e < 8; e++) {
+        if (Math.random() < 0.28) continue;
+        const step = Math.floor(Math.random() * 6) + (e % 4 === 0 ? 2 : 0);
+        const deg = chordDeg + step;
+        const semi = scale[deg % scale.length] + Math.floor(deg / scale.length) * 12;
+        const octave = Math.random() < 0.25 ? 24 : 12;
+        addTone(midiToFreq(root + semi + octave), barStart + e * beat / 2, beat * 0.45, 0.07, (Math.random() - 0.5) * 0.6, 'bell');
+      }
+      for (let b = 0; b < 4; b++) {
+        if (b === 0 || b === 2) addTone(55, barStart + b * beat, 0.22, 0.22, 0, 'bass');
+        if (b === 1 || b === 3) addNoise(barStart + b * beat, 0.12, 0.12, 0);
+        addNoise(barStart + b * beat + beat / 2, 0.05, 0.05, 0.35);
+        addNoise(barStart + b * beat, 0.04, 0.04, -0.35);
+      }
+    }
+    let peak = 0;
+    for (let i = 0; i < total; i++) { const v = Math.max(Math.abs(L[i]), Math.abs(R[i])); if (v > peak) peak = v; }
+    const gain = peak > 0 ? Math.min(1.2, 0.95 / peak) : 1;
+    for (let i = 0; i < total; i++) { L[i] *= gain; R[i] *= gain; }
+    const blob = nuEncodeWav(L, R, sr);
+    const url = URL.createObjectURL(blob);
+    if (out) out.innerHTML = '<p class="muted">Generated ' + bars + ' bars at ' + tempo + ' BPM (procedural, no AI model).</p><audio controls src="' + url + '" style="width:100%;margin-top:8px"></audio><div style="margin-top:8px"><a class="btn btn-secondary btn-sm" download="composition.wav" href="' + url + '">Download composition.wav</a></div>';
+    if (status) status.textContent = 'Done.';
+  } catch (e) {
+    if (out) out.innerHTML = '<p class="muted">Failed: ' + esc(e?.message || e) + '</p>';
+    if (status) status.textContent = '';
+  }
 }
