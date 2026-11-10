@@ -914,7 +914,24 @@
 }
 
 /* ---------- utilities / dev tools layout ---------- */
-.util-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0; }
+.util-cats { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 0; }
+.util-cat {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 30px; padding: 0 11px;
+  border: 1px solid var(--border); border-radius: 999px;
+  background: var(--surface-2); color: var(--text-3);
+  font-size: 12px; font-weight: 600; line-height: 1; white-space: nowrap;
+  cursor: pointer;
+  transition: color .15s ease, background .15s ease, border-color .15s ease;
+}
+.util-cat:hover { color: var(--text); border-color: var(--border-strong); }
+.util-cat.is-active { background: var(--accent-soft); color: var(--accent-text); border-color: var(--accent-border); }
+.util-cat-count {
+  font-size: 10px; line-height: 1; padding: 3px 5px; border-radius: 999px;
+  background: var(--surface-3); color: inherit; opacity: .75;
+}
+.util-cat.is-active .util-cat-count { background: var(--surface); opacity: 1; }
+.util-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 14px; }
 .util-body { min-height: 240px; }
 .util-out { margin-top: 12px; }
 .util-out img { max-width: 100%; border-radius: 8px; margin-top: 8px; }
