@@ -4291,10 +4291,10 @@ function utilitiesView() {
     ${(() => {
       const groups = [
         { name: 'Media', items: [
-          ['frames','Frames'], ['spritesheet','Spritesheet'], ['slicer','Slice sheet'], ['textimage','Text card'], ['trimmer','Trimmer'], ['watermark','Watermark'], ['upscale','Upscale'], ['pdf','PDF'], ['chroma','Chroma key'], ['fileinfo','File info'], ['palette','Palette'], ['favicon','Favicon'], ['vector','Vectorize'], ['imgresize','Image resize'], ['videomerge','Video merge'], ['audiomerge','Audio merge']
+          ['frames','Frames'], ['spritesheet','Spritesheet'], ['slicer','Slice sheet'], ['textimage','Text card'], ['trimmer','Trimmer'], ['watermark','Watermark'], ['upscale','Upscale'], ['pdf','PDF'], ['chroma','Chroma key'], ['fileinfo','File info'], ['palette','Palette'], ['favicon','Favicon'], ['vector','Vectorize'], ['imgresize','Image resize'], ['videomerge','Video merge'], ['audiomerge','Audio merge'], ['vidrotate','Video rotate/flip'], ['vidspeed','Video speed'], ['exifstrip','EXIF strip']
         ]},
         { name: 'Audio', items: [
-          ['audioclean','Audio clean'], ['silencetrim','Silence trim'], ['waveform','Waveform'], ['tts','TTS']
+          ['audioclean','Audio clean'], ['silencetrim','Silence trim'], ['waveform','Waveform'], ['tts','TTS'], ['audspeed','Audio speed'], ['audnorm','Audio normalize']
         ]},
         { name: 'AI', items: [
           ['ocr','OCR'], ['aibg','AI BG'], ['aiup','AI Upscale'], ['emb','Embeddings']
@@ -4303,10 +4303,10 @@ function utilitiesView() {
           ['hash','File hash'], ['textpaper','Text to paper']
         ]},
         { name: 'Developer', items: [
-          ['jsonfmt','JSON format'], ['base64','Base64'], ['regex','Regex tester'], ['uuid','UUID gen'], ['timestamp','Timestamp'], ['colorconv','Color convert'], ['diffview','Diff viewer'], ['minify','Minify/Beautify']
+          ['jsonfmt','JSON format'], ['base64','Base64'], ['regex','Regex tester'], ['uuid','UUID gen'], ['timestamp','Timestamp'], ['colorconv','Color convert'], ['diffview','Diff viewer'], ['minify','Minify/Beautify'],['vidrotate','Video rotate/flip'],['vidspeed','Video speed'],['exifstrip','EXIF strip'],['audspeed','Audio speed'],['audnorm','Audio normalize'],['jwt','JWT decoder'],['archive','Archive zip/unzip'],['ascii','Image to ASCII'],['markdown','Markdown to HTML'],['textpdf','Text to PDF'],['exifview','EXIF viewer'],['filesize','File size analyzer'],['batchrename','Batch rename'], ['jwt','JWT decoder'], ['archive','Archive zip/unzip'], ['ascii','Image to ASCII'], ['markdown','Markdown to HTML'], ['textpdf','Text to PDF'], ['exifview','EXIF viewer'], ['filesize','File size analyzer'], ['batchrename','Batch rename']
         ]}
       ];
-      const labels = { frames:'Frames', spritesheet:'Spritesheet', slicer:'Slice sheet', textimage:'Text card', trimmer:'Trimmer', watermark:'Watermark', upscale:'Upscale', pdf:'PDF', chroma:'Chroma key', fileinfo:'File info', palette:'Palette', favicon:'Favicon', vector:'Vectorize', audioclean:'Audio clean', silencetrim:'Silence trim', waveform:'Waveform', tts:'TTS', ocr:'OCR', aibg:'AI BG', aiup:'AI Upscale', emb:'Embeddings', hash:'File hash', textpaper:'Text to paper', imgresize:'Image resize', videomerge:'Video merge', audiomerge:'Audio merge', jsonfmt:'JSON format', base64:'Base64', regex:'Regex tester', uuid:'UUID gen', timestamp:'Timestamp', colorconv:'Color convert', diffview:'Diff viewer', minify:'Minify/Beautify' };
+      const labels = { frames:'Frames', spritesheet:'Spritesheet', slicer:'Slice sheet', textimage:'Text card', trimmer:'Trimmer', watermark:'Watermark', upscale:'Upscale', pdf:'PDF', chroma:'Chroma key', fileinfo:'File info', palette:'Palette', favicon:'Favicon', vector:'Vectorize', audioclean:'Audio clean', silencetrim:'Silence trim', waveform:'Waveform', tts:'TTS', ocr:'OCR', aibg:'AI BG', aiup:'AI Upscale', emb:'Embeddings', hash:'File hash', textpaper:'Text to paper', imgresize:'Image resize', videomerge:'Video merge', audiomerge:'Audio merge', jsonfmt:'JSON format', base64:'Base64', regex:'Regex tester', uuid:'UUID gen', timestamp:'Timestamp', colorconv:'Color convert', diffview:'Diff viewer', minify:'Minify/Beautify', vidrotate:'Video rotate/flip', vidspeed:'Video speed', exifstrip:'EXIF strip', audspeed:'Audio speed', audnorm:'Audio normalize', jwt:'JWT decoder', archive:'Archive zip/unzip', ascii:'Image to ASCII', markdown:'Markdown to HTML', textpdf:'Text to PDF', exifview:'EXIF viewer', filesize:'File size analyzer', batchrename:'Batch rename' };
       const currentLabel = labels[tab] || 'Frames';
       return `
       <div class="util-combo" style="position:relative;margin:0 0 14px">
@@ -4360,6 +4360,19 @@ function utilitiesView() {
         tab === 'colorconv' ? utilColorConvBody() :
         tab === 'diffview' ? utilDiffViewBody() :
         tab === 'minify' ? utilMinifyBody() :
+        tab === 'vidrotate' ? utilVidRotateBody() :
+        tab === 'vidspeed' ? utilVidSpeedBody() :
+        tab === 'exifstrip' ? utilExifStripBody() :
+        tab === 'audspeed' ? utilAudSpeedBody() :
+        tab === 'audnorm' ? utilAudNormBody() :
+        tab === 'jwt' ? utilJwtBody() :
+        tab === 'archive' ? utilArchiveBody() :
+        tab === 'ascii' ? utilAsciiBody() :
+        tab === 'markdown' ? utilMdBody() :
+        tab === 'textpdf' ? utilTextPdfBody() :
+        tab === 'exifview' ? utilExifBody() :
+        tab === 'filesize' ? utilFilesizeBody() :
+        tab === 'batchrename' ? utilBatchRenameBody() :
         utilFramesBody()}
     </div>`;
 }
@@ -14449,6 +14462,20 @@ async function handleExtraAction(action, el) {
     case 'util-colorconv': utilColorConv(); return true;
     case 'util-diffview': utilDiffView(); return true;
     case 'util-minify': utilMinify(); return true;
+    case 'util-vidrotate': await utilVidRotate(); return true;
+    case 'util-vidspeed': await utilVidSpeed(); return true;
+    case 'util-exifstrip': await utilExifStrip(); return true;
+    case 'util-audspeed': await utilAudSpeed(); return true;
+    case 'util-audnorm': await utilAudNorm(); return true;
+    case 'util-jwt': utilJwt(); return true;
+    case 'util-zip': await utilZip(); return true;
+    case 'util-unzip': await utilUnzip(); return true;
+    case 'util-ascii': await utilAscii(); return true;
+    case 'util-md': utilMd(); return true;
+    case 'util-tpdf': utilTextPdf(); return true;
+    case 'util-exif': await utilExif(); return true;
+    case 'util-fs': utilFilesize(); return true;
+    case 'util-br': utilBatchRename(); return true;
     case 'util-tts-speak': await utilTtsSpeak(); return true;
     case 'util-tts-stop': await utilTtsStop(); return true;
     case 'util-aibg-model':
@@ -17087,3 +17114,459 @@ function utilMinify() {
     }
   } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); }
 }
+// ---------- Additional utility tools (batch 2) ----------
+
+function utilJwtBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>JWT decoder</strong><span>Decode JSON Web Tokens locally</span></div></div>
+      <div class="stage-body">
+        <textarea data-util="jwt-in" class="input" rows="4" style="width:100%;font-family:var(--font-mono)" placeholder="eyJhbG..."></textarea>
+        <button class="btn btn-primary btn-sm" data-action="util-jwt" style="margin-top:10px">Decode</button>
+        <pre id="util-jwt-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+      </div>
+    </div>`;
+}
+function utilJwt() {
+  const raw = (document.querySelector('[data-util="jwt-in"]')?.value || '').trim();
+  const out = document.getElementById('util-jwt-out');
+  try {
+    const parts = raw.split('.');
+    if (parts.length < 2) throw new Error('Not a JWT');
+    const dec = (s) => { const b = atob(s.replace(/-/g,'+').replace(/_/g,'/')); const bytes = new Uint8Array(b.length); for (let i=0;i<b.length;i++) bytes[i]=b.charCodeAt(i); return new TextDecoder().decode(bytes); };
+    const header = JSON.parse(dec(parts[0]));
+    const payload = JSON.parse(dec(parts[1]));
+    let extra = '';
+    if (payload.exp) extra += `\nExpires: ${new Date(payload.exp*1000).toISOString()}`;
+    if (payload.iat) extra += `\nIssued: ${new Date(payload.iat*1000).toISOString()}`;
+    if (out) out.textContent = 'HEADER:\n' + JSON.stringify(header,null,2) + '\n\nPAYLOAD:\n' + JSON.stringify(payload,null,2) + extra;
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); }
+}
+
+function utilArchiveBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Archive (zip/unzip)</strong><span>Create or extract zip files locally</span></div></div>
+      <div class="stage-body">
+        <label class="btn btn-secondary btn-sm" for="util-zip-files">Choose files to zip</label>
+        <input id="util-zip-files" type="file" multiple data-util="zip-files" hidden />
+        <button class="btn btn-primary btn-sm" data-action="util-zip" style="margin-top:10px">Create ZIP</button>
+        <hr style="margin:14px 0;border:0;border-top:1px solid var(--border)" />
+        <label class="btn btn-secondary btn-sm" for="util-unzip-file">Choose ZIP to extract</label>
+        <input id="util-unzip-file" type="file" accept=".zip,application/zip" data-util="unzip-file" hidden />
+        <button class="btn btn-primary btn-sm" data-action="util-unzip" style="margin-top:10px">Extract</button>
+        <div id="util-archive-out" class="util-out"></div>
+      </div>
+    </div>`;
+}
+async function utilZip() {
+  const files = document.querySelector('[data-util="zip-files"]')?.files;
+  const out = document.getElementById('util-archive-out');
+  if (!files || !files.length) { if (out) out.innerHTML = '<p class="muted">Choose files first.</p>'; return; }
+  try {
+    if (!window.fflate) { if (out) out.innerHTML = '<p class="muted">fflate not loaded.</p>'; return; }
+    const zipObj = {};
+    for (const f of files) {
+      zipObj[f.name] = new Uint8Array(await f.arrayBuffer());
+    }
+    const zipped = window.fflate.zipSync(zipObj, { level: 6 });
+    const blob = new Blob([zipped], { type: 'application/zip' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'archive.zip'; a.click(); URL.revokeObjectURL(a.href);
+    if (out) out.innerHTML = `<p class="muted">Zipped ${files.length} file(s) · ${formatBytes(blob.size)}</p>`;
+  } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; }
+}
+async function utilUnzip() {
+  const file = document.querySelector('[data-util="unzip-file"]')?.files?.[0];
+  const out = document.getElementById('util-archive-out');
+  if (!file) { if (out) out.innerHTML = '<p class="muted">Choose a ZIP first.</p>'; return; }
+  try {
+    if (!window.fflate) { if (out) out.innerHTML = '<p class="muted">fflate not loaded.</p>'; return; }
+    const buf = new Uint8Array(await file.arrayBuffer());
+    const unzipped = window.fflate.unzipSync(buf);
+    const names = Object.keys(unzipped);
+    for (const name of names) {
+      const blob = new Blob([unzipped[name]]);
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href);
+    }
+    if (out) out.innerHTML = `<p class="muted">Extracted ${names.length} file(s).</p>`;
+  } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; }
+}
+
+function utilAsciiBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Image to ASCII</strong><span>Convert images to text art</span></div></div>
+      <div class="stage-body">
+        <label class="btn btn-secondary btn-sm" for="util-ascii-file">Choose image</label>
+        <input id="util-ascii-file" type="file" accept="image/*" data-util="ascii-file" hidden />
+        <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Width (chars)</span></div><input type="number" min="20" max="200" value="80" data-util="ascii-w" class="input" style="width:100%" /></div>
+        <button class="btn btn-primary btn-sm" data-action="util-ascii" style="margin-top:10px">Convert</button>
+        <pre id="util-ascii-out" class="mono" style="margin-top:10px;font-size:9px;line-height:1;overflow:auto;max-height:400px"></pre>
+      </div>
+    </div>`;
+}
+async function utilAscii() {
+  const file = document.querySelector('[data-util="ascii-file"]')?.files?.[0];
+  const out = document.getElementById('util-ascii-out');
+  if (!file) { if (out) out.textContent = 'Choose an image first.'; return; }
+  const w = Math.max(20, Math.min(200, Number(document.querySelector('[data-util="ascii-w"]')?.value || 80)));
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+  const ratio = img.naturalHeight / img.naturalWidth;
+  const h = Math.round(w * ratio * 0.5);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0, w, h);
+  URL.revokeObjectURL(url);
+  const data = ctx.getImageData(0, 0, w, h).data;
+  const chars = ' .:-=+*#%@';
+  let txt = '';
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const lum = (data[i] * 0.299 + data[i+1] * 0.587 + data[i+2] * 0.114) / 255;
+      txt += chars[Math.floor(lum * (chars.length - 1))];
+    }
+    txt += '\n';
+  }
+  if (out) out.textContent = txt;
+}
+
+function utilMdBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Markdown to HTML</strong><span>Convert Markdown to HTML locally</span></div></div>
+      <div class="stage-body">
+        <textarea data-util="md-in" class="input" rows="10" style="width:100%;font-family:var(--font-mono)" placeholder="# Heading"></textarea>
+        <button class="btn btn-primary btn-sm" data-action="util-md" style="margin-top:10px">Convert</button>
+        <pre id="util-md-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+      </div>
+    </div>`;
+}
+function utilMd() {
+  const raw = document.querySelector('[data-util="md-in"]')?.value || '';
+  const out = document.getElementById('util-md-out');
+  let html = raw
+    .replace(/^### (.*)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.*)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.*)$/gm, '<h1>$1</h1>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/`(.*?)`/g, '<code>$1</code>')
+    .replace(/^\- (.*)$/gm, '<li>$1</li>')
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/\n/g, '<br>');
+  html = '<p>' + html + '</p>';
+  if (out) out.textContent = html;
+}
+
+function utilTextPdfBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Text to PDF</strong><span>Generate a simple PDF from text</span></div></div>
+      <div class="stage-body">
+        <textarea data-util="tpdf-in" class="input" rows="10" style="width:100%" placeholder="Your text here"></textarea>
+        <button class="btn btn-primary btn-sm" data-action="util-tpdf" style="margin-top:10px">Generate PDF</button>
+        <div id="util-tpdf-out" class="util-out"></div>
+      </div>
+    </div>`;
+}
+function utilTextPdf() {
+  const raw = document.querySelector('[data-util="tpdf-in"]')?.value || '';
+  const out = document.getElementById('util-tpdf-out');
+  try {
+    const lines = raw.split('\n');
+    const escPdf = (s) => s.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+    const content = lines.map((l, i) => `BT /F1 12 Tf 50 ${750 - i * 16} Td (${escPdf(l)}) Tj ET`).join('\n');
+    const pdf = `%PDF-1.4
+1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
+2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj
+3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj
+4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj
+5 0 obj << /Length ${content.length} >> stream
+${content}
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 0000000000 n 
+0000000058 0000000000 n 
+0000000115 0000000000 n 
+0000000266 0000000000 n 
+0000000347 0000000000 n 
+trailer << /Size 6 /Root 1 0 R >>
+startxref
+${430 + content.length}
+%%EOF`;
+    const blob = new Blob([pdf], { type: 'application/pdf' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'document.pdf'; a.click(); URL.revokeObjectURL(a.href);
+    if (out) out.innerHTML = `<p class="muted">Generated PDF · ${lines.length} lines</p>`;
+  } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; }
+}
+
+function utilExifBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>EXIF viewer</strong><span>View image metadata</span></div></div>
+      <div class="stage-body">
+        <label class="btn btn-secondary btn-sm" for="util-exif-file">Choose image</label>
+        <input id="util-exif-file" type="file" accept="image/*" data-util="exif-file" hidden />
+        <button class="btn btn-primary btn-sm" data-action="util-exif" style="margin-top:10px">Read metadata</button>
+        <pre id="util-exif-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+      </div>
+    </div>`;
+}
+async function utilExif() {
+  const file = document.querySelector('[data-util="exif-file"]')?.files?.[0];
+  const out = document.getElementById('util-exif-out');
+  if (!file) { if (out) out.textContent = 'Choose an image first.'; return; }
+  const buf = await file.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  const view = new DataView(buf);
+  let result = `File: ${file.name}\nSize: ${formatBytes(file.size)}\nType: ${file.type}\n`;
+  // Try to read EXIF from JPEG
+  if (bytes[0] === 0xFF && bytes[1] === 0xD8) {
+    let offset = 2;
+    while (offset < bytes.length) {
+      if (bytes[offset] !== 0xFF) break;
+      const marker = bytes[offset + 1];
+      if (marker === 0xE1) {
+        const len = (bytes[offset+2] << 8) | bytes[offset+3];
+        const seg = bytes.slice(offset + 4, offset + 2 + len);
+        const str = new TextDecoder('ascii', { fatal: false }).decode(seg);
+        result += '\nEXIF segment found (' + len + ' bytes).\n';
+        // extract readable ASCII strings
+        const matches = str.match(/[\x20-\x7E]{4,}/g) || [];
+        if (matches.length) result += 'Readable strings:\n' + matches.slice(0, 40).join('\n');
+        break;
+      }
+      if (marker === 0xDA) break;
+      const len = (bytes[offset+2] << 8) | bytes[offset+3];
+      offset += 2 + len;
+    }
+  }
+  if (out) out.textContent = result;
+}
+
+function utilFilesizeBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>File size analyzer</strong><span>Analyze file sizes</span></div></div>
+      <div class="stage-body">
+        <label class="btn btn-secondary btn-sm" for="util-fs-files">Choose files</label>
+        <input id="util-fs-files" type="file" multiple data-util="fs-files" hidden />
+        <button class="btn btn-primary btn-sm" data-action="util-fs" style="margin-top:10px">Analyze</button>
+        <pre id="util-fs-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+      </div>
+    </div>`;
+}
+function utilFilesize() {
+  const files = document.querySelector('[data-util="fs-files"]')?.files;
+  const out = document.getElementById('util-fs-out');
+  if (!files || !files.length) { if (out) out.textContent = 'Choose files first.'; return; }
+  let total = 0;
+  const rows = [...files].map((f) => { total += f.size; return `${formatBytes(f.size).padStart(12)}  ${f.name}`; });
+  rows.push(''.padStart(12, '-') + '  ' + '-'.repeat(20));
+  rows.push(`${formatBytes(total).padStart(12)}  TOTAL (${files.length} files)`);
+  if (out) out.textContent = rows.join('\n');
+}
+
+function utilBatchRenameBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Batch rename</strong><span>Preview renamed file names</span></div></div>
+      <div class="stage-body">
+        <label class="btn btn-secondary btn-sm" for="util-br-files">Choose files</label>
+        <input id="util-br-files" type="file" multiple data-util="br-files" hidden />
+        <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Pattern ({n}, {name}, {ext})</span></div><input type="text" data-util="br-pattern" class="input" style="width:100%" value="file_{n}.{ext}" /></div>
+        <div class="field"><div class="field-head"><span class="field-label">Start number</span></div><input type="number" min="0" value="1" data-util="br-start" class="input" style="width:100%" /></div>
+        <button class="btn btn-primary btn-sm" data-action="util-br" style="margin-top:10px">Preview</button>
+        <pre id="util-br-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+      </div>
+    </div>`;
+}
+function utilBatchRename() {
+  const files = document.querySelector('[data-util="br-files"]')?.files;
+  const out = document.getElementById('util-br-out');
+  if (!files || !files.length) { if (out) out.textContent = 'Choose files first.'; return; }
+  const pattern = document.querySelector('[data-util="br-pattern"]')?.value || '{name}';
+  const start = Number(document.querySelector('[data-util="br-start"]')?.value || 1);
+  const rows = [...files].map((f, i) => {
+    const name = f.name.replace(/\.[^.]+$/, '');
+    const ext = (f.name.split('.').pop() || '').toLowerCase();
+    const n = start + i;
+    const newName = pattern.replace(/\{n\}/g, n).replace(/\{name\}/g, name).replace(/\{ext\}/g, ext);
+    return `${f.name}  →  ${newName}`;
+  });
+  if (out) out.textContent = rows.join('\n');
+}
+
+// FFmpeg-based: video rotate/flip, video speed, audio speed, audio normalize
+function utilVidRotateBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Video rotate / flip</strong><span>Rotate or mirror a video</span></div></div>
+      <div class="stage-body">
+        <label class="btn btn-secondary btn-sm" for="util-vr-file">Choose video</label>
+        <input id="util-vr-file" type="file" accept="video/*" data-util="vr-file" hidden />
+        <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Operation</span></div><select data-util="vr-op" class="select" style="width:100%"><option value="90">Rotate 90° CW</option><option value="180">Rotate 180°</option><option value="270">Rotate 270° CW</option><option value="hflip">Flip horizontal</option><option value="vflip">Flip vertical</option></select></div>
+        <button class="btn btn-primary btn-sm" data-action="util-vr" style="margin-top:10px">Process & download</button>
+        <div id="util-vr-out" class="util-out"></div>
+      </div>
+    </div>`;
+}
+async function utilVidRotate() {
+  const file = document.querySelector('[data-util="vr-file"]')?.files?.[0];
+  const out = document.getElementById('util-vr-out');
+  if (!file) { if (out) out.innerHTML = '<p class="muted">Choose a video first.</p>'; return; }
+  const op = document.querySelector('[data-util="vr-op"]')?.value || '90';
+  const vf = op === '90' ? 'transpose=1' : op === '270' ? 'transpose=2' : op === '180' ? 'transpose=1,transpose=1' : op === 'hflip' ? 'hflip' : 'vflip';
+  try {
+    const ffmpeg = await Engine.ensure();
+    const ext = (file.name.split('.').pop() || 'mp4').toLowerCase();
+    const inName = `vr_in.${ext}`;
+    await ffmpeg.writeFile(inName, new Uint8Array(await file.arrayBuffer()));
+    const outName = 'vr_out.mp4';
+    await ffmpeg.exec(['-i', inName, '-vf', vf, '-c:a', 'copy', outName]);
+    const data = await ffmpeg.readFile(outName);
+    const blob = new Blob([data], { type: 'video/mp4' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'rotated.mp4'; a.click(); URL.revokeObjectURL(a.href);
+    try { await ffmpeg.deleteFile(inName); } catch {}
+    try { await ffmpeg.deleteFile(outName); } catch {}
+    if (out) out.innerHTML = `<p class="muted">Done · ${formatBytes(blob.size)}</p>`;
+  } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; }
+}
+
+function utilVidSpeedBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Video speed</strong><span>Change playback speed</span></div></div>
+      <div class="stage-body">
+        <label class="btn btn-secondary btn-sm" for="util-vs-file">Choose video</label>
+        <input id="util-vs-file" type="file" accept="video/*" data-util="vs-file" hidden />
+        <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Speed (0.25–4)</span></div><input type="number" min="0.25" max="4" step="0.25" value="2" data-util="vs-speed" class="input" style="width:100%" /></div>
+        <button class="btn btn-primary btn-sm" data-action="util-vs" style="margin-top:10px">Process & download</button>
+        <div id="util-vs-out" class="util-out"></div>
+      </div>
+    </div>`;
+}
+async function utilVidSpeed() {
+  const file = document.querySelector('[data-util="vs-file"]')?.files?.[0];
+  const out = document.getElementById('util-vs-out');
+  if (!file) { if (out) out.innerHTML = '<p class="muted">Choose a video first.</p>'; return; }
+  const speed = Math.max(0.25, Math.min(4, Number(document.querySelector('[data-util="vs-speed"]')?.value || 2)));
+  const pts = (1 / speed).toFixed(4);
+  const atempo = speed >= 1 ? speed.toFixed(4) : speed.toFixed(4);
+  try {
+    const ffmpeg = await Engine.ensure();
+    const ext = (file.name.split('.').pop() || 'mp4').toLowerCase();
+    const inName = `vs_in.${ext}`;
+    await ffmpeg.writeFile(inName, new Uint8Array(await file.arrayBuffer()));
+    const outName = 'vs_out.mp4';
+    await ffmpeg.exec(['-i', inName, '-filter:v', `setpts=${pts}*PTS`, '-filter:a', `atempo=${atempo}`, outName]);
+    const data = await ffmpeg.readFile(outName);
+    const blob = new Blob([data], { type: 'video/mp4' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'speed.mp4'; a.click(); URL.revokeObjectURL(a.href);
+    try { await ffmpeg.deleteFile(inName); } catch {}
+    try { await ffmpeg.deleteFile(outName); } catch {}
+    if (out) out.innerHTML = `<p class="muted">Done · ${speed}x · ${formatBytes(blob.size)}</p>`;
+  } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; }
+}
+
+function utilAudSpeedBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Audio speed / pitch</strong><span>Change audio speed</span></div></div>
+      <div class="stage-body">
+        <label class="btn btn-secondary btn-sm" for="util-as-file">Choose audio</label>
+        <input id="util-as-file" type="file" accept="audio/*" data-util="as-file" hidden />
+        <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Speed (0.5–2)</span></div><input type="number" min="0.5" max="2" step="0.1" value="1.5" data-util="as-speed" class="input" style="width:100%" /></div>
+        <button class="btn btn-primary btn-sm" data-action="util-as" style="margin-top:10px">Process & download</button>
+        <div id="util-as-out" class="util-out"></div>
+      </div>
+    </div>`;
+}
+async function utilAudSpeed() {
+  const file = document.querySelector('[data-util="as-file"]')?.files?.[0];
+  const out = document.getElementById('util-as-out');
+  if (!file) { if (out) out.innerHTML = '<p class="muted">Choose an audio file first.</p>'; return; }
+  const speed = Math.max(0.5, Math.min(2, Number(document.querySelector('[data-util="as-speed"]')?.value || 1.5)));
+  try {
+    const ffmpeg = await Engine.ensure();
+    const ext = (file.name.split('.').pop() || 'mp3').toLowerCase();
+    const inName = `as_in.${ext}`;
+    await ffmpeg.writeFile(inName, new Uint8Array(await file.arrayBuffer()));
+    const outName = 'as_out.mp3';
+    await ffmpeg.exec(['-i', inName, '-filter:a', `atempo=${speed}`, outName]);
+    const data = await ffmpeg.readFile(outName);
+    const blob = new Blob([data], { type: 'audio/mpeg' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'speed.mp3'; a.click(); URL.revokeObjectURL(a.href);
+    try { await ffmpeg.deleteFile(inName); } catch {}
+    try { await ffmpeg.deleteFile(outName); } catch {}
+    if (out) out.innerHTML = `<p class="muted">Done · ${speed}x · ${formatBytes(blob.size)}</p>`;
+  } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; }
+}
+
+function utilAudNormBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Audio normalizer</strong><span>Normalize audio volume</span></div></div>
+      <div class="stage-body">
+        <label class="btn btn-secondary btn-sm" for="util-an-file">Choose audio</label>
+        <input id="util-an-file" type="file" accept="audio/*" data-util="an-file" hidden />
+        <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Target (dB)</span></div><input type="number" min="-30" max="0" value="-16" data-util="an-target" class="input" style="width:100%" /></div>
+        <button class="btn btn-primary btn-sm" data-action="util-an" style="margin-top:10px">Normalize & download</button>
+        <div id="util-an-out" class="util-out"></div>
+      </div>
+    </div>`;
+}
+async function utilAudNorm() {
+  const file = document.querySelector('[data-util="an-file"]')?.files?.[0];
+  const out = document.getElementById('util-an-out');
+  if (!file) { if (out) out.innerHTML = '<p class="muted">Choose an audio file first.</p>'; return; }
+  const target = Number(document.querySelector('[data-util="an-target"]')?.value || -16);
+  try {
+    const ffmpeg = await Engine.ensure();
+    const ext = (file.name.split('.').pop() || 'mp3').toLowerCase();
+    const inName = `an_in.${ext}`;
+    await ffmpeg.writeFile(inName, new Uint8Array(await file.arrayBuffer()));
+    const outName = 'an_out.mp3';
+    await ffmpeg.exec(['-i', inName, '-af', `loudnorm=I=${target}:TP=-1.5:LRA=11`, outName]);
+    const data = await ffmpeg.readFile(outName);
+    const blob = new Blob([data], { type: 'audio/mpeg' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'normalized.mp3'; a.click(); URL.revokeObjectURL(a.href);
+    try { await ffmpeg.deleteFile(inName); } catch {}
+    try { await ffmpeg.deleteFile(outName); } catch {}
+    if (out) out.innerHTML = `<p class="muted">Done · target ${target} dB · ${formatBytes(blob.size)}</p>`;
+  } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; }
+}
+
+function utilExifStripBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>EXIF stripper</strong><span>Remove metadata from images</span></div></div>
+      <div class="stage-body">
+        <label class="btn btn-secondary btn-sm" for="util-exifs-file">Choose image</label>
+        <input id="util-exifs-file" type="file" accept="image/*" data-util="exifs-file" hidden />
+        <button class="btn btn-primary btn-sm" data-action="util-exifs" style="margin-top:10px">Strip & download</button>
+        <div id="util-exifs-out" class="util-out"></div>
+      </div>
+    </div>`;
+}
+async function utilExifStrip() {
+  const file = document.querySelector('[data-util="exifs-file"]')?.files?.[0];
+  const out = document.getElementById('util-exifs-out');
+  if (!file) { if (out) out.innerHTML = '<p class="muted">Choose an image first.</p>'; return; }
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+  const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+  c.getContext('2d').drawImage(img, 0, 0);
+  URL.revokeObjectURL(url);
+  const blob = await new Promise((res) => c.toBlob(res, file.type || 'image/jpeg', 0.95));
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'stripped.' + (file.name.split('.').pop() || 'jpg'); a.click(); URL.revokeObjectURL(a.href);
+  if (out) out.innerHTML = `<p class="muted">Done · ${formatBytes(blob.size)}</p>`;
+}
+
+function utilAsciiBody2() { return utilAsciiBody(); }
