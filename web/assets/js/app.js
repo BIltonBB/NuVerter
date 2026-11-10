@@ -4300,11 +4300,8 @@ function utilitiesView() {
           ['ocr','OCR'], ['aibg','AI BG'], ['aiup','AI Upscale'], ['emb','Embeddings']
         ]},
         { name: 'Text', items: [
-          ['hash','File hash'], ['textpaper','Text to paper'], ['dupfind','Duplicate finder'], ['summarize','Text summarizer']
+          ['hash','File hash'], ['textpaper','Text to paper'], ['dupfind','Duplicate finder']
         ]},
-        { name: 'Developer', items: [
-          ['jsonfmt','JSON format'], ['base64','Base64'], ['regex','Regex tester'], ['uuid','UUID gen'], ['timestamp','Timestamp'], ['colorconv','Color convert'], ['diffview','Diff viewer'], ['minify','Minify/Beautify'], ['vidrotate','Video rotate/flip'], ['vidspeed','Video speed'], ['exifstrip','EXIF strip'], ['audspeed','Audio speed'], ['audnorm','Audio normalize'], ['jwt','JWT decoder'], ['archive','Archive zip/unzip'], ['ascii','Image to ASCII'], ['markdown','Markdown to HTML'], ['textpdf','Text to PDF'], ['exifview','EXIF viewer'], ['filesize','File size analyzer'], ['batchrename','Batch rename'], ['screenshot','Screen capture'], ['collage','Image collage'], ['dupfind','Duplicate finder'], ['summarize','Text summarizer'], ['qrcode','QR code generator'],['caseconv','Case converter'],['slug','Slug generator'],['lorem','Lorem ipsum'],['passgen','Password generator'],['baseconv','Number base converter'],['roman','Roman numerals'],['urlenc','URL encode/decode'],['htmlent','HTML entities'],['cron','Cron parser'],['chmod','Chmod calculator'],['semver','Semver calculator'],['unitconv','Unit converter'],['timezone','Timezone converter'],['asciitable','ASCII codes'],['ua','User agent parser'],['mdtable','Markdown table'],['fmtcode','Code formatter'],['xmlfmt','XML formatter'],['yamlconv','YAML/JSON'],['sqlfmt','SQL formatter'],['curlbuild','cURL builder'],['img2pdf','Images to PDF'],['doccompare','Doc compare'],['mdeditor','Markdown editor'],['cronhuman','Cron to human'], ['caseconv','Case converter'], ['slug','Slug generator'], ['lorem','Lorem ipsum'], ['passgen','Password generator'], ['baseconv','Number base converter'], ['roman','Roman numerals'], ['urlenc','URL encode/decode'], ['htmlent','HTML entities'], ['cron','Cron parser'], ['chmod','Chmod calculator'], ['semver','Semver calculator'], ['unitconv','Unit converter'], ['timezone','Timezone converter'], ['asciitable','ASCII codes'], ['ua','User agent parser'], ['mdtable','Markdown table'], ['fmtcode','Code formatter'], ['xmlfmt','XML formatter'], ['yamlconv','YAML/JSON'], ['sqlfmt','SQL formatter'], ['curlbuild','cURL builder'], ['img2pdf','Images to PDF'], ['doccompare','Doc compare'], ['mdeditor','Markdown editor'], ['cronhuman','Cron to human']
-        ]}
       ];
       const labels = { frames:'Frames', spritesheet:'Spritesheet', slicer:'Slice sheet', textimage:'Text card', trimmer:'Trimmer', watermark:'Watermark', upscale:'Upscale', pdf:'PDF', chroma:'Chroma key', fileinfo:'File info', palette:'Palette', favicon:'Favicon', vector:'Vectorize', audioclean:'Audio clean', silencetrim:'Silence trim', waveform:'Waveform', tts:'TTS', ocr:'OCR', aibg:'AI BG', aiup:'AI Upscale', emb:'Embeddings', hash:'File hash', textpaper:'Text to paper', imgresize:'Image resize', videomerge:'Video merge', audiomerge:'Audio merge', jsonfmt:'JSON format', base64:'Base64', regex:'Regex tester', uuid:'UUID gen', timestamp:'Timestamp', colorconv:'Color convert', diffview:'Diff viewer', minify:'Minify/Beautify', vidrotate:'Video rotate/flip', vidspeed:'Video speed', exifstrip:'EXIF strip', audspeed:'Audio speed', audnorm:'Audio normalize', jwt:'JWT decoder', archive:'Archive zip/unzip', ascii:'Image to ASCII', markdown:'Markdown to HTML', textpdf:'Text to PDF', exifview:'EXIF viewer', filesize:'File size analyzer', batchrename:'Batch rename', screenshot:'Screen capture', collage:'Image collage', dupfind:'Duplicate finder', summarize:'Text summarizer', qrcode:'QR code generator', caseconv:'Case converter', slug:'Slug generator', lorem:'Lorem ipsum', passgen:'Password generator', baseconv:'Number base converter', roman:'Roman numerals', urlenc:'URL encode/decode', htmlent:'HTML entities', cron:'Cron parser', chmod:'Chmod calculator', semver:'Semver calculator', unitconv:'Unit converter', timezone:'Timezone converter', asciitable:'ASCII codes', ua:'User agent parser', mdtable:'Markdown table', fmtcode:'Code formatter', xmlfmt:'XML formatter', yamlconv:'YAML/JSON', sqlfmt:'SQL formatter', curlbuild:'cURL builder', img2pdf:'Images to PDF', doccompare:'Doc compare', mdeditor:'Markdown editor', cronhuman:'Cron to human' };
       const currentLabel = labels[tab] || 'Frames';
@@ -5774,10 +5771,10 @@ function devToolsView() {
   return `
     ${viewHead({ index: '10', kicker: 'Developer tools', title: 'Dev <span class="accent">utilities.</span>', sub: 'JSON, base64, regex and hashing — all local.' })}
     <div class="util-tabs segmented" role="tablist">
-      ${['json','base64','regex','pii','mock','wc','clip'].map((t) => `<button data-action="dev-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${t === 'json' ? 'JSON' : t === 'base64' ? 'Base64' : t === 'regex' ? 'Regex' : t === 'pii' ? 'PII scrub' : t === 'mock' ? 'Mock data' : t === 'wc' ? 'WebCodecs' : 'Clipboard'}</button>`).join('')}
+      ${['json','base64','regex','pii','mock','wc','clip','caseconv','slug','lorem','passgen','baseconv','roman','urlenc','htmlent','cron','chmod','semver','unitconv','timezone','asciitable','ua','mdtable','fmtcode','xmlfmt','yamlconv','sqlfmt','curlbuild','img2pdf','doccompare','mdeditor','cronhuman','jsonfmt','minify','uuid','timestamp','colorconv','diffview','hash','textpaper'].map((t) => `<button data-action="dev-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${t}</button>`).join('')}
     </div>
     <div class="util-body">
-      ${tab === 'json' ? devJsonBody() : tab === 'base64' ? devBase64Body() : tab === 'regex' ? devRegexBody() : tab === 'pii' ? devPiiBody() : tab === 'mock' ? devMockBody() : tab === 'wc' ? devWebCodecsBody() : devClipboardBody()}
+      ${tab === 'json' ? devJsonBody() : tab === 'base64' ? devBase64Body() : tab === 'regex' ? devRegexBody() : tab === 'pii' ? devPiiBody() : tab === 'mock' ? devMockBody() : tab === 'wc' ? devWebCodecsBody() : tab === 'clip' ? devClipboardBody() : tab === 'caseconv' ? utilCaseBody() : tab === 'slug' ? utilSlugBody() : tab === 'lorem' ? utilLoremBody() : tab === 'passgen' ? utilPassgenBody() : tab === 'baseconv' ? utilBaseConvBody() : tab === 'roman' ? utilRomanBody() : tab === 'urlenc' ? utilUrlencBody() : tab === 'htmlent' ? utilHtmlentBody() : tab === 'cron' ? utilCronBody() : tab === 'chmod' ? utilChmodBody() : tab === 'semver' ? utilSemverBody() : tab === 'unitconv' ? utilUnitBody() : tab === 'timezone' ? utilTimezoneBody() : tab === 'asciitable' ? utilAsciiTableBody() : tab === 'ua' ? utilUaBody() : tab === 'mdtable' ? utilMdTableBody() : tab === 'fmtcode' ? utilFmtCodeBody() : tab === 'xmlfmt' ? utilXmlBody() : tab === 'yamlconv' ? utilYamlBody() : tab === 'sqlfmt' ? utilSqlBody() : tab === 'curlbuild' ? utilCurlBody() : tab === 'img2pdf' ? utilImg2PdfBody() : tab === 'doccompare' ? utilDocCompareBody() : tab === 'mdeditor' ? utilMdEditorBody() : tab === 'cronhuman' ? utilCronHumanBody() : tab === 'jsonfmt' ? utilJsonFmtBody() : tab === 'minify' ? utilMinifyBody() : tab === 'uuid' ? utilUuidBody() : tab === 'timestamp' ? utilTimestampBody() : tab === 'colorconv' ? utilColorConvBody() : tab === 'diffview' ? utilDiffViewBody() : tab === 'hash' ? utilHashBody() : tab === 'textpaper' ? utilTextPaperBody() : devJsonBody()}
     </div>`;
 }
 
@@ -7586,8 +7583,8 @@ async function utilDocQaAsk() {
 
 function aiToolsView() {
   const tab = state.aiTools?.tab || 'aibg';
-  const tabs = ['aiimg','aibg','aiup','ocr','tts','emb','models','docs','docqa'];
-  const labels = { aiimg:'AI Image', aibg:'AI BG', aiup:'AI Upscale', ocr:'OCR', tts:'TTS', emb:'Embeddings', models:'Models', docs:'Doc Search', docqa:'Doc Q&A' };
+  const tabs = ['aiimg','aibg','aiup','ocr','tts','emb','models','docs','docqa','summarize','md','textpdf'];
+  const labels = { aiimg:'AI Image', aibg:'AI BG', aiup:'AI Upscale', ocr:'OCR', tts:'TTS', emb:'Embeddings', models:'Models', docs:'Doc Search', docqa:'Doc Q&A', summarize:'Summarizer', md:'Markdown', textpdf:'Text to PDF' };
   return `
     ${viewHead({ index: '11', kicker: 'AI tools', title: 'AI <span class="accent">utilities.</span>', sub: 'Image generation, background removal, upscaling, OCR, TTS and embeddings — local where it counts.' })}
     <div class="util-tabs segmented" role="tablist">
@@ -7602,6 +7599,9 @@ function aiToolsView() {
         tab === 'models' ? utilAiModelsBody() :
         tab === 'docs' ? utilDocSearchBody() :
         tab === 'docqa' ? utilDocQaBody() :
+        tab === 'summarize' ? utilSummarizeBody() :
+        tab === 'md' ? utilMdBody() :
+        tab === 'textpdf' ? utilTextPdfBody() :
          utilEmbBody()}
     </div>
     <div class="queue-progress tool-progress" id="ai-tools-progress" hidden style="margin-top:10px">
@@ -7613,8 +7613,8 @@ function aiToolsView() {
 
 function pdfToolsView() {
   const tab = state.pdfTools?.tab || 'merge';
-  const tabs = ['merge','split','img2pdf','pdf2img','redact'];
-  const labels = { merge:'Merge', split:'Split', img2pdf:'Images→PDF', pdf2img:'PDF→Images', redact:'Redact' };
+  const tabs = ['merge','split','img2pdf','pdf2img','redact','mdeditor','doccompare','textpdf','filesize'];
+  const labels = { merge:'Merge', split:'Split', img2pdf:'Images→PDF', pdf2img:'PDF→Images', redact:'Redact', mdeditor:'MD Editor', doccompare:'Compare', textpdf:'Text to PDF', filesize:'File Size' };
   return `
     ${viewHead({ index: '13', kicker: 'PDF tools', title: 'PDF <span class="accent">utilities.</span>', sub: 'Merge, split and convert PDFs — 100% local.' })}
     <div class="util-tabs segmented" role="tablist">
@@ -7625,6 +7625,10 @@ function pdfToolsView() {
         tab === 'split' ? pdfSplitBody() :
         tab === 'img2pdf' ? pdfImg2PdfBody() :
         tab === 'redact' ? pdfRedactBody() :
+        tab === 'mdeditor' ? utilMdEditorBody() :
+        tab === 'doccompare' ? utilDocCompareBody() :
+        tab === 'textpdf' ? utilTextPdfBody() :
+        tab === 'filesize' ? utilFilesizeBody() :
          pdfPdf2ImgBody()}
     </div>`;
 }
