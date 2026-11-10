@@ -4291,7 +4291,7 @@ function utilitiesView() {
     ${(() => {
       const groups = [
         { name: 'Media', items: [
-          ['frames','Frames'], ['spritesheet','Spritesheet'], ['slicer','Slice sheet'], ['textimage','Text card'], ['trimmer','Trimmer'], ['watermark','Watermark'], ['upscale','Upscale'], ['pdf','PDF'], ['chroma','Chroma key'], ['fileinfo','File info'], ['palette','Palette'], ['favicon','Favicon'], ['vector','Vectorize']
+          ['frames','Frames'], ['spritesheet','Spritesheet'], ['slicer','Slice sheet'], ['textimage','Text card'], ['trimmer','Trimmer'], ['watermark','Watermark'], ['upscale','Upscale'], ['pdf','PDF'], ['chroma','Chroma key'], ['fileinfo','File info'], ['palette','Palette'], ['favicon','Favicon'], ['vector','Vectorize'], ['imgresize','Image resize'], ['videomerge','Video merge'], ['audiomerge','Audio merge']
         ]},
         { name: 'Audio', items: [
           ['audioclean','Audio clean'], ['silencetrim','Silence trim'], ['waveform','Waveform'], ['tts','TTS']
@@ -4301,9 +4301,12 @@ function utilitiesView() {
         ]},
         { name: 'Text', items: [
           ['hash','File hash'], ['textpaper','Text to paper']
+        ]},
+        { name: 'Developer', items: [
+          ['jsonfmt','JSON format'], ['base64','Base64'], ['regex','Regex tester'], ['uuid','UUID gen'], ['timestamp','Timestamp'], ['colorconv','Color convert'], ['diffview','Diff viewer'], ['minify','Minify/Beautify']
         ]}
       ];
-      const labels = { frames:'Frames', spritesheet:'Spritesheet', slicer:'Slice sheet', textimage:'Text card', trimmer:'Trimmer', watermark:'Watermark', upscale:'Upscale', pdf:'PDF', chroma:'Chroma key', fileinfo:'File info', palette:'Palette', favicon:'Favicon', vector:'Vectorize', audioclean:'Audio clean', silencetrim:'Silence trim', waveform:'Waveform', tts:'TTS', ocr:'OCR', aibg:'AI BG', aiup:'AI Upscale', emb:'Embeddings', hash:'File hash', textpaper:'Text to paper' };
+      const labels = { frames:'Frames', spritesheet:'Spritesheet', slicer:'Slice sheet', textimage:'Text card', trimmer:'Trimmer', watermark:'Watermark', upscale:'Upscale', pdf:'PDF', chroma:'Chroma key', fileinfo:'File info', palette:'Palette', favicon:'Favicon', vector:'Vectorize', audioclean:'Audio clean', silencetrim:'Silence trim', waveform:'Waveform', tts:'TTS', ocr:'OCR', aibg:'AI BG', aiup:'AI Upscale', emb:'Embeddings', hash:'File hash', textpaper:'Text to paper', imgresize:'Image resize', videomerge:'Video merge', audiomerge:'Audio merge', jsonfmt:'JSON format', base64:'Base64', regex:'Regex tester', uuid:'UUID gen', timestamp:'Timestamp', colorconv:'Color convert', diffview:'Diff viewer', minify:'Minify/Beautify' };
       const currentLabel = labels[tab] || 'Frames';
       return `
       <div class="util-combo" style="position:relative;margin:0 0 14px">
@@ -4346,6 +4349,17 @@ function utilitiesView() {
         tab === 'aibg' ? utilAiBgBody() :
         tab === 'aiup' ? utilAiUpscaleBody() :
         tab === 'emb' ? utilEmbBody() :
+        tab === 'imgresize' ? utilImgResizeBody() :
+        tab === 'videomerge' ? utilVideoMergeBody() :
+        tab === 'audiomerge' ? utilAudioMergeBody() :
+        tab === 'jsonfmt' ? utilJsonFmtBody() :
+        tab === 'base64' ? utilBase64Body() :
+        tab === 'regex' ? utilRegexBody() :
+        tab === 'uuid' ? utilUuidBody() :
+        tab === 'timestamp' ? utilTimestampBody() :
+        tab === 'colorconv' ? utilColorConvBody() :
+        tab === 'diffview' ? utilDiffViewBody() :
+        tab === 'minify' ? utilMinifyBody() :
         utilFramesBody()}
     </div>`;
 }
@@ -14424,6 +14438,17 @@ async function handleExtraAction(action, el) {
     case 'util-aibg': await utilAiBg(); return true;
     case 'util-aiup': await utilAiUpscale(); return true;
     case 'util-emb': await utilEmb(); return true;
+    case 'util-imgresize': await utilImgResize(); return true;
+    case 'util-videomerge': await utilVideoMerge(); return true;
+    case 'util-audiomerge': await utilAudioMerge(); return true;
+    case 'util-jsonfmt': utilJsonFmt(); return true;
+    case 'util-base64': utilBase64(); return true;
+    case 'util-regex': utilRegex(); return true;
+    case 'util-uuid': utilUuid(); return true;
+    case 'util-timestamp': utilTimestamp(); return true;
+    case 'util-colorconv': utilColorConv(); return true;
+    case 'util-diffview': utilDiffView(); return true;
+    case 'util-minify': utilMinify(); return true;
     case 'util-tts-speak': await utilTtsSpeak(); return true;
     case 'util-tts-stop': await utilTtsStop(); return true;
     case 'util-aibg-model':
@@ -15297,7 +15322,7 @@ function bindEvents() {
   const navSearch = document.getElementById('nav-search');
   const navResults = document.getElementById('nav-search-results');
   const utilSubTools = [
-    ['frames','Frames'],['spritesheet','Spritesheet'],['slicer','Slice sheet'],['textimage','Text card'],['trimmer','Trimmer'],['watermark','Watermark'],['upscale','Upscale'],['pdf','PDF'],['chroma','Chroma key'],['fileinfo','File info'],['palette','Palette'],['favicon','Favicon'],['vector','Vectorize'],['audioclean','Audio clean'],['silencetrim','Silence trim'],['waveform','Waveform'],['tts','TTS'],['ocr','OCR'],['aibg','AI BG'],['aiup','AI Upscale'],['emb','Embeddings'],['hash','File hash'],['textpaper','Text to paper']
+    ['frames','Frames'],['spritesheet','Spritesheet'],['slicer','Slice sheet'],['textimage','Text card'],['trimmer','Trimmer'],['watermark','Watermark'],['upscale','Upscale'],['pdf','PDF'],['chroma','Chroma key'],['fileinfo','File info'],['palette','Palette'],['favicon','Favicon'],['vector','Vectorize'],['audioclean','Audio clean'],['silencetrim','Silence trim'],['waveform','Waveform'],['tts','TTS'],['ocr','OCR'],['aibg','AI BG'],['aiup','AI Upscale'],['emb','Embeddings'],['hash','File hash'],['textpaper','Text to paper'],['imgresize','Image resize'],['videomerge','Video merge'],['audiomerge','Audio merge'],['jsonfmt','JSON format'],['base64','Base64'],['regex','Regex tester'],['uuid','UUID gen'],['timestamp','Timestamp'],['colorconv','Color convert'],['diffview','Diff viewer'],['minify','Minify/Beautify']
   ];
   if (navSearch) {
     navSearch.addEventListener('input', () => {
@@ -16674,3 +16699,391 @@ function autoGrowAiChatInput() {
 
 
 
+// ---------- New utility tools ----------
+
+function utilImgResizeBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Image resize / compress</strong><span>Resize and recompress images locally</span></div></div>
+      <div class="stage-body">
+        <label class="btn btn-secondary btn-sm" for="util-imgresize-file">Choose image</label>
+        <input id="util-imgresize-file" type="file" accept="image/*" data-util="imgresize-file" hidden />
+        <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Width (px, 0=auto)</span></div><input type="number" min="0" max="8000" value="0" data-util="imgresize-w" class="input" style="width:100%" /></div>
+        <div class="field"><div class="field-head"><span class="field-label">Height (px, 0=auto)</span></div><input type="number" min="0" max="8000" value="0" data-util="imgresize-h" class="input" style="width:100%" /></div>
+        <div class="field"><div class="field-head"><span class="field-label">Quality (0.1–1)</span></div><input type="number" min="0.1" max="1" step="0.05" value="0.9" data-util="imgresize-q" class="input" style="width:100%" /></div>
+        <div class="field"><div class="field-head"><span class="field-label">Format</span></div><select data-util="imgresize-fmt" class="select" style="width:100%"><option value="image/jpeg">JPEG</option><option value="image/png">PNG</option><option value="image/webp">WebP</option></select></div>
+        <button class="btn btn-primary btn-sm" data-action="util-imgresize" style="margin-top:10px">Resize & download</button>
+        <div id="util-imgresize-out" class="util-out"></div>
+      </div>
+    </div>`;
+}
+async function utilImgResize() {
+  const file = document.querySelector('[data-util="imgresize-file"]')?.files?.[0];
+  const out = document.getElementById('util-imgresize-out');
+  if (!file) { if (out) out.innerHTML = '<p class="muted">Choose an image first.</p>'; return; }
+  const w = Math.max(0, Number(document.querySelector('[data-util="imgresize-w"]')?.value || 0));
+  const h = Math.max(0, Number(document.querySelector('[data-util="imgresize-h"]')?.value || 0));
+  const q = Math.max(0.1, Math.min(1, Number(document.querySelector('[data-util="imgresize-q"]')?.value || 0.9)));
+  const fmt = document.querySelector('[data-util="imgresize-fmt"]')?.value || 'image/jpeg';
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+  let nw = w || img.naturalWidth, nh = h || img.naturalHeight;
+  if (w && !h) nh = Math.round(img.naturalHeight * (w / img.naturalWidth));
+  if (h && !w) nw = Math.round(img.naturalWidth * (h / img.naturalHeight));
+  const c = document.createElement('canvas'); c.width = nw; c.height = nh;
+  c.getContext('2d').drawImage(img, 0, 0, nw, nh);
+  URL.revokeObjectURL(url);
+  const blob = await new Promise((res) => c.toBlob(res, fmt, q));
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'resized.' + fmt.split('/')[1]; a.click(); URL.revokeObjectURL(a.href);
+  if (out) out.innerHTML = `<p class="muted">Done · ${nw}×${nh} · ${formatBytes(blob.size)}</p>`;
+}
+
+function utilVideoMergeBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Video merge</strong><span>Concatenate video clips locally</span></div></div>
+      <div class="stage-body">
+        <label class="btn btn-secondary btn-sm" for="util-videomerge-files">Choose videos</label>
+        <input id="util-videomerge-files" type="file" accept="video/*" multiple data-util="videomerge-files" hidden />
+        <p class="muted" style="margin-top:8px;font-size:12px">Clips are joined in selection order. Same codec/container recommended.</p>
+        <button class="btn btn-primary btn-sm" data-action="util-videomerge" style="margin-top:10px">Merge & download</button>
+        <div id="util-videomerge-out" class="util-out"></div>
+      </div>
+    </div>`;
+}
+async function utilVideoMerge() {
+  const files = document.querySelector('[data-util="videomerge-files"]')?.files;
+  const out = document.getElementById('util-videomerge-out');
+  if (!files || !files.length) { if (out) out.innerHTML = '<p class="muted">Choose at least one video.</p>'; return; }
+  try {
+    const ffmpeg = await Engine.ensure();
+    const names = [];
+    for (let i = 0; i < files.length; i++) {
+      const n = `seg_${i}.mp4`;
+      await ffmpeg.writeFile(n, new Uint8Array(await files[i].arrayBuffer()));
+      names.push(n);
+    }
+    const list = names.map((n) => `file '${n}'`).join('\n');
+    await ffmpeg.writeFile('list.txt', new TextEncoder().encode(list));
+    const outName = 'merged.mp4';
+    await ffmpeg.exec(['-f','concat','-safe','0','-i','list.txt','-c','copy',outName]);
+    const data = await ffmpeg.readFile(outName);
+    const blob = new Blob([data], { type: 'video/mp4' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'merged.mp4'; a.click(); URL.revokeObjectURL(a.href);
+    for (const n of names) try { await ffmpeg.deleteFile(n); } catch {}
+    try { await ffmpeg.deleteFile('list.txt'); } catch {}
+    try { await ffmpeg.deleteFile(outName); } catch {}
+    if (out) out.innerHTML = `<p class="muted">Done · ${files.length} clips · ${formatBytes(blob.size)}</p>`;
+  } catch (e) {
+    if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`;
+  }
+}
+
+function utilAudioMergeBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Audio merge</strong><span>Concatenate audio clips locally</span></div></div>
+      <div class="stage-body">
+        <label class="btn btn-secondary btn-sm" for="util-audiomerge-files">Choose audio</label>
+        <input id="util-audiomerge-files" type="file" accept="audio/*" multiple data-util="audiomerge-files" hidden />
+        <button class="btn btn-primary btn-sm" data-action="util-audiomerge" style="margin-top:10px">Merge & download</button>
+        <div id="util-audiomerge-out" class="util-out"></div>
+      </div>
+    </div>`;
+}
+async function utilAudioMerge() {
+  const files = document.querySelector('[data-util="audiomerge-files"]')?.files;
+  const out = document.getElementById('util-audiomerge-out');
+  if (!files || !files.length) { if (out) out.innerHTML = '<p class="muted">Choose at least one audio file.</p>'; return; }
+  try {
+    const ffmpeg = await Engine.ensure();
+    const names = [];
+    for (let i = 0; i < files.length; i++) {
+      const ext = (files[i].name.split('.').pop() || 'mp3').toLowerCase();
+      const n = `aseg_${i}.${ext}`;
+      await ffmpeg.writeFile(n, new Uint8Array(await files[i].arrayBuffer()));
+      names.push(n);
+    }
+    const list = names.map((n) => `file '${n}'`).join('\n');
+    await ffmpeg.writeFile('alist.txt', new TextEncoder().encode(list));
+    const outName = 'amerged.mp3';
+    await ffmpeg.exec(['-f','concat','-safe','0','-i','alist.txt','-c','copy',outName]);
+    const data = await ffmpeg.readFile(outName);
+    const blob = new Blob([data], { type: 'audio/mpeg' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'merged.mp3'; a.click(); URL.revokeObjectURL(a.href);
+    for (const n of names) try { await ffmpeg.deleteFile(n); } catch {}
+    try { await ffmpeg.deleteFile('alist.txt'); } catch {}
+    try { await ffmpeg.deleteFile(outName); } catch {}
+    if (out) out.innerHTML = `<p class="muted">Done · ${files.length} clips · ${formatBytes(blob.size)}</p>`;
+  } catch (e) {
+    if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`;
+  }
+}
+
+function utilJsonFmtBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>JSON formatter</strong><span>Format, validate and minify JSON</span></div></div>
+      <div class="stage-body">
+        <textarea data-util="json-in" class="input" rows="8" style="width:100%;font-family:var(--font-mono)" placeholder='{"a":1}'></textarea>
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" data-action="util-jsonfmt" data-mode="pretty">Pretty</button>
+          <button class="btn btn-secondary btn-sm" data-action="util-jsonfmt" data-mode="minify">Minify</button>
+          <button class="btn btn-ghost btn-sm" data-action="util-jsonfmt" data-mode="validate">Validate</button>
+        </div>
+        <pre id="util-json-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+      </div>
+    </div>`;
+}
+function utilJsonFmt() {
+  const el = document.querySelector('[data-util="json-in"]');
+  const out = document.getElementById('util-json-out');
+  const mode = (event?.target?.dataset?.mode) || 'pretty';
+  const raw = (el?.value || '').trim();
+  try {
+    const obj = JSON.parse(raw);
+    if (mode === 'minify') { if (out) out.textContent = JSON.stringify(obj); }
+    else if (mode === 'validate') { if (out) out.textContent = 'Valid JSON ✓'; }
+    else { if (out) out.textContent = JSON.stringify(obj, null, 2); }
+  } catch (e) {
+    if (out) out.textContent = 'Invalid: ' + (e?.message || e);
+  }
+}
+
+function utilBase64Body() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Base64</strong><span>Encode / decode text or files</span></div></div>
+      <div class="stage-body">
+        <textarea data-util="b64-in" class="input" rows="6" style="width:100%;font-family:var(--font-mono)" placeholder="Text to encode/decode"></textarea>
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" data-action="util-base64" data-mode="enc">Encode</button>
+          <button class="btn btn-secondary btn-sm" data-action="util-base64" data-mode="dec">Decode</button>
+          <label class="btn btn-ghost btn-sm" for="util-b64-file">File → Base64</label>
+          <input id="util-b64-file" type="file" data-util="b64-file" hidden />
+        </div>
+        <pre id="util-b64-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+      </div>
+    </div>`;
+}
+function utilBase64() {
+  const mode = (event?.target?.dataset?.mode) || 'enc';
+  const el = document.querySelector('[data-util="b64-in"]');
+  const out = document.getElementById('util-b64-out');
+  const raw = el?.value || '';
+  try {
+    if (mode === 'enc') {
+      const enc = new TextEncoder().encode(raw);
+      let bin = ''; enc.forEach((b) => bin += String.fromCharCode(b));
+      if (out) out.textContent = btoa(bin);
+    } else {
+      const bin = atob(raw.trim());
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      if (out) out.textContent = new TextDecoder().decode(bytes);
+    }
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); }
+  const fileInput = document.querySelector('[data-util="b64-file"]');
+  if (fileInput) {
+    fileInput.onchange = async () => {
+      const f = fileInput.files?.[0]; if (!f) return;
+      const buf = await f.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let bin = ''; bytes.forEach((b) => bin += String.fromCharCode(b));
+      if (out) out.textContent = btoa(bin);
+    };
+  }
+}
+
+function utilRegexBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Regex tester</strong><span>Test regular expressions live</span></div></div>
+      <div class="stage-body">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input data-util="regex-pattern" class="input" style="flex:1;min-width:120px;font-family:var(--font-mono)" placeholder="pattern" />
+          <input data-util="regex-flags" class="input" style="width:80px;font-family:var(--font-mono)" placeholder="gmi" value="g" />
+        </div>
+        <textarea data-util="regex-text" class="input" rows="6" style="width:100%;margin-top:10px;font-family:var(--font-mono)" placeholder="Test string"></textarea>
+        <button class="btn btn-primary btn-sm" data-action="util-regex" style="margin-top:10px">Test</button>
+        <div id="util-regex-out" class="util-out"></div>
+      </div>
+    </div>`;
+}
+function utilRegex() {
+  const pattern = document.querySelector('[data-util="regex-pattern"]')?.value || '';
+  const flags = document.querySelector('[data-util="regex-flags"]')?.value || '';
+  const text = document.querySelector('[data-util="regex-text"]')?.value || '';
+  const out = document.getElementById('util-regex-out');
+  try {
+    const re = new RegExp(pattern, flags);
+    const matches = [...text.matchAll(new RegExp(pattern, flags.includes('g') ? flags : flags + 'g'))];
+    const list = matches.map((m, i) => `<div class="mono" style="margin-top:4px">#${i + 1}: ${esc(JSON.stringify(m[0]))} @${m.index}</div>`).join('');
+    if (out) out.innerHTML = `<p class="muted">${matches.length} match(es)</p>${list || '<p class="muted">No matches.</p>'}`;
+  } catch (e) { if (out) out.innerHTML = `<p class="muted">Error: ${esc(e?.message || e)}</p>`; }
+}
+
+function utilUuidBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>UUID generator</strong><span>Generate v4 UUIDs</span></div></div>
+      <div class="stage-body">
+        <div class="field"><div class="field-head"><span class="field-label">Count</span></div><input type="number" min="1" max="100" value="5" data-util="uuid-count" class="input" style="width:100%" /></div>
+        <button class="btn btn-primary btn-sm" data-action="util-uuid" style="margin-top:10px">Generate</button>
+        <pre id="util-uuid-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+      </div>
+    </div>`;
+}
+function utilUuid() {
+  const count = Math.max(1, Math.min(100, Number(document.querySelector('[data-util="uuid-count"]')?.value || 5)));
+  const out = document.getElementById('util-uuid-out');
+  const ids = [];
+  for (let i = 0; i < count; i++) {
+    if (crypto?.randomUUID) ids.push(crypto.randomUUID());
+    else {
+      const b = new Uint8Array(16); crypto.getRandomValues(b);
+      b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
+      const h = [...b].map((x) => x.toString(16).padStart(2, '0'));
+      ids.push(`${h.slice(0,4).join('')}-${h.slice(4,6).join('')}-${h.slice(6,8).join('')}-${h.slice(8,10).join('')}-${h.slice(10,16).join('')}`);
+    }
+  }
+  if (out) out.textContent = ids.join('\n');
+}
+
+function utilTimestampBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Timestamp converter</strong><span>Unix ↔ human readable</span></div></div>
+      <div class="stage-body">
+        <div class="field"><div class="field-head"><span class="field-label">Unix (seconds or ms)</span></div><input type="text" data-util="ts-in" class="input" style="width:100%;font-family:var(--font-mono)" placeholder="1700000000" /></div>
+        <button class="btn btn-primary btn-sm" data-action="util-timestamp" style="margin-top:10px">Convert</button>
+        <div id="util-ts-out" class="util-out"></div>
+      </div>
+    </div>`;
+}
+function utilTimestamp() {
+  const raw = (document.querySelector('[data-util="ts-in"]')?.value || '').trim();
+  const out = document.getElementById('util-ts-out');
+  let ms = Number(raw);
+  if (!Number.isFinite(ms)) {
+    const d = new Date(raw);
+    if (isNaN(d.getTime())) { if (out) out.innerHTML = '<p class="muted">Invalid input.</p>'; return; }
+    ms = d.getTime();
+  }
+  if (ms < 1e12) ms *= 1000;
+  const d = new Date(ms);
+  if (out) out.innerHTML = `<div class="mono" style="margin-top:8px">ISO: ${d.toISOString()}</div><div class="mono">Local: ${d.toLocaleString()}</div><div class="mono">Unix s: ${Math.floor(ms/1000)}</div><div class="mono">Unix ms: ${ms}</div>`;
+}
+
+function utilColorConvBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Color converter</strong><span>Hex / RGB / HSL</span></div></div>
+      <div class="stage-body">
+        <input type="color" data-util="color-in" value="#7c3aed" style="width:60px;height:40px;border:0;background:transparent;cursor:pointer" />
+        <input type="text" data-util="color-hex" class="input" style="width:100%;margin-top:8px;font-family:var(--font-mono)" placeholder="#7c3aed" />
+        <button class="btn btn-primary btn-sm" data-action="util-colorconv" style="margin-top:10px">Convert</button>
+        <div id="util-color-out" class="util-out"></div>
+      </div>
+    </div>`;
+}
+function utilColorConv() {
+  const hexInput = (document.querySelector('[data-util="color-hex"]')?.value || '').trim();
+  const picker = document.querySelector('[data-util="color-in"]');
+  const hex = hexInput || picker?.value || '#000000';
+  const out = document.getElementById('util-color-out');
+  const m = hex.replace('#','').match(/^([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (!m) { if (out) out.innerHTML = '<p class="muted">Invalid hex.</p>'; return; }
+  let h = m[1]; if (h.length === 3) h = h.split('').map((c) => c+c).join('');
+  const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
+  const max = Math.max(r,g,b)/255, min = Math.min(r,g,b)/255;
+  const l = (max+min)/2;
+  let hue = 0, sat = 0;
+  if (max !== min) {
+    const d = max - min;
+    sat = l > 0.5 ? d/(2-max-min) : d/(max+min);
+    switch (max) {
+      case r/255: hue = ((g-b)/255)/d + (g < b ? 6 : 0); break;
+      case g/255: hue = ((b-r)/255)/d + 2; break;
+      default: hue = ((r-g)/255)/d + 4;
+    }
+    hue /= 6;
+  }
+  if (out) out.innerHTML = `<div class="mono" style="margin-top:8px">HEX: #${h.toUpperCase()}</div><div class="mono">RGB: ${r}, ${g}, ${b}</div><div class="mono">HSL: ${Math.round(hue*360)}, ${Math.round(sat*100)}%, ${Math.round(l*100)}%</div>`;
+}
+
+function utilDiffViewBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Diff viewer</strong><span>Compare two texts</span></div></div>
+      <div class="stage-body">
+        <textarea data-util="diff-a" class="input" rows="6" style="width:100%;font-family:var(--font-mono)" placeholder="Text A"></textarea>
+        <textarea data-util="diff-b" class="input" rows="6" style="width:100%;margin-top:8px;font-family:var(--font-mono)" placeholder="Text B"></textarea>
+        <button class="btn btn-primary btn-sm" data-action="util-diffview" style="margin-top:10px">Compare</button>
+        <pre id="util-diff-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+      </div>
+    </div>`;
+}
+function utilDiffView() {
+  const a = (document.querySelector('[data-util="diff-a"]')?.value || '').split('\n');
+  const b = (document.querySelector('[data-util="diff-b"]')?.value || '').split('\n');
+  const out = document.getElementById('util-diff-out');
+  const max = Math.max(a.length, b.length);
+  const lines = [];
+  for (let i = 0; i < max; i++) {
+    const la = a[i], lb = b[i];
+    if (la === lb) lines.push(`  ${la ?? ''}`);
+    else {
+      if (la !== undefined) lines.push(`- ${la}`);
+      if (lb !== undefined) lines.push(`+ ${lb}`);
+    }
+  }
+  if (out) out.textContent = lines.join('\n');
+}
+
+function utilMinifyBody() {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>Minify / Beautify</strong><span>JS, CSS, HTML, JSON</span></div></div>
+      <div class="stage-body">
+        <select data-util="minify-type" class="select" style="width:100%"><option value="json">JSON</option><option value="css">CSS</option><option value="js">JS (basic)</option><option value="html">HTML</option></select>
+        <textarea data-util="minify-in" class="input" rows="8" style="width:100%;margin-top:8px;font-family:var(--font-mono)" placeholder="Paste code"></textarea>
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" data-action="util-minify" data-mode="minify">Minify</button>
+          <button class="btn btn-secondary btn-sm" data-action="util-minify" data-mode="beautify">Beautify</button>
+        </div>
+        <pre id="util-minify-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+      </div>
+    </div>`;
+}
+function utilMinify() {
+  const type = document.querySelector('[data-util="minify-type"]')?.value || 'json';
+  const mode = (event?.target?.dataset?.mode) || 'minify';
+  const raw = document.querySelector('[data-util="minify-in"]')?.value || '';
+  const out = document.getElementById('util-minify-out');
+  try {
+    if (type === 'json') {
+      const obj = JSON.parse(raw);
+      if (out) out.textContent = mode === 'minify' ? JSON.stringify(obj) : JSON.stringify(obj, null, 2);
+    } else if (type === 'css') {
+      if (mode === 'minify') {
+        if (out) out.textContent = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ').replace(/\s*([{}:;,])\s*/g, '$1').trim();
+      } else {
+        if (out) out.textContent = raw.replace(/\s*{\s*/g, ' {\n  ').replace(/;\s*/g, ';\n  ').replace(/\s*}\s*/g, '\n}\n').trim();
+      }
+    } else if (type === 'html') {
+      if (mode === 'minify') {
+        if (out) out.textContent = raw.replace(/<!--[\s\S]*?-->/g, '').replace(/\s+/g, ' ').replace(/>\s+</g, '><').trim();
+      } else {
+        if (out) out.textContent = raw; // basic: return as-is
+      }
+    } else {
+      if (mode === 'minify') {
+        if (out) out.textContent = raw.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s+/g, ' ').trim();
+      } else {
+        if (out) out.textContent = raw;
+      }
+    }
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); }
+}
