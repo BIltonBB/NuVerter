@@ -4303,10 +4303,10 @@ function utilitiesView() {
           ['hash','File hash'], ['textpaper','Text to paper'], ['dupfind','Duplicate finder'], ['summarize','Text summarizer']
         ]},
         { name: 'Developer', items: [
-          ['jsonfmt','JSON format'], ['base64','Base64'], ['regex','Regex tester'], ['uuid','UUID gen'], ['timestamp','Timestamp'], ['colorconv','Color convert'], ['diffview','Diff viewer'], ['minify','Minify/Beautify'],['vidrotate','Video rotate/flip'],['vidspeed','Video speed'],['exifstrip','EXIF strip'],['audspeed','Audio speed'],['audnorm','Audio normalize'],['jwt','JWT decoder'],['archive','Archive zip/unzip'],['ascii','Image to ASCII'],['markdown','Markdown to HTML'],['textpdf','Text to PDF'],['exifview','EXIF viewer'],['filesize','File size analyzer'],['batchrename','Batch rename'],['screenshot','Screen capture'],['collage','Image collage'],['dupfind','Duplicate finder'],['summarize','Text summarizer'],['qrcode','QR code generator'], ['qrcode','QR code generator'], ['jwt','JWT decoder'], ['archive','Archive zip/unzip'], ['ascii','Image to ASCII'], ['markdown','Markdown to HTML'], ['textpdf','Text to PDF'], ['exifview','EXIF viewer'], ['filesize','File size analyzer'], ['batchrename','Batch rename']
+          ['jsonfmt','JSON format'], ['base64','Base64'], ['regex','Regex tester'], ['uuid','UUID gen'], ['timestamp','Timestamp'], ['colorconv','Color convert'], ['diffview','Diff viewer'], ['minify','Minify/Beautify'], ['vidrotate','Video rotate/flip'], ['vidspeed','Video speed'], ['exifstrip','EXIF strip'], ['audspeed','Audio speed'], ['audnorm','Audio normalize'], ['jwt','JWT decoder'], ['archive','Archive zip/unzip'], ['ascii','Image to ASCII'], ['markdown','Markdown to HTML'], ['textpdf','Text to PDF'], ['exifview','EXIF viewer'], ['filesize','File size analyzer'], ['batchrename','Batch rename'], ['screenshot','Screen capture'], ['collage','Image collage'], ['dupfind','Duplicate finder'], ['summarize','Text summarizer'], ['qrcode','QR code generator'],['caseconv','Case converter'],['slug','Slug generator'],['lorem','Lorem ipsum'],['passgen','Password generator'],['baseconv','Number base converter'],['roman','Roman numerals'],['urlenc','URL encode/decode'],['htmlent','HTML entities'],['cron','Cron parser'],['chmod','Chmod calculator'],['semver','Semver calculator'],['unitconv','Unit converter'],['timezone','Timezone converter'],['asciitable','ASCII codes'],['ua','User agent parser'],['mdtable','Markdown table'],['fmtcode','Code formatter'],['xmlfmt','XML formatter'],['yamlconv','YAML/JSON'],['sqlfmt','SQL formatter'],['curlbuild','cURL builder'],['img2pdf','Images to PDF'],['doccompare','Doc compare'],['mdeditor','Markdown editor'],['cronhuman','Cron to human'], ['caseconv','Case converter'], ['slug','Slug generator'], ['lorem','Lorem ipsum'], ['passgen','Password generator'], ['baseconv','Number base converter'], ['roman','Roman numerals'], ['urlenc','URL encode/decode'], ['htmlent','HTML entities'], ['cron','Cron parser'], ['chmod','Chmod calculator'], ['semver','Semver calculator'], ['unitconv','Unit converter'], ['timezone','Timezone converter'], ['asciitable','ASCII codes'], ['ua','User agent parser'], ['mdtable','Markdown table'], ['fmtcode','Code formatter'], ['xmlfmt','XML formatter'], ['yamlconv','YAML/JSON'], ['sqlfmt','SQL formatter'], ['curlbuild','cURL builder'], ['img2pdf','Images to PDF'], ['doccompare','Doc compare'], ['mdeditor','Markdown editor'], ['cronhuman','Cron to human']
         ]}
       ];
-      const labels = { frames:'Frames', spritesheet:'Spritesheet', slicer:'Slice sheet', textimage:'Text card', trimmer:'Trimmer', watermark:'Watermark', upscale:'Upscale', pdf:'PDF', chroma:'Chroma key', fileinfo:'File info', palette:'Palette', favicon:'Favicon', vector:'Vectorize', audioclean:'Audio clean', silencetrim:'Silence trim', waveform:'Waveform', tts:'TTS', ocr:'OCR', aibg:'AI BG', aiup:'AI Upscale', emb:'Embeddings', hash:'File hash', textpaper:'Text to paper', imgresize:'Image resize', videomerge:'Video merge', audiomerge:'Audio merge', jsonfmt:'JSON format', base64:'Base64', regex:'Regex tester', uuid:'UUID gen', timestamp:'Timestamp', colorconv:'Color convert', diffview:'Diff viewer', minify:'Minify/Beautify', vidrotate:'Video rotate/flip', vidspeed:'Video speed', exifstrip:'EXIF strip', audspeed:'Audio speed', audnorm:'Audio normalize', jwt:'JWT decoder', archive:'Archive zip/unzip', ascii:'Image to ASCII', markdown:'Markdown to HTML', textpdf:'Text to PDF', exifview:'EXIF viewer', filesize:'File size analyzer', batchrename:'Batch rename', screenshot:'Screen capture', collage:'Image collage', dupfind:'Duplicate finder', summarize:'Text summarizer', qrcode:'QR code generator' };
+      const labels = { frames:'Frames', spritesheet:'Spritesheet', slicer:'Slice sheet', textimage:'Text card', trimmer:'Trimmer', watermark:'Watermark', upscale:'Upscale', pdf:'PDF', chroma:'Chroma key', fileinfo:'File info', palette:'Palette', favicon:'Favicon', vector:'Vectorize', audioclean:'Audio clean', silencetrim:'Silence trim', waveform:'Waveform', tts:'TTS', ocr:'OCR', aibg:'AI BG', aiup:'AI Upscale', emb:'Embeddings', hash:'File hash', textpaper:'Text to paper', imgresize:'Image resize', videomerge:'Video merge', audiomerge:'Audio merge', jsonfmt:'JSON format', base64:'Base64', regex:'Regex tester', uuid:'UUID gen', timestamp:'Timestamp', colorconv:'Color convert', diffview:'Diff viewer', minify:'Minify/Beautify', vidrotate:'Video rotate/flip', vidspeed:'Video speed', exifstrip:'EXIF strip', audspeed:'Audio speed', audnorm:'Audio normalize', jwt:'JWT decoder', archive:'Archive zip/unzip', ascii:'Image to ASCII', markdown:'Markdown to HTML', textpdf:'Text to PDF', exifview:'EXIF viewer', filesize:'File size analyzer', batchrename:'Batch rename', screenshot:'Screen capture', collage:'Image collage', dupfind:'Duplicate finder', summarize:'Text summarizer', qrcode:'QR code generator', caseconv:'Case converter', slug:'Slug generator', lorem:'Lorem ipsum', passgen:'Password generator', baseconv:'Number base converter', roman:'Roman numerals', urlenc:'URL encode/decode', htmlent:'HTML entities', cron:'Cron parser', chmod:'Chmod calculator', semver:'Semver calculator', unitconv:'Unit converter', timezone:'Timezone converter', asciitable:'ASCII codes', ua:'User agent parser', mdtable:'Markdown table', fmtcode:'Code formatter', xmlfmt:'XML formatter', yamlconv:'YAML/JSON', sqlfmt:'SQL formatter', curlbuild:'cURL builder', img2pdf:'Images to PDF', doccompare:'Doc compare', mdeditor:'Markdown editor', cronhuman:'Cron to human' };
       const currentLabel = labels[tab] || 'Frames';
       return `
       <div class="util-combo" style="position:relative;margin:0 0 14px">
@@ -4378,6 +4378,31 @@ function utilitiesView() {
         tab === 'dupfind' ? utilDupFinderBody() :
         tab === 'summarize' ? utilSummarizeBody() :
         tab === 'qrcode' ? utilQrBody() :
+        tab === 'caseconv' ? utilCaseBody() :
+        tab === 'slug' ? utilSlugBody() :
+        tab === 'lorem' ? utilLoremBody() :
+        tab === 'passgen' ? utilPassgenBody() :
+        tab === 'baseconv' ? utilBaseConvBody() :
+        tab === 'roman' ? utilRomanBody() :
+        tab === 'urlenc' ? utilUrlencBody() :
+        tab === 'htmlent' ? utilHtmlentBody() :
+        tab === 'cron' ? utilCronBody() :
+        tab === 'chmod' ? utilChmodBody() :
+        tab === 'semver' ? utilSemverBody() :
+        tab === 'unitconv' ? utilUnitBody() :
+        tab === 'timezone' ? utilTimezoneBody() :
+        tab === 'asciitable' ? utilAsciiTableBody() :
+        tab === 'ua' ? utilUaBody() :
+        tab === 'mdtable' ? utilMdTableBody() :
+        tab === 'fmtcode' ? utilFmtCodeBody() :
+        tab === 'xmlfmt' ? utilXmlBody() :
+        tab === 'yamlconv' ? utilYamlBody() :
+        tab === 'sqlfmt' ? utilSqlBody() :
+        tab === 'curlbuild' ? utilCurlBody() :
+        tab === 'img2pdf' ? utilImg2PdfBody() :
+        tab === 'doccompare' ? utilDocCompareBody() :
+        tab === 'mdeditor' ? utilMdEditorBody() :
+        tab === 'cronhuman' ? utilCronHumanBody() :
         utilFramesBody()}
     </div>`;
 }
@@ -14486,6 +14511,31 @@ async function handleExtraAction(action, el) {
     case 'util-dup': await utilDup(); return true;
     case 'util-sum': utilSummarize(); return true;
     case 'util-qr': utilQr(); return true;
+    case 'util-case': utilCase(); return true;
+    case 'util-slug': utilSlug(); return true;
+    case 'util-lorem': utilLorem(); return true;
+    case 'util-pg': utilPassgen(); return true;
+    case 'util-bc': utilBaseConv(); return true;
+    case 'util-rom': utilRoman(); return true;
+    case 'util-urlenc': utilUrlenc(); return true;
+    case 'util-htmlent': utilHtmlent(); return true;
+    case 'util-cron': utilCron(); return true;
+    case 'util-chmod': utilChmod(); return true;
+    case 'util-sv': utilSemver(); return true;
+    case 'util-uc': utilUnit(); return true;
+    case 'util-tz': utilTimezone(); return true;
+    case 'util-ascii-t': utilAsciiTable(); return true;
+    case 'util-ua': utilUa(); return true;
+    case 'util-mdt': utilMdTable(); return true;
+    case 'util-fmt': utilFmtCode(); return true;
+    case 'util-xml': utilXml(); return true;
+    case 'util-yaml': utilYaml(); return true;
+    case 'util-sql': utilSql(); return true;
+    case 'util-curl': utilCurl(); return true;
+    case 'util-i2p': await utilImg2Pdf(); return true;
+    case 'util-dc': utilDocCompare(); return true;
+    case 'util-mde': utilMdEditor(); return true;
+    case 'util-cronh': utilCronHuman(); return true;
     case 'util-tts-speak': await utilTtsSpeak(); return true;
     case 'util-tts-stop': await utilTtsStop(); return true;
     case 'util-aibg-model':
@@ -17808,3 +17858,565 @@ function makeQR(text) {
   return { size, modules };
 }
 function utilScreenshot2() { return utilScreenshotBody(); }
+// ---------- Additional utility tools (batch 4) ----------
+
+function utilCaseBody() {
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>Case converter</strong><span>Convert text case styles</span></div></div><div class="stage-body">
+    <textarea data-util="case-in" class="input" rows="6" style="width:100%" placeholder="hello world"></textarea>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <button class="btn btn-ghost btn-sm" data-action="util-case" data-mode="upper">UPPER</button>
+      <button class="btn btn-ghost btn-sm" data-action="util-case" data-mode="lower">lower</button>
+      <button class="btn btn-ghost btn-sm" data-action="util-case" data-mode="title">Title Case</button>
+      <button class="btn btn-ghost btn-sm" data-action="util-case" data-mode="camel">camelCase</button>
+      <button class="btn btn-ghost btn-sm" data-action="util-case" data-mode="pascal">PascalCase</button>
+      <button class="btn btn-ghost btn-sm" data-action="util-case" data-mode="snake">snake_case</button>
+      <button class="btn btn-ghost btn-sm" data-action="util-case" data-mode="kebab">kebab-case</button>
+      <button class="btn btn-ghost btn-sm" data-action="util-case" data-mode="const">CONST_CASE</button>
+    </div>
+    <pre id="util-case-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+  </div></div>`;
+}
+function utilCase() {
+  const mode = (event?.target?.dataset?.mode) || 'lower';
+  const raw = document.querySelector('[data-util="case-in"]')?.value || '';
+  const out = document.getElementById('util-case-out');
+  const words = raw.trim().split(/[\s_\-]+/).filter(Boolean);
+  let res = raw;
+  switch (mode) {
+    case 'upper': res = raw.toUpperCase(); break;
+    case 'lower': res = raw.toLowerCase(); break;
+    case 'title': res = raw.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()); break;
+    case 'camel': res = words.map((w, i) => i === 0 ? w.toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(''); break;
+    case 'pascal': res = words.map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(''); break;
+    case 'snake': res = words.map((w) => w.toLowerCase()).join('_'); break;
+    case 'kebab': res = words.map((w) => w.toLowerCase()).join('-'); break;
+    case 'const': res = words.map((w) => w.toUpperCase()).join('_'); break;
+  }
+  if (out) out.textContent = res;
+}
+
+function utilSlugBody() {
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>Slug generator</strong><span>Convert text to URL slugs</span></div></div><div class="stage-body">
+    <textarea data-util="slug-in" class="input" rows="4" style="width:100%" placeholder="Hello World!"></textarea>
+    <button class="btn btn-primary btn-sm" data-action="util-slug" style="margin-top:10px">Generate slug</button>
+    <pre id="util-slug-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+  </div></div>`;
+}
+function utilSlug() {
+  const raw = document.querySelector('[data-util="slug-in"]')?.value || '';
+  const out = document.getElementById('util-slug-out');
+  const slug = raw.toLowerCase().trim().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  if (out) out.textContent = slug;
+}
+
+function utilLoremBody() {
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>Lorem ipsum generator</strong><span>Generate placeholder text</span></div></div><div class="stage-body">
+    <div class="field"><div class="field-head"><span class="field-label">Paragraphs</span></div><input type="number" min="1" max="20" value="3" data-util="lorem-n" class="input" style="width:100%" /></div>
+    <button class="btn btn-primary btn-sm" data-action="util-lorem" style="margin-top:10px">Generate</button>
+    <pre id="util-lorem-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+  </div></div>`;
+}
+const LOREM = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.';
+function utilLorem() {
+  const n = Math.max(1, Math.min(20, Number(document.querySelector('[data-util="lorem-n"]')?.value || 3)));
+  const out = document.getElementById('util-lorem-out');
+  const paras = [];
+  for (let i = 0; i < n; i++) paras.push(LOREM);
+  if (out) out.textContent = paras.join('\n\n');
+}
+
+function utilPassgenBody() {
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>Password generator</strong><span>Generate secure passwords</span></div></div><div class="stage-body">
+    <div class="field"><div class="field-head"><span class="field-label">Length</span></div><input type="number" min="4" max="128" value="16" data-util="pg-len" class="input" style="width:100%" /></div>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <label><input type="checkbox" data-util="pg-upper" checked /> Uppercase</label>
+      <label><input type="checkbox" data-util="pg-lower" checked /> Lowercase</label>
+      <label><input type="checkbox" data-util="pg-num" checked /> Numbers</label>
+      <label><input type="checkbox" data-util="pg-sym" checked /> Symbols</label>
+    </div>
+    <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Count</span></div><input type="number" min="1" max="20" value="5" data-util="pg-count" class="input" style="width:100%" /></div>
+    <button class="btn btn-primary btn-sm" data-action="util-pg" style="margin-top:10px">Generate</button>
+    <pre id="util-pg-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+  </div></div>`;
+}
+function utilPassgen() {
+  const len = Math.max(4, Math.min(128, Number(document.querySelector('[data-util="pg-len"]')?.value || 16)));
+  const count = Math.max(1, Math.min(20, Number(document.querySelector('[data-util="pg-count"]')?.value || 5)));
+  const upper = document.querySelector('[data-util="pg-upper"]')?.checked;
+  const lower = document.querySelector('[data-util="pg-lower"]')?.checked;
+  const num = document.querySelector('[data-util="pg-num"]')?.checked;
+  const sym = document.querySelector('[data-util="pg-sym"]')?.checked;
+  const chars = (upper ? 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' : '') + (lower ? 'abcdefghijklmnopqrstuvwxyz' : '') + (num ? '0123456789' : '') + (sym ? '!@#$%^&*()_+-=[]{}' : '');
+  if (!chars) { document.getElementById('util-pg-out').textContent = 'Select at least one character set.'; return; }
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const arr = new Uint32Array(len); crypto.getRandomValues(arr);
+    out.push(Array.from(arr).map((v) => chars[v % chars.length]).join(''));
+  }
+  document.getElementById('util-pg-out').textContent = out.join('\n');
+}
+
+function utilBaseConvBody() {
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>Number base converter</strong><span>Binary / Octal / Decimal / Hex</span></div></div><div class="stage-body">
+    <div class="field"><div class="field-head"><span class="field-label">Input value</span></div><input type="text" data-util="bc-in" class="input" style="width:100%;font-family:var(--font-mono)" placeholder="255" /></div>
+    <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">From base</span></div><select data-util="bc-from" class="select" style="width:100%"><option value="2">Binary (2)</option><option value="8">Octal (8)</option><option value="10" selected>Decimal (10)</option><option value="16">Hex (16)</option></select></div>
+    <button class="btn btn-primary btn-sm" data-action="util-bc" style="margin-top:10px">Convert</button>
+    <pre id="util-bc-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+  </div></div>`;
+}
+function utilBaseConv() {
+  const raw = (document.querySelector('[data-util="bc-in"]')?.value || '').trim();
+  const from = Number(document.querySelector('[data-util="bc-from"]')?.value || 10);
+  const out = document.getElementById('util-bc-out');
+  try {
+    const n = parseInt(raw, from);
+    if (isNaN(n)) throw new Error('Invalid number');
+    if (out) out.textContent = `Binary:  ${n.toString(2)}\nOctal:   ${n.toString(8)}\nDecimal: ${n.toString(10)}\nHex:     ${n.toString(16).toUpperCase()}`;
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); }
+}
+
+function utilRomanBody() {
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>Roman numeral converter</strong><span>Arabic ↔ Roman</span></div></div><div class="stage-body">
+    <div class="field"><div class="field-head"><span class="field-label">Input</span></div><input type="text" data-util="rom-in" class="input" style="width:100%;font-family:var(--font-mono)" placeholder="2024 or MMXXIV" /></div>
+    <button class="btn btn-primary btn-sm" data-action="util-rom" style="margin-top:10px">Convert</button>
+    <pre id="util-rom-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+  </div></div>`;
+}
+function utilRoman() {
+  const raw = (document.querySelector('[data-util="rom-in"]')?.value || '').trim();
+  const out = document.getElementById('util-rom-out');
+  const map = [['M',1000],['CM',900],['D',500],['CD',400],['C',100],['XC',90],['L',50],['XL',40],['X',10],['IX',9],['V',5],['IV',4],['I',1]];
+  if (/^\d+$/.test(raw)) {
+    let n = Number(raw); let res = '';
+    for (const [r, v] of map) { while (n >= v) { res += r; n -= v; } }
+    if (out) out.textContent = res || '0';
+  } else {
+    let s = raw.toUpperCase(); let n = 0; let i = 0;
+    while (i < s.length) {
+      const two = s.slice(i, i+2);
+      const m2 = map.find(([r]) => r === two);
+      if (m2) { n += m2[1]; i += 2; }
+      else {
+        const m1 = map.find(([r]) => r === s[i]);
+        if (m1) { n += m1[1]; i += 1; } else { n = NaN; break; }
+      }
+    }
+    if (out) out.textContent = isNaN(n) ? 'Invalid Roman numeral' : String(n);
+  }
+}
+
+function utilUrlencBody() {
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>URL encode / decode</strong><span>Percent-encode text or URLs</span></div></div><div class="stage-body">
+    <textarea data-util="url-in" class="input" rows="4" style="width:100%;font-family:var(--font-mono)" placeholder="hello world"></textarea>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <button class="btn btn-primary btn-sm" data-action="util-urlenc" data-mode="enc">Encode</button>
+      <button class="btn btn-secondary btn-sm" data-action="util-urlenc" data-mode="dec">Decode</button>
+      <button class="btn btn-ghost btn-sm" data-action="util-urlenc" data-mode="comp">Encode component</button>
+    </div>
+    <pre id="util-url-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+  </div></div>`;
+}
+function utilUrlenc() {
+  const mode = (event?.target?.dataset?.mode) || 'enc';
+  const raw = document.querySelector('[data-util="url-in"]')?.value || '';
+  const out = document.getElementById('util-url-out');
+  try {
+    let res = raw;
+    if (mode === 'enc') res = encodeURI(raw);
+    else if (mode === 'comp') res = encodeURIComponent(raw);
+    else res = decodeURIComponent(raw);
+    if (out) out.textContent = res;
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); }
+}
+
+function utilHtmlentBody() {
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>HTML entity encode / decode</strong><span>Escape HTML special characters</span></div></div><div class="stage-body">
+    <textarea data-util="html-in" class="input" rows="4" style="width:100%;font-family:var(--font-mono)" placeholder="<div>"></textarea>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <button class="btn btn-primary btn-sm" data-action="util-htmlent" data-mode="enc">Encode</button>
+      <button class="btn btn-secondary btn-sm" data-action="util-htmlent" data-mode="dec">Decode</button>
+    </div>
+    <pre id="util-html-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+  </div></div>`;
+}
+function utilHtmlent() {
+  const mode = (event?.target?.dataset?.mode) || 'enc';
+  const raw = document.querySelector('[data-util="html-in"]')?.value || '';
+  const out = document.getElementById('util-html-out');
+  if (mode === 'enc') {
+    const map = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' };
+    if (out) out.textContent = raw.replace(/[&<>"']/g, (c) => map[c]);
+  } else {
+    const txt = document.createElement('textarea');
+    txt.innerHTML = raw;
+    if (out) out.textContent = txt.value;
+  }
+}
+
+function utilCronBody() {
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>Cron parser</strong><span>Parse cron expressions</span></div></div><div class="stage-body">
+    <input type="text" data-util="cron-in" class="input" style="width:100%;font-family:var(--font-mono)" placeholder="*/5 * * * *" />
+    <button class="btn btn-primary btn-sm" data-action="util-cron" style="margin-top:10px">Parse</button>
+    <pre id="util-cron-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+  </div></div>`;
+}
+function utilCron() {
+  const raw = (document.querySelector('[data-util="cron-in"]')?.value || '').trim();
+  const out = document.getElementById('util-cron-out');
+  const parts = raw.split(/\s+/);
+  if (parts.length !== 5) { if (out) out.textContent = 'Need 5 fields: min hour dom mon dow'; return; }
+  const labels = ['Minute', 'Hour', 'Day of month', 'Month', 'Day of week'];
+  const lines = parts.map((p, i) => `${labels[i]}: ${p}`);
+  if (out) out.textContent = lines.join('\n') + '\n\nNext run estimation not available offline.';
+}
+
+function utilChmodBody() {
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>Chmod calculator</strong><span>Unix permission calculator</span></div></div><div class="stage-body">
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <label><input type="checkbox" data-util="chmod-ur" checked /> r (owner)</label>
+      <label><input type="checkbox" data-util="chmod-uw" checked /> w (owner)</label>
+      <label><input type="checkbox" data-util="chmod-ux" checked /> x (owner)</label>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <label><input type="checkbox" data-util="chmod-gr" checked /> r (group)</label>
+      <label><input type="checkbox" data-util="chmod-gw" /> w (group)</label>
+      <label><input type="checkbox" data-util="chmod-gx" checked /> x (group)</label>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+      <label><input type="checkbox" data-util="chmod-or" checked /> r (other)</label>
+      <label><input type="checkbox" data-util="chmod-ow" /> w (other)</label>
+      <label><input type="checkbox" data-util="chmod-ox" checked /> x (other)</label>
+    </div>
+    <button class="btn btn-primary btn-sm" data-action="util-chmod" style="margin-top:4px">Calculate</button>
+    <pre id="util-chmod-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+  </div></div>`;
+}
+function utilChmod() {
+  const get = (r, w, x) => (document.querySelector(`[data-util="${r}"]`)?.checked ? 4 : 0) + (document.querySelector(`[data-util="${w}"]`)?.checked ? 2 : 0) + (document.querySelector(`[data-util="${x}"]`)?.checked ? 1 : 0);
+  const o = get('chmod-ur','chmod-uw','chmod-ux');
+  const g = get('chmod-gr','chmod-gw','chmod-gx');
+  const t = get('chmod-or','chmod-ow','chmod-ox');
+  const out = document.getElementById('util-chmod-out');
+  if (out) out.textContent = `Octal: ${o}${g}${t}\nSymbolic: ${o}${g}${t} → chmod ${o}${g}${t}`;
+}
+
+function utilSemverBody() {
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>Semver calculator</strong><span>Compare semantic versions</span></div></div><div class="stage-body">
+    <div class="field"><div class="field-head"><span class="field-label">Version A</span></div><input type="text" data-util="sv-a" class="input" style="width:100%;font-family:var(--font-mono)" placeholder="1.2.3" value="1.2.3" /></div>
+    <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Version B</span></div><input type="text" data-util="sv-b" class="input" style="width:100%;font-family:var(--font-mono)" placeholder="1.3.0" value="1.3.0" /></div>
+    <button class="btn btn-primary btn-sm" data-action="util-sv" style="margin-top:10px">Compare</button>
+    <pre id="util-sv-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+  </div></div>`;
+}
+function utilSemver() {
+  const a = document.querySelector('[data-util="sv-a"]')?.value || '';
+  const b = document.querySelector('[data-util="sv-b"]')?.value || '';
+  const out = document.getElementById('util-sv-out');
+  const parse = (v) => v.replace(/^v/, '').split('.').map((x) => parseInt(x, 10) || 0);
+  const pa = parse(a), pb = parse(b);
+  let cmp = 0;
+  for (let i = 0; i < 3; i++) { if ((pa[i]||0) > (pb[i]||0)) { cmp = 1; break; } if ((pa[i]||0) < (pb[i]||0)) { cmp = -1; break; } }
+  const label = cmp === 0 ? 'equal' : cmp > 0 ? 'A > B' : 'A < B';
+  if (out) out.textContent = `${a} vs ${b}: ${label}`;
+}
+
+function utilUnitBody() {
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>Unit converter</strong><span>Length, weight, temperature, data</span></div></div><div class="stage-body">
+    <div class="field"><div class="field-head"><span class="field-label">Value</span></div><input type="number" data-util="uc-val" class="input" style="width:100%" value="1" /></div>
+    <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Type</span></div><select data-util="uc-type" class="select" style="width:100%"><option value="len">Length (m)</option><option value="weight">Weight (kg)</option><option value="temp">Temperature (°C)</option><option value="data">Data (bytes)</option></select></div>
+    <button class="btn btn-primary btn-sm" data-action="util-uc" style="margin-top:10px">Convert</button>
+    <pre id="util-uc-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+  </div></div>`;
+}
+function utilUnit() {
+  const val = Number(document.querySelector('[data-util="uc-val"]')?.value || 0);
+  const type = document.querySelector('[data-util="uc-type"]')?.value || 'len';
+  const out = document.getElementById('util-uc-out');
+  let lines = [];
+  if (type === 'len') {
+    lines = [`Meters: ${val}`, `Kilometers: ${val/1000}`, `Centimeters: ${val*100}`, `Millimeters: ${val*1000}`, `Inches: ${val*39.3701}`, `Feet: ${val*3.28084}`, `Miles: ${val*0.000621371}`];
+  } else if (type === 'weight') {
+    lines = [`Kilograms: ${val}`, `Grams: ${val*1000}`, `Pounds: ${val*2.20462}`, `Ounces: ${val*35.274}`, `Milligrams: ${val*1e6}`];
+  } else if (type === 'temp') {
+    lines = [`Celsius: ${val}`, `Fahrenheit: ${val*9/5+32}`, `Kelvin: ${val+273.15}`];
+  } else {
+    lines = [`Bytes: ${val}`, `KB: ${val/1024}`, `MB: ${val/1048576}`, `GB: ${val/1073741824}`, `KiB: ${val/1024}`, `MiB: ${val/1048576}`];
+  }
+  if (out) out.textContent = lines.join('\n');
+}
+
+function utilTimezoneBody() {
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>Timezone converter</strong><span>Convert between timezones</span></div></div><div class="stage-body">
+    <div class="field"><div class="field-head"><span class="field-label">Date/time (local)</span></div><input type="datetime-local" data-util="tz-in" class="input" style="width:100%" /></div>
+    <button class="btn btn-primary btn-sm" data-action="util-tz" style="margin-top:10px">Convert</button>
+    <pre id="util-tz-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+  </div></div>`;
+}
+function utilTimezone() {
+  const raw = document.querySelector('[data-util="tz-in"]')?.value;
+  const out = document.getElementById('util-tz-out');
+  if (!raw) { if (out) out.textContent = 'Pick a date/time.'; return; }
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) { if (out) out.textContent = 'Invalid date.'; return; }
+  const zones = ['UTC', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Paris', 'Asia/Tokyo', 'Asia/Shanghai', 'Australia/Sydney'];
+  const lines = zones.map((z) => `${z}: ${d.toLocaleString('en-US', { timeZone: z })}`);
+  if (out) out.textContent = lines.join('\n');
+}
+
+function utilAsciiTableBody() {
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>ASCII / char codes</strong><span>Character code reference</span></div></div><div class="stage-body">
+    <div class="field"><div class="field-head"><span class="field-label">Text</span></div><input type="text" data-util="ascii-t" class="input" style="width:100%" placeholder="ABC" /></div>
+    <button class="btn btn-primary btn-sm" data-action="util-ascii-t" style="margin-top:10px">Analyze</button>
+    <pre id="util-ascii-t-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+  </div></div>`;
+}
+function utilAsciiTable() {
+  const raw = document.querySelector('[data-util="ascii-t"]')?.value || '';
+  const out = document.getElementById('util-ascii-t-out');
+  const lines = [...raw].map((c) => `${c}  →  dec:${c.charCodeAt(0)}  hex:0x${c.charCodeAt(0).toString(16).toUpperCase()}  bin:${c.charCodeAt(0).toString(2)}`);
+  if (out) out.textContent = lines.join('\n') || 'Empty input.';
+}
+
+function utilUaBody() {
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>User agent parser</strong><span>Parse a user agent string</span></div></div><div class="stage-body">
+    <textarea data-util="ua-in" class="input" rows="3" style="width:100%;font-family:var(--font-mono)" placeholder="Mozilla/5.0..."></textarea>
+    <button class="btn btn-primary btn-sm" data-action="util-ua" style="margin-top:10px">Parse</button>
+    <pre id="util-ua-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+  </div></div>`;
+}
+function utilUa() {
+  const raw = document.querySelector('[data-util="ua-in"]')?.value || navigator.userAgent;
+  const out = document.getElementById('util-ua-out');
+  const browser = /Edg\//.test(raw) ? 'Edge' : /Chrome\//.test(raw) ? 'Chrome' : /Firefox\//.test(raw) ? 'Firefox' : /Safari\//.test(raw) ? 'Safari' : 'Unknown';
+  const os = /Windows/.test(raw) ? 'Windows' : /Mac OS X/.test(raw) ? 'macOS' : /Android/.test(raw) ? 'Android' : /iPhone|iPad/.test(raw) ? 'iOS' : /Linux/.test(raw) ? 'Linux' : 'Unknown';
+  const mobile = /Mobile|Android|iPhone/.test(raw);
+  if (out) out.textContent = `Browser: ${browser}\nOS: ${os}\nMobile: ${mobile}\n\nRaw: ${raw}`;
+}
+
+function utilMdTableBody() {
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>Markdown table generator</strong><span>Build markdown tables</span></div></div><div class="stage-body">
+    <div class="field"><div class="field-head"><span class="field-label">Rows (incl. header)</span></div><input type="number" min="2" max="20" value="3" data-util="mdt-rows" class="input" style="width:100%" /></div>
+    <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Columns</span></div><input type="number" min="1" max="10" value="3" data-util="mdt-cols" class="input" style="width:100%" /></div>
+    <button class="btn btn-primary btn-sm" data-action="util-mdt" style="margin-top:10px">Generate template</button>
+    <pre id="util-mdt-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+  </div></div>`;
+}
+function utilMdTable() {
+  const rows = Math.max(2, Math.min(20, Number(document.querySelector('[data-util="mdt-rows"]')?.value || 3)));
+  const cols = Math.max(1, Math.min(10, Number(document.querySelector('[data-util="mdt-cols"]')?.value || 3)));
+  const out = document.getElementById('util-mdt-out');
+  const header = '| ' + Array.from({ length: cols }, (_, i) => `Col${i+1}`).join(' | ') + ' |';
+  const sep = '| ' + Array.from({ length: cols }, () => '---').join(' | ') + ' |';
+  const body = Array.from({ length: rows - 1 }, () => '| ' + Array.from({ length: cols }, () => '   ').join(' | ') + ' |').join('\n');
+  if (out) out.textContent = [header, sep, body].join('\n');
+}
+
+function utilFmtCodeBody() {
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>Code formatter</strong><span>Basic JS/CSS/HTML formatting</span></div></div><div class="stage-body">
+    <select data-util="fmt-type" class="select" style="width:100%"><option value="json">JSON</option><option value="css">CSS</option><option value="html">HTML</option></select>
+    <textarea data-util="fmt-in" class="input" rows="8" style="width:100%;margin-top:8px;font-family:var(--font-mono)" placeholder="Paste code"></textarea>
+    <button class="btn btn-primary btn-sm" data-action="util-fmt" style="margin-top:10px">Format</button>
+    <pre id="util-fmt-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+  </div></div>`;
+}
+function utilFmtCode() {
+  const type = document.querySelector('[data-util="fmt-type"]')?.value || 'json';
+  const raw = document.querySelector('[data-util="fmt-in"]')?.value || '';
+  const out = document.getElementById('util-fmt-out');
+  try {
+    if (type === 'json') {
+      if (out) out.textContent = JSON.stringify(JSON.parse(raw), null, 2);
+    } else if (type === 'css') {
+      if (out) out.textContent = raw.replace(/\s*{\s*/g, ' {\n  ').replace(/;\s*/g, ';\n  ').replace(/\s*}\s*/g, '\n}\n').trim();
+    } else {
+      if (out) out.textContent = raw.replace(/></g, '>\n<').trim();
+    }
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); }
+}
+
+function utilXmlBody() {
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>XML formatter</strong><span>Pretty-print XML</span></div></div><div class="stage-body">
+    <textarea data-util="xml-in" class="input" rows="8" style="width:100%;font-family:var(--font-mono)" placeholder="<root></root>"></textarea>
+    <button class="btn btn-primary btn-sm" data-action="util-xml" style="margin-top:10px">Format</button>
+    <pre id="util-xml-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+  </div></div>`;
+}
+function utilXml() {
+  const raw = document.querySelector('[data-util="xml-in"]')?.value || '';
+  const out = document.getElementById('util-xml-out');
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(raw, 'application/xml');
+    const err = doc.querySelector('parsererror');
+    if (err) throw new Error(err.textContent);
+    const ser = new XMLSerializer();
+    // basic indent
+    let xml = ser.serializeToString(doc);
+    xml = xml.replace(/></g, '>\n<');
+    if (out) out.textContent = xml;
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); }
+}
+
+function utilYamlBody() {
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>YAML ↔ JSON</strong><span>Convert between YAML and JSON</span></div></div><div class="stage-body">
+    <textarea data-util="yaml-in" class="input" rows="8" style="width:100%;font-family:var(--font-mono)" placeholder="key: value"></textarea>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <button class="btn btn-primary btn-sm" data-action="util-yaml" data-mode="tojson">YAML → JSON</button>
+      <button class="btn btn-secondary btn-sm" data-action="util-yaml" data-mode="toyaml">JSON → YAML</button>
+    </div>
+    <pre id="util-yaml-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+  </div></div>`;
+}
+function utilYaml() {
+  const mode = (event?.target?.dataset?.mode) || 'tojson';
+  const raw = document.querySelector('[data-util="yaml-in"]')?.value || '';
+  const out = document.getElementById('util-yaml-out');
+  try {
+    if (mode === 'tojson') {
+      // simple YAML to JSON (key: value lines)
+      const obj = {};
+      raw.split('\n').forEach((line) => {
+        const m = line.match(/^(\s*)([^\s:]+)\s*:\s*(.*)$/);
+        if (m) obj[m[2]] = m[3];
+      });
+      if (out) out.textContent = JSON.stringify(obj, null, 2);
+    } else {
+      const obj = JSON.parse(raw);
+      const lines = Object.entries(obj).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`);
+      if (out) out.textContent = lines.join('\n');
+    }
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); }
+}
+
+function utilSqlBody() {
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>SQL formatter</strong><span>Pretty-print SQL</span></div></div><div class="stage-body">
+    <textarea data-util="sql-in" class="input" rows="8" style="width:100%;font-family:var(--font-mono)" placeholder="SELECT * FROM t WHERE x=1"></textarea>
+    <button class="btn btn-primary btn-sm" data-action="util-sql" style="margin-top:10px">Format</button>
+    <pre id="util-sql-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+  </div></div>`;
+}
+function utilSql() {
+  const raw = document.querySelector('[data-util="sql-in"]')?.value || '';
+  const out = document.getElementById('util-sql-out');
+  const formatted = raw
+    .replace(/\b(SELECT|FROM|WHERE|AND|OR|JOIN|LEFT|RIGHT|INNER|OUTER|ON|GROUP BY|ORDER BY|HAVING|LIMIT|INSERT|INTO|VALUES|UPDATE|SET|DELETE)\b/gi, '\n$1')
+    .trim();
+  if (out) out.textContent = formatted;
+}
+
+function utilCurlBody() {
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>cURL builder</strong><span>Build cURL commands</span></div></div><div class="stage-body">
+    <div class="field"><div class="field-head"><span class="field-label">URL</span></div><input type="text" data-util="curl-url" class="input" style="width:100%" placeholder="https://api.example.com/data" /></div>
+    <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Method</span></div><select data-util="curl-method" class="select" style="width:100%"><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option><option>PATCH</option></select></div>
+    <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Headers (one per line: Key: Value)</span></div><textarea data-util="curl-headers" class="input" rows="3" style="width:100%;font-family:var(--font-mono)"></textarea></div>
+    <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Body</span></div><textarea data-util="curl-body" class="input" rows="3" style="width:100%;font-family:var(--font-mono)"></textarea></div>
+    <button class="btn btn-primary btn-sm" data-action="util-curl" style="margin-top:10px">Build</button>
+    <pre id="util-curl-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+  </div></div>`;
+}
+function utilCurl() {
+  const url = document.querySelector('[data-util="curl-url"]')?.value || '';
+  const method = document.querySelector('[data-util="curl-method"]')?.value || 'GET';
+  const headers = (document.querySelector('[data-util="curl-headers"]')?.value || '').split('\n').filter(Boolean);
+  const body = document.querySelector('[data-util="curl-body"]')?.value || '';
+  const out = document.getElementById('util-curl-out');
+  let cmd = `curl -X ${method} '${url}'`;
+  headers.forEach((h) => { cmd += ` \\\n  -H '${h.trim()}'`; });
+  if (body) cmd += ` \\\n  -d '${body.replace(/'/g, "\\'")}'`;
+  if (out) out.textContent = cmd;
+}
+
+function utilImg2PdfBody() {
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>Images to PDF</strong><span>Combine images into a PDF</span></div></div><div class="stage-body">
+    <label class="btn btn-secondary btn-sm" for="util-i2p-files">Choose images</label>
+    <input id="util-i2p-files" type="file" accept="image/*" multiple data-util="i2p-files" hidden />
+    <button class="btn btn-primary btn-sm" data-action="util-i2p" style="margin-top:10px">Generate PDF</button>
+    <div id="util-i2p-out" class="util-out"></div>
+  </div></div>`;
+}
+async function utilImg2Pdf() {
+  const files = document.querySelector('[data-util="i2p-files"]')?.files;
+  const out = document.getElementById('util-i2p-out');
+  if (!files || !files.length) { if (out) out.innerHTML = '<p class="muted">Choose images first.</p>'; return; }
+  // Simple: open each image in a new tab? Instead generate a minimal PDF with images as XObjects is complex.
+  // Fallback: create an HTML page and trigger print.
+  const imgs = await Promise.all([...files].map((f) => new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(f); })));
+  const w = window.open('', '_blank');
+  if (w) {
+    w.document.write('<html><body style="margin:0">' + imgs.map((src) => `<img src="${src}" style="max-width:100%;page-break-after:always" />`).join('') + '</body></html>');
+    w.document.close();
+    w.focus();
+    setTimeout(() => { w.print(); }, 500);
+  }
+  if (out) out.innerHTML = `<p class="muted">Opened print dialog for ${files.length} image(s).</p>`;
+}
+
+function utilDocCompareBody() {
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>Document compare</strong><span>Diff two texts</span></div></div><div class="stage-body">
+    <textarea data-util="dc-a" class="input" rows="6" style="width:100%;font-family:var(--font-mono)" placeholder="Text A"></textarea>
+    <textarea data-util="dc-b" class="input" rows="6" style="width:100%;margin-top:8px;font-family:var(--font-mono)" placeholder="Text B"></textarea>
+    <button class="btn btn-primary btn-sm" data-action="util-dc" style="margin-top:10px">Compare</button>
+    <pre id="util-dc-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+  </div></div>`;
+}
+function utilDocCompare() {
+  const a = (document.querySelector('[data-util="dc-a"]')?.value || '').split('\n');
+  const b = (document.querySelector('[data-util="dc-b"]')?.value || '').split('\n');
+  const out = document.getElementById('util-dc-out');
+  const max = Math.max(a.length, b.length);
+  const lines = [];
+  for (let i = 0; i < max; i++) {
+    if (a[i] === b[i]) lines.push(`  ${a[i] ?? ''}`);
+    else {
+      if (a[i] !== undefined) lines.push(`- ${a[i]}`);
+      if (b[i] !== undefined) lines.push(`+ ${b[i]}`);
+    }
+  }
+  if (out) out.textContent = lines.join('\n');
+}
+
+function utilMdEditorBody() {
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>Markdown editor</strong><span>Live preview</span></div></div><div class="stage-body">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <textarea data-util="mde-in" class="input" rows="12" style="width:100%;font-family:var(--font-mono)" placeholder="# Heading"></textarea>
+      <div id="util-mde-out" style="border:1px solid var(--border);border-radius:8px;padding:10px;overflow:auto;max-height:300px"></div>
+    </div>
+    <button class="btn btn-primary btn-sm" data-action="util-mde" style="margin-top:10px">Render preview</button>
+  </div></div>`;
+}
+function utilMdEditor() {
+  const raw = document.querySelector('[data-util="mde-in"]')?.value || '';
+  const out = document.getElementById('util-mde-out');
+  let html = raw
+    .replace(/^### (.*)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.*)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.*)$/gm, '<h1>$1</h1>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/`(.*?)`/g, '<code>$1</code>')
+    .replace(/^\- (.*)$/gm, '<li>$1</li>')
+    .replace(/\n/g, '<br>');
+  if (out) out.innerHTML = html;
+}
+
+function utilCronHumanBody() {
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>Cron to human</strong><span>Describe a cron expression</span></div></div><div class="stage-body">
+    <input type="text" data-util="cronh-in" class="input" style="width:100%;font-family:var(--font-mono)" placeholder="*/5 * * * *" />
+    <button class="btn btn-primary btn-sm" data-action="util-cronh" style="margin-top:10px">Describe</button>
+    <pre id="util-cronh-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
+  </div></div>`;
+}
+function utilCronHuman() {
+  const raw = (document.querySelector('[data-util="cronh-in"]')?.value || '').trim();
+  const out = document.getElementById('util-cronh-out');
+  const parts = raw.split(/\s+/);
+  if (parts.length !== 5) { if (out) out.textContent = 'Need 5 fields.'; return; }
+  const [m, h, dom, mon, dow] = parts;
+  const desc = `Runs at minute ${m}, hour ${h}, day-of-month ${dom}, month ${mon}, day-of-week ${dow}.`;
+  if (out) out.textContent = desc;
+}
+
+function utilTzConvBody() {
+  return utilTimezoneBody();
+}
+function utilTzConv() { utilTimezone(); }
