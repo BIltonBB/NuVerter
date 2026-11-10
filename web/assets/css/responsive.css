@@ -337,16 +337,25 @@
 
 /* ---------- mobile text hardening (UX overhaul Phase 1) ---------- */
 @media (max-width: 720px) {
-  html, body { font-size: 14px; }
+  html, body { font-size: 14px; overflow-x: hidden; }
   .eyebrow, .nav-index, .nav-count, .stage-meta, .trust-row, .ad-copy, .ad-label,
-  .settings-summary, .result-card .mono, .queue-meta .eta { font-size: 12px !important; }
-  .field-label, .field-value, .stage-head-copy span, .crumbs, .view-sub { font-size: 12.5px; }
-  .btn, .nav-item, .format-chip, .queue-run { min-height: 36px; }
+  .settings-summary, .result-card .mono, .queue-meta .eta,
+  .engine-widget-copy small, .local-copy small, .plans-hero-copy,
+  .format-chip small, .sub-status-head strong, .sub-cue-num,
+  .history-stat-label, .history-stat-sub, .queue-side .status-text { font-size: 12px !important; }
+  .field-label, .field-value, .stage-head-copy span, .crumbs, .view-sub,
+  .ws-rail-label, .nav-item span { font-size: 12.5px; }
+  .btn, .nav-item, .format-chip, .queue-run, .ws-rail-icononly,
+  .segmented button { min-height: 36px; }
+  .segmented button { font-size: 12px; }
+  .segmented { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   input.input, select.select, textarea.input { max-width: 100%; box-sizing: border-box; }
   .util-tabs button, .settings-tabs button { white-space: nowrap; }
-  .stage-head-copy strong, .view-title { word-break: break-word; }
+  .stage-head-copy strong, .view-title, .ws-rail-label { word-break: break-word; overflow-wrap: anywhere; }
   /* prevent horizontal scroll on small viewports */
-  .workspace, .tool-grid, .tool-layout, .stage-card, .stage-body { max-width: 100%; overflow-x: hidden; }
+  .app, .workspace, .tool-grid, .tool-layout, .stage-card, .stage-body,
+  .ws-premiere, .ws-premiere-stage, .ws-premiere-inspector { max-width: 100%; overflow-x: hidden; }
+  .ws-rail-icononly .ws-rail-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
 
 @media (max-width: 480px) {

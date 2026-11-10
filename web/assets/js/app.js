@@ -386,6 +386,8 @@ const state = {
     appAccentDocs: '#f59e0b',
     appAccentAI: '#8b5cf6',
     appAccentDev: '#10b981',
+    uiMotion: true,
+    liveActivity: true,
     gradientBg: false,
     appearancePreset: 'studio',
     bgColor: '',
@@ -399,6 +401,14 @@ const state = {
     radiusScale: 1,
     glow: true,
     fontFamily: 'inter',
+    fontBody: 'inter',
+    fontHeading: 'inter',
+    fontMono: 'mono',
+    fontNumeric: 'mono',
+    appFontMedia: '',
+    appFontDocs: '',
+    appFontAI: '',
+    appFontDev: '',
     fontSizeScale: 100,
     letterSpacing: 0,
     lineHeight: 100,
@@ -785,8 +795,16 @@ function applyAppearance() {
     mono: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
     serif: 'Georgia, "Times New Roman", serif'
   };
-  const chosen = fontMap[p.fontFamily] || fontMap.inter;
-  root.setProperty('--font-sans', chosen);
+  const resolveFont = (key) => fontMap[key] || fontMap.inter;
+  const bodyFont = resolveFont(p.fontBody || p.fontFamily);
+  const headingFont = resolveFont(p.fontHeading || p.fontBody || p.fontFamily);
+  const monoFont = resolveFont(p.fontMono || 'mono');
+  const numericFont = resolveFont(p.fontNumeric || p.fontMono || 'mono');
+  root.setProperty('--font-body', bodyFont);
+  root.setProperty('--font-heading', headingFont);
+  root.setProperty('--font-mono', monoFont);
+  root.setProperty('--font-numeric', numericFont);
+  root.setProperty('--font-sans', bodyFont);
 
   // Typography scale -----------------------------------------------------
   const fsScale = Math.max(80, Math.min(130, Number(p.fontSizeScale) || 100)) / 100;
@@ -842,6 +860,8 @@ function applyAppearance() {
   document.documentElement.classList.toggle('has-custom-appearance', Boolean(
     p.accentColor || p.buttonColor || p.bgColor || p.surfaceColor || p.sidebarColor || p.borderColor || p.textColor
   ));
+  document.body.classList.toggle('motion-off', p.uiMotion === false);
+  document.body.classList.toggle('live-off', p.liveActivity === false);
 }
 
 function applySidebarPosition() {
@@ -897,6 +917,16 @@ function resetAppearance() {
   state.prefs.glow = true;
   state.prefs.gradientBg = false;
   state.prefs.fontFamily = 'inter';
+  state.prefs.uiMotion = true;
+  state.prefs.liveActivity = true;
+  state.prefs.fontBody = 'inter';
+  state.prefs.fontHeading = 'inter';
+  state.prefs.fontMono = 'mono';
+  state.prefs.fontNumeric = 'mono';
+  state.prefs.appFontMedia = '';
+  state.prefs.appFontDocs = '';
+  state.prefs.appFontAI = '';
+  state.prefs.appFontDev = '';
   state.prefs.fontSizeScale = 100;
   state.prefs.letterSpacing = 0;
   state.prefs.lineHeight = 100;
@@ -11276,6 +11306,24 @@ function renderView() {
       delete document.body.dataset.app;
       ['--accent','--accent-strong','--accent-bright','--accent-text','--accent-soft','--accent-border'].forEach((v) => document.body.style.removeProperty(v));
     }
+  // Per-app font override (mirrors per-app accent pattern).
+  try {
+    if (identityOn && _appCfg && _appCfg.group) {
+      const fontKey = _appCfg.group === 'media' ? 'appFontMedia' : _appCfg.group === 'documents' ? 'appFontDocs' : _appCfg.group === 'ai' ? 'appFontAI' : _appCfg.group === 'developer' ? 'appFontDev' : '';
+      const fk = fontKey && state.prefs && state.prefs[fontKey];
+      if (fk) {
+        const fm = { inter: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', system: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', mono: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace', serif: 'Georgia, "Times New Roman", serif' };
+        const val = fm[fk] || fm.inter;
+        document.body.style.setProperty('--font-body', val);
+        document.body.style.setProperty('--font-sans', val);
+        document.body.style.setProperty('--font-heading', val);
+      } else {
+        document.body.style.removeProperty('--font-body');
+        document.body.style.removeProperty('--font-sans');
+        document.body.style.removeProperty('--font-heading');
+      }
+    }
+  } catch {}
   } catch { if (!uniqueUIOn) delete document.body.dataset.app; }
   // App mode: app's own rail becomes navigation; sidebar follows the user's position choice.
   document.body.classList.toggle('app-mode', appMode);
@@ -13250,6 +13298,16 @@ function settingsBody() {
             <option value="serif" ${state.prefs.fontFamily === 'serif' ? 'selected' : ''}>Serif</option>
           </select>
         </div>
+        ${[['Body text','fontBody'],['Headings','fontHeading'],['Mono / code','fontMono'],['Numbers','fontNumeric']].map(([label,key]) => `
+        <div class="settings-item">
+          <div class="settings-item-copy"><strong>${label} font</strong><small>Font family for ${label.toLowerCase()}</small></div>
+          <select data-field="prefs.${key}" class="select" style="width:140px">
+            <option value="inter" ${state.prefs[key] === 'inter' ? 'selected' : ''}>Inter</option>
+            <option value="system" ${state.prefs[key] === 'system' ? 'selected' : ''}>System</option>
+            <option value="mono" ${state.prefs[key] === 'mono' ? 'selected' : ''}>Mono</option>
+            <option value="serif" ${state.prefs[key] === 'serif' ? 'selected' : ''}>Serif</option>
+          </select>
+        </div>`).join('')}
         <div class="settings-item">
           <div class="settings-item-copy"><strong>Font size</strong><small>${state.prefs.fontSizeScale}%</small></div>
           <input type="range" min="80" max="130" step="1" data-field="prefs.fontSizeScale" value="${state.prefs.fontSizeScale}" style="width:140px" />
@@ -13310,6 +13368,14 @@ function settingsBody() {
           <div class="settings-item-copy"><strong>Glow effects</strong><small>Ambient accent glow</small></div>
           <button class="switch" role="switch" aria-checked="${state.prefs.glow}" aria-label="Glow effects" data-toggle="prefs.glow"></button>
         </div>
+        <div class="settings-item">
+          <div class="settings-item-copy"><strong>UI motion</strong><small>Micro-interactions & transitions</small></div>
+          <button class="switch" role="switch" aria-checked="${state.prefs.uiMotion !== false}" aria-label="UI motion" data-toggle="prefs.uiMotion"></button>
+        </div>
+        <div class="settings-item">
+          <div class="settings-item-copy"><strong>Live activity</strong><small>Pulses & progress sheen</small></div>
+          <button class="switch" role="switch" aria-checked="${state.prefs.liveActivity !== false}" aria-label="Live activity" data-toggle="prefs.liveActivity"></button>
+        </div>
       </div>
     </div>
     </details>
@@ -13364,6 +13430,17 @@ function settingsBody() {
             <input type="color" data-field="prefs.${key}" value="${esc(state.prefs[key] || def)}" style="width:44px;height:28px;border:0;background:transparent;cursor:pointer" />
           </div>`;
         }).join('')}
+        ${[['Media','appFontMedia'],['Documents','appFontDocs'],['AI Lab','appFontAI'],['Developer','appFontDev']].map(([label,key]) => `
+        <div class="settings-item">
+          <div class="settings-item-copy"><strong>${label} font</strong><small>Override font for ${label} app (blank = global)</small></div>
+          <select data-field="prefs.${key}" class="select" style="width:140px">
+            <option value="" ${(state.prefs[key] || '') === '' ? 'selected' : ''}>Global</option>
+            <option value="inter" ${state.prefs[key] === 'inter' ? 'selected' : ''}>Inter</option>
+            <option value="system" ${state.prefs[key] === 'system' ? 'selected' : ''}>System</option>
+            <option value="mono" ${state.prefs[key] === 'mono' ? 'selected' : ''}>Mono</option>
+            <option value="serif" ${state.prefs[key] === 'serif' ? 'selected' : ''}>Serif</option>
+          </select>
+        </div>`).join('')}
       </div>
     </div>
     <div class="modal-section">
@@ -13527,7 +13604,7 @@ function openSettings() {
 }
 
 function resetPreferences() {
-  state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: false, appUniqueUI: true, appUniqueUI2: true, sidebarPosition: 'left', appAccents: false, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' };
+  state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: false, appUniqueUI: true, appUniqueUI2: true, sidebarPosition: 'left', appAccents: false, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981', fontFamily: 'inter', fontBody: 'inter', fontHeading: 'inter', fontMono: 'mono', fontNumeric: 'mono', appFontMedia: '', appFontDocs: '', appFontAI: '', appFontDev: '', uiMotion: true, liveActivity: true };
   savePrefs();
   applyTheme();
   renderSettingsBody();
@@ -13541,7 +13618,7 @@ async function privacyReset() {
   try { if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.map((k) => caches.delete(k))); } } catch {}
   try { localStorage.removeItem('NuVerter-converter'); localStorage.removeItem('NuVerter-prefs'); localStorage.removeItem('NuVerter-ai-chat'); localStorage.removeItem('NuVerter-workflows'); } catch {}
 try { const db = await openDB(); const tx = db.transaction(DB_WORKFLOWS_STORE, 'readwrite'); tx.objectStore(DB_WORKFLOWS_STORE).clear(); } catch {}
-  try { state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: false, appUniqueUI: true, appUniqueUI2: true, sidebarPosition: 'left', appAccents: false, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981' }; savePrefs(); applyTheme(); } catch {}
+  try { state.prefs = { autoDownload: false, reduceMotion: false, seenWelcome: false, processingMode: 'eco', audioReactive: false, appSidebarSwap: false, appUniqueUI: true, appUniqueUI2: true, sidebarPosition: 'left', appAccents: false, appAccentMedia: '#0ea5e9', appAccentDocs: '#f59e0b', appAccentAI: '#8b5cf6', appAccentDev: '#10b981', fontFamily: 'inter', fontBody: 'inter', fontHeading: 'inter', fontMono: 'mono', fontNumeric: 'mono', appFontMedia: '', appFontDocs: '', appFontAI: '', appFontDev: '', uiMotion: true, liveActivity: true }; savePrefs(); applyTheme(); } catch {}
   try { renderView(); } catch {}
   toast('Privacy reset', 'Queue, results, caches and preferences cleared. Note: browser/OS may retain other copies.', 'success');
 }
@@ -15256,9 +15333,9 @@ function bindEvents() {
   ];
   const CATEGORY_GROUPS = {
     media: ['convert','create','edit','audio'],
-    documents: ['documents'],
-    ai: ['ai'],
-    developer: ['developer','library']
+    documents: ['documents','convert','create'],
+    ai: ['ai','create','edit','audio'],
+    developer: ['developer','library','convert','create']
   };
   const CATEGORY_SUGGESTIONS = {
     media: ['Video Compressor', 'GIF Maker', 'Auto Reframe', 'Audio Extractor'],

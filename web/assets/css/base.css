@@ -20,7 +20,10 @@
 
 :root {
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-body: var(--font-sans);
+  --font-heading: var(--font-sans);
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-numeric: var(--font-mono);
 
   --sidebar-w: 284px;
   --topbar-h: 64px;
@@ -148,12 +151,15 @@ body {
   overflow: hidden;
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
   font-size: 13px;
   line-height: 1.5;
+  overflow-wrap: break-word;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+}
+input, select, textarea { max-width: 100%; box-sizing: border-box; }
 }
 
 body::after {
@@ -172,6 +178,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 a { color: inherit; text-decoration: none; }
 h1, h2, h3, h4, p { margin: 0; }
+h1, h2, h3, h4 { font-family: var(--font-heading); text-wrap: balance; }
+.mono, code, kbd, .mono { font-variant-numeric: tabular-nums; }
 ul { margin: 0; padding: 0; list-style: none; }
 img, video, canvas { max-width: 100%; }
 svg { flex: none; }

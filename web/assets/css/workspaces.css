@@ -486,7 +486,7 @@ body.app-unique-2[data-app="documents"] .ws-result-row { transition: background 
 /* Premiere-style Media Studio layout */
 .ws-premiere {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) 280px;
+  grid-template-columns: minmax(132px, 180px) minmax(0, 1fr) 280px;
   gap: 8px;
   align-items: start;
 }
@@ -513,9 +513,12 @@ body.app-unique-2[data-app="documents"] .ws-result-row { transition: background 
 }
 .ws-rail-icononly .ws-rail-label {
   font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.25;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 .ws-premiere-stage { min-width: 0; }
 .ws-premiere-inspector {
@@ -552,11 +555,17 @@ body.app-unique-2[data-app="documents"] .ws-result-row { transition: background 
   text-overflow: ellipsis;
 }
 @media (max-width: 900px) {
-  .ws-premiere { grid-template-columns: 56px 1fr; }
+  .ws-premiere { grid-template-columns: 104px 1fr; }
   .ws-premiere-inspector { grid-column: 1 / -1; max-height: none; }
 }
 @media (max-width: 600px) {
   .ws-premiere { grid-template-columns: 1fr; }
   .ws-premiere-rail { flex-direction: row; flex-wrap: wrap; max-height: none; }
+  .ws-premiere-rail .ws-rail-icononly { flex: 1 1 auto; min-width: 120px; }
+  .ws-premiere-rail .ws-rail-icononly .ws-rail-label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .ws-premiere-inspector { max-height: 40vh; }
 }
