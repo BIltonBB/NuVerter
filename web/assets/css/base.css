@@ -54,6 +54,7 @@
   --accent-strong: #6d28d9;
   --accent-bright: #8b5cf6;
   --accent-soft: rgba(124, 58, 237, .07);
+  --accent-tint: rgba(124, 58, 237, .14);
   --accent-border: rgba(124, 58, 237, .22);
   --accent-text: #6d28d9;
   --green: #059669;
@@ -106,6 +107,7 @@ html[data-theme="dark"] {
   --accent-strong: #7c3aed;
   --accent-bright: #c4b5fd;
   --accent-soft: rgba(139, 92, 246, .13);
+  --accent-tint: rgba(139, 92, 246, .2);
   --accent-border: rgba(167, 139, 250, .26);
   --accent-text: #c4b5fd;
   --green: #34d399;
@@ -394,9 +396,9 @@ html.appearance-glow-off .ambient { display: none; }
 .nav-item:hover .icon { color: var(--text-2); }
 .nav-item:active { transform: scale(.992); }
 .nav-item.is-active {
-  color: var(--text);
-  background: var(--accent-soft);
-  border-color: var(--accent-border);
+  color: var(--accent-text);
+  background: var(--accent-tint);
+  border-color: var(--accent);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03);
 }
 .nav-item.is-active .icon { color: var(--accent-text); }
@@ -900,17 +902,18 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
 
 /* ---------- shared sub-category active states ---------- */
 /* Parent category lights up when one of its sub-categories is selected. */
+.nav-group.is-active { box-shadow: inset 3px 0 0 var(--accent); border-radius: 0 8px 8px 0; }
 .nav-group.is-active > .nav-label { color: var(--accent-text); }
 .nav-group.is-active > .nav-label .nav-group-chev { color: var(--accent-text); }
 .ws-rail-title.is-active { color: var(--accent-text); }
 .ws-chip.is-active {
-  background: var(--accent-soft, rgba(0, 0, 0, .06));
-  color: var(--accent-text);
-  border-color: var(--accent-border);
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
 }
-.ws-chip.is-active .icon { color: var(--accent-text); }
+.ws-chip.is-active .icon { color: #fff; }
 .ws-quickstart.is-active {
   background: var(--accent-soft, rgba(0, 0, 0, .06));
-  border-color: var(--accent-border);
+  border-color: var(--accent);
 }
 .ws-acrobat-ops.is-active { border-color: var(--accent-border); }
