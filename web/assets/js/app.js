@@ -19030,7 +19030,7 @@ async function utilAiSeg() {
 }
 
 // 5. Background removal (using segmentation mask)
-function utilAiBgRemoveBody() { return visionBody('aibgremove', 'AI background removal', 'Remove background (local model)', 'Remove BG'); }
+function utilAiBgRemoveBody() { return visionBody('aibgremove', 'AI background removal', 'Remove background (local model)', 'Remove BG') + desktopHint('25MB', 'Background removal'); }
 async function utilAiBgRemove() {
   const file = document.querySelector('[data-util="aibgremove-file"]')?.files?.[0];
   const out = document.getElementById('util-aibgremove-out');
@@ -19136,7 +19136,7 @@ async function utilAiZsod() {
 }
 
 // 9. Super-resolution (image-to-image)
-function utilAiSuperresBody() { return visionBody('aisuperres', 'AI super-resolution', 'Upscale image with AI model', 'Upscale'); }
+function utilAiSuperresBody() { return visionBody('aisuperres', 'AI super-resolution', 'Upscale image with AI model', 'Upscale') + desktopHint('50MB', 'Super-resolution'); }
 async function utilAiSuperres() {
   const file = document.querySelector('[data-util="aisuperres-file"]')?.files?.[0];
   const out = document.getElementById('util-aisuperres-out');
@@ -19165,7 +19165,7 @@ async function utilAiSuperres() {
 }
 
 // 10. Style transfer (image-to-image)
-function utilAiStyleBody() { return visionBody('aistyle', 'AI style transfer', 'Apply artistic style to image', 'Apply style'); }
+function utilAiStyleBody() { return visionBody('aistyle', 'AI style transfer', 'Apply artistic style to image', 'Apply style') + desktopHint('2GB', 'Style transfer'); }
 async function utilAiStyle() {
   const file = document.querySelector('[data-util="aistyle-file"]')?.files?.[0];
   const out = document.getElementById('util-aistyle-out');
@@ -19194,7 +19194,7 @@ async function utilAiStyle() {
 }
 
 // 11. Object removal (segmentation + fill)
-function utilAiObjRemoveBody() { return visionBody('aiobjremove', 'AI object removal', 'Remove objects (basic inpainting)', 'Remove'); }
+function utilAiObjRemoveBody() { return visionBody('aiobjremove', 'AI object removal', 'Remove objects (basic inpainting)', 'Remove') + desktopHint('2GB', 'Object removal'); }
 async function utilAiObjRemove() {
   const file = document.querySelector('[data-util="aiobjremove-file"]')?.files?.[0];
   const out = document.getElementById('util-aiobjremove-out');
@@ -19351,6 +19351,7 @@ function utilFaceRestoreBody() {
     <div class="stage-card">
       <div class="stage-head"><div class="stage-head-copy"><strong>AI face restoration</strong><span>Restore degraded faces (GFPGAN)</span></div></div>
       <div class="stage-body">
+        ${desktopHint('170MB', 'Face restoration')}
         <label class="btn btn-secondary btn-sm" for="util-facerestore-file">Choose image</label>
         <input id="util-facerestore-file" type="file" accept="image/*" data-util="facerestore-file" hidden />
         <p class="muted" style="font-size:11px;margin-top:6px">Model: ~170MB, downloaded once and cached. Works best on front-facing faces.</p>
@@ -19397,6 +19398,7 @@ function utilColorizeBody() {
     <div class="stage-card">
       <div class="stage-head"><div class="stage-head-copy"><strong>AI colorization</strong><span>Colorize grayscale photos (DDColor)</span></div></div>
       <div class="stage-body">
+        ${desktopHint('115MB', 'Colorization')}
         <label class="btn btn-secondary btn-sm" for="util-colorize-file">Choose image</label>
         <input id="util-colorize-file" type="file" accept="image/*" data-util="colorize-file" hidden />
         <p class="muted" style="font-size:11px;margin-top:6px">Model: ~115MB, downloaded once and cached.</p>
@@ -19437,6 +19439,7 @@ function utilRealEsrganBody() {
     <div class="stage-card">
       <div class="stage-head"><div class="stage-head-copy"><strong>AI super-resolution (Real-ESRGAN)</strong><span>4x upscale with detail recovery</span></div></div>
       <div class="stage-body">
+        ${desktopHint('34MB', 'Real-ESRGAN')}
         <label class="btn btn-secondary btn-sm" for="util-realesrgan-file">Choose image</label>
         <input id="util-realesrgan-file" type="file" accept="image/*" data-util="realesrgan-file" hidden />
         <p class="muted" style="font-size:11px;margin-top:6px">Model: ~34MB (w16), downloaded once and cached.</p>
@@ -19502,6 +19505,7 @@ function utilAudio2MidiBody() {
     <div class="stage-card">
       <div class="stage-head"><div class="stage-head-copy"><strong>Audio to MIDI</strong><span>Extract MIDI from audio (basic pitch detection)</span></div></div>
       <div class="stage-body">
+        ${desktopHint(null, 'Audio to MIDI')}
         <label class="btn btn-secondary btn-sm" for="util-a2m-file">Choose audio</label>
         <input id="util-a2m-file" type="file" accept="audio/*" data-util="a2m-file" hidden />
         <p class="muted" style="font-size:11px;margin-top:6px">Uses autocorrelation pitch detection. For polyphonic audio, results are monophonic.</p>
@@ -19602,6 +19606,7 @@ function utilStemSepBody() {
     <div class="stage-card">
       <div class="stage-head"><div class="stage-head-copy"><strong>AI stem separation</strong><span>Split audio into vocals, drums, bass, other</span></div></div>
       <div class="stage-body">
+        ${desktopHint('166MB+', 'Stem separation')}
         <label class="btn btn-secondary btn-sm" for="util-stem-file">Choose audio</label>
         <input id="util-stem-file" type="file" accept="audio/*" data-util="stem-file" hidden />
         <p class="muted" style="font-size:11px;margin-top:6px">Uses HTDemucs (~166MB). First run downloads the model. CPU inference may be slow.</p>
@@ -19626,7 +19631,8 @@ function utilVoiceCloneBody() {
     <div class="stage-card">
       <div class="stage-head"><div class="stage-head-copy"><strong>AI voice cloning</strong><span>Clone a voice from a sample</span></div></div>
       <div class="stage-body">
-        <p class="muted" style="font-size:12px">Voice cloning requires a TTS model with voice cloning support (e.g., Coqui XTTS). This is not yet available as a browser model.</p>
+        ${desktopHint('2GB', 'Voice cloning')}
+        <p class="muted" style="font-size:12px">Voice cloning requires a TTS model with voice cloning support (e.g., Coqui XTTS). Desktop app recommended.</p>
         <div id="util-vc-out" class="util-out" style="margin-top:10px"></div>
       </div>
     </div>`;
@@ -19638,7 +19644,8 @@ function utilMusicGenBody() {
     <div class="stage-card">
       <div class="stage-head"><div class="stage-head-copy"><strong>AI music generation</strong><span>Generate music from text (MusicGen)</span></div></div>
       <div class="stage-body">
-        <p class="muted" style="font-size:12px">MusicGen requires ~2GB model download. Implementation pending.</p>
+        ${desktopHint('2GB', 'Music generation')}
+        <p class="muted" style="font-size:12px">MusicGen requires ~2GB model. Desktop app recommended.</p>
         <div id="util-musicgen-out" class="util-out" style="margin-top:10px"></div>
       </div>
     </div>`;
@@ -19650,7 +19657,8 @@ function utilTalkingHeadBody() {
     <div class="stage-card">
       <div class="stage-head"><div class="stage-head-copy"><strong>AI talking head</strong><span>Animate a face from audio</span></div></div>
       <div class="stage-body">
-        <p class="muted" style="font-size:12px">Talking head generation requires specialized models (Wav2Lip/SadTalker) not yet available for browser.</p>
+        ${desktopHint('1GB+', 'Talking head')}
+        <p class="muted" style="font-size:12px">Talking head requires specialized models. Desktop app recommended.</p>
         <div id="util-talkinghead-out" class="util-out" style="margin-top:10px"></div>
       </div>
     </div>`;
@@ -19662,7 +19670,8 @@ function utilInpaintBody() {
     <div class="stage-card">
       <div class="stage-head"><div class="stage-head-copy"><strong>AI inpainting</strong><span>Fill regions in an image</span></div></div>
       <div class="stage-body">
-        <p class="muted" style="font-size:12px">Inpainting requires Stable Diffusion (~2GB). Implementation pending.</p>
+        ${desktopHint('2GB', 'Inpainting')}
+        <p class="muted" style="font-size:12px">Inpainting requires Stable Diffusion. Desktop app recommended.</p>
         <div id="util-inpaint-out" class="util-out" style="margin-top:10px"></div>
       </div>
     </div>`;
@@ -19674,7 +19683,8 @@ function utilImg2ImgBody() {
     <div class="stage-card">
       <div class="stage-head"><div class="stage-head-copy"><strong>AI image-to-image</strong><span>Transform images with text prompts</span></div></div>
       <div class="stage-body">
-        <p class="muted" style="font-size:12px">Image-to-image requires Stable Diffusion (~2GB). Implementation pending.</p>
+        ${desktopHint('2GB', 'Image-to-image')}
+        <p class="muted" style="font-size:12px">Image-to-image requires Stable Diffusion. Desktop app recommended.</p>
         <div id="util-img2img-out" class="util-out" style="margin-top:10px"></div>
       </div>
     </div>`;
@@ -19686,3 +19696,13 @@ function utilImg2ImgBody() {
 // 14. Background removal - already implemented as utilAiBgRemove (above)
 // 15. Style transfer - already implemented as utilAiStyle (above)
 // 16. Object removal - already implemented as utilAiObjRemove (above)
+// ---------- Desktop recommendation helper ----------
+function isDesktopApp() { return !!(window.__TAURI__ || window.__TAURI_INTERNALS__); }
+function desktopHint(modelSize, toolName) {
+  if (isDesktopApp()) return '';
+  const size = modelSize ? ` (~${modelSize})` : '';
+  return `<div class="modal-note" style="margin:8px 0;padding:8px 10px;border-radius:8px;background:var(--accent-soft,rgba(124,58,237,.08));border:1px solid var(--accent-border,rgba(124,58,237,.2));font-size:11.5px;line-height:1.5">
+    <strong>Desktop recommended:</strong> ${toolName || 'This tool'} works best in the desktop app. Large models${size} download and cache on disk there, avoiding painful browser cache loads.
+    <button class="btn btn-ghost btn-sm" data-action="download-app" style="margin-left:6px;padding:2px 8px;font-size:11px">Get desktop app</button>
+  </div>`;
+}
