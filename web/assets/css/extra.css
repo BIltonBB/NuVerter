@@ -930,18 +930,12 @@
   transition: color .15s ease, background .15s ease, border-color .15s ease;
 }
 .util-cat:hover { color: var(--text); border-color: var(--border-strong); }
-.util-cat.is-active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-  box-shadow: 0 2px 12px color-mix(in srgb, var(--accent) 32%, transparent);
-}
-.util-cat.is-active:hover { color: #fff; border-color: var(--accent); }
+.util-cat.is-active { background: var(--accent-soft); color: var(--accent-text); border-color: var(--accent-border); }
 .util-cat-count {
   font-size: 10px; line-height: 1; padding: 3px 5px; border-radius: 999px;
   background: var(--surface-3); color: inherit; opacity: .75;
 }
-.util-cat.is-active .util-cat-count { background: rgba(255, 255, 255, .22); color: #fff; opacity: 1; }
+.util-cat.is-active .util-cat-count { background: var(--surface); opacity: 1; }
 .util-tabs { display: flex; flex-wrap: nowrap; gap: 6px; margin: 10px 0 14px; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 2px; scrollbar-width: thin; }
 .util-tabs.segmented button { flex: 0 0 auto; }
 .util-body { min-height: 240px; }
