@@ -366,6 +366,26 @@ html.appearance-glow-off .ambient { display: none; }
   transition: background .16s, color .16s, border-color .16s, transform .16s;
 }
 .nav-item + .nav-item { margin-top: 2px; }
+/* Grouped sub-tools (AI / Developer / Documents) read as children of the group. */
+.nav-item.is-sub {
+  height: 34px;
+  padding-left: 28px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.nav-item.is-sub .icon { width: 14px; height: 14px; opacity: .75; }
+.nav-item.is-sub::after {
+  content: "";
+  position: absolute;
+  left: 17px;
+  top: 50%;
+  width: 7px;
+  height: 1px;
+  background: var(--border-strong);
+  transform: translateY(-50%);
+}
+.nav-item.is-sub:hover { color: var(--text); }
+.nav-item.is-sub:hover::after { background: var(--accent-border); }
 .nav-item .icon { width: 16px; height: 16px; color: var(--text-3); transition: color .16s; }
 .nav-item span:nth-child(2) {
   flex: 1;
