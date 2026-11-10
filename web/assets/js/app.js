@@ -7583,8 +7583,8 @@ async function utilDocQaAsk() {
 
 function aiToolsView() {
   const tab = state.aiTools?.tab || 'aibg';
-  const tabs = ['aiimg','aibg','aiup','ocr','tts','emb','models','docs','docqa','summarize','md','textpdf','aitranslate','aiparaphrase','aigrammar','aiemail','aimeeting','aikeywords','aisentiment','aiqa','airegex','aisql','aicodeexplain','aicommit','aitest','aipolish','semsearch','scene','bgblur'];
-  const labels = { aiimg:'AI Image', aibg:'AI BG', aiup:'AI Upscale', ocr:'OCR', tts:'TTS', emb:'Embeddings', models:'Models', docs:'Doc Search', docqa:'Doc Q&A', summarize:'Summarizer', md:'Markdown', textpdf:'Text to PDF', aitranslate:'Translator', aiparaphrase:'Paraphraser', aigrammar:'Grammar', aiemail:'Email drafter', aimeeting:'Meeting notes', aikeywords:'Keywords', aisentiment:'Sentiment', aiqa:'Q&A', airegex:'Regex gen', aisql:'SQL gen', aicodeexplain:'Code explain', aicommit:'Commit msg', aitest:'Test gen', aipolish:'Transcription polish', semsearch:'Semantic search', scene:'Scene detect', bgblur:'Bg blur' };
+  const tabs = ['aiimg','aibg','aiup','ocr','tts','emb','models','docs','docqa','summarize','md','textpdf','aitranslate','aiparaphrase','aigrammar','aiemail','aimeeting','aikeywords','aisentiment','aiqa','airegex','aisql','aicodeexplain','aicommit','aitest','aipolish','semsearch','scene','bgblur','aicaption','aiclassify','aidetect','aiseg','aibgremove','aidepth','aizsic','aizsod','aisuperres','aistyle','aiobjremove','aiaudiocls','ainer','aitextcls'];
+  const labels = { aiimg:'AI Image', aibg:'AI BG', aiup:'AI Upscale', ocr:'OCR', tts:'TTS', emb:'Embeddings', models:'Models', docs:'Doc Search', docqa:'Doc Q&A', summarize:'Summarizer', md:'Markdown', textpdf:'Text to PDF', aitranslate:'Translator', aiparaphrase:'Paraphraser', aigrammar:'Grammar', aiemail:'Email drafter', aimeeting:'Meeting notes', aikeywords:'Keywords', aisentiment:'Sentiment', aiqa:'Q&A', airegex:'Regex gen', aisql:'SQL gen', aicodeexplain:'Code explain', aicommit:'Commit msg', aitest:'Test gen', aipolish:'Transcription polish', semsearch:'Semantic search', scene:'Scene detect', bgblur:'Bg blur', aicaption:'Image caption', aiclassify:'Image classify', aidetect:'Object detect', aiseg:'Segmentation', aibgremove:'BG remove (AI)', aidepth:'Depth map', aizsic:'Zero-shot classify', aizsod:'Zero-shot detect', aisuperres:'Super-res', aistyle:'Style transfer', aiobjremove:'Object remove', aiaudiocls:'Audio classify', ainer:'NER', aitextcls:'Text classify' };
   return `
     ${viewHead({ index: '11', kicker: 'AI tools', title: 'AI <span class="accent">utilities.</span>', sub: 'Image generation, background removal, upscaling, OCR, TTS and embeddings — local where it counts.' })}
     <div class="util-tabs segmented" role="tablist">
@@ -7619,6 +7619,20 @@ function aiToolsView() {
         tab === 'semsearch' ? utilSemanticSearchBody() :
         tab === 'scene' ? utilSceneDetectBody() :
         tab === 'bgblur' ? utilBgBlurBody() :
+        tab === 'aicaption' ? utilAiCaptionBody() :
+        tab === 'aiclassify' ? utilAiClassifyBody() :
+        tab === 'aidetect' ? utilAiDetectBody() :
+        tab === 'aiseg' ? utilAiSegBody() :
+        tab === 'aibgremove' ? utilAiBgRemoveBody() :
+        tab === 'aidepth' ? utilAiDepthBody() :
+        tab === 'aizsic' ? utilAiZsicBody() :
+        tab === 'aizsod' ? utilAiZsodBody() :
+        tab === 'aisuperres' ? utilAiSuperresBody() :
+        tab === 'aistyle' ? utilAiStyleBody() :
+        tab === 'aiobjremove' ? utilAiObjRemoveBody() :
+        tab === 'aiaudiocls' ? utilAiAudioClassifyBody() :
+        tab === 'ainer' ? utilAiNerBody() :
+        tab === 'aitextcls' ? utilAiTextClsBody() :
           utilEmbBody()}
     </div>
     <div class="queue-progress tool-progress" id="ai-tools-progress" hidden style="margin-top:10px">
@@ -14518,6 +14532,20 @@ async function handleExtraAction(action, el) {
     case 'util-semsearch': await utilSemanticSearch(); return true;
     case 'util-scene': await utilSceneDetect(); return true;
     case 'util-blur': await utilBgBlur(); return true;
+    case 'util-aicaption': await utilAiCaption(); return true;
+    case 'util-aiclassify': await utilAiClassify(); return true;
+    case 'util-aidetect': await utilAiDetect(); return true;
+    case 'util-aiseg': await utilAiSeg(); return true;
+    case 'util-aibgremove': await utilAiBgRemove(); return true;
+    case 'util-aidepth': await utilAiDepth(); return true;
+    case 'util-aizsic': await utilAiZsic(); return true;
+    case 'util-aizsod': await utilAiZsod(); return true;
+    case 'util-aisuperres': await utilAiSuperres(); return true;
+    case 'util-aistyle': await utilAiStyle(); return true;
+    case 'util-aiobjremove': await utilAiObjRemove(); return true;
+    case 'util-aiaudiocls': await utilAiAudioClassify(); return true;
+    case 'util-ainer': await utilAiNer(); return true;
+    case 'util-aitextcls': await utilAiTextCls(); return true;
     case 'util-emb': await utilEmb(); return true;
     case 'util-imgresize': await utilImgResize(); return true;
     case 'util-videomerge': await utilVideoMerge(); return true;
@@ -18870,4 +18898,385 @@ async function utilBgBlur() {
   const blob = await new Promise((res) => final.toBlob(res, 'image/png'));
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'blurred.png'; a.click(); URL.revokeObjectURL(a.href);
   if (out) out.innerHTML = `<p class="muted">Done · ${c.width}×${c.height}</p>`;
+}
+// ---------- AI vision tools (Transformers.js, local models) ----------
+
+async function getTransformers() {
+  if (window.__transformers) return window.__transformers;
+  // Try v3 first, fall back to v2
+  try {
+    window.__transformers = await import('https://esm.run/@huggingface/transformers@3');
+  } catch (e) {
+    window.__transformers = await import('https://esm.run/@xenova/transformers@2.17.2');
+  }
+  return window.__transformers;
+}
+
+async function runVisionPipeline(task, model, imageBlob, opts) {
+  const { pipeline } = await getTransformers();
+  const p = await pipeline(task, model);
+  const url = URL.createObjectURL(imageBlob);
+  const result = await p(url, opts || {});
+  URL.revokeObjectURL(url);
+  return result;
+}
+
+function visionBody(id, title, sub, btnLabel) {
+  return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>${title}</strong><span>${sub}</span></div></div>
+      <div class="stage-body">
+        <label class="btn btn-secondary btn-sm" for="util-${id}-file">Choose image</label>
+        <input id="util-${id}-file" type="file" accept="image/*" data-util="${id}-file" hidden />
+        <button class="btn btn-primary btn-sm" data-action="util-${id}" style="margin-top:10px">${btnLabel}</button>
+        <div id="util-${id}-status" class="muted" style="margin-top:8px;font-size:12px"></div>
+        <div id="util-${id}-out" class="util-out" style="margin-top:10px"></div>
+      </div>
+    </div>`;
+}
+
+// 1. Image captioning
+function utilAiCaptionBody() { return visionBody('aicaption', 'AI image captioning', 'Describe an image with local AI', 'Caption'); }
+async function utilAiCaption() {
+  const file = document.querySelector('[data-util="aicaption-file"]')?.files?.[0];
+  const out = document.getElementById('util-aicaption-out');
+  const status = document.getElementById('util-aicaption-status');
+  if (!file) { if (out) out.innerHTML = '<p class="muted">Choose an image first.</p>'; return; }
+  if (status) status.textContent = 'Loading model… (first run downloads ~100MB)';
+  try {
+    const res = await runVisionPipeline('image-to-text', 'Xenova/vit-gpt2-image-captioning', file);
+    const text = Array.isArray(res) ? res.map((r) => r.generated_text).join('\n') : (res?.generated_text || JSON.stringify(res));
+    if (out) out.innerHTML = `<p style="margin-top:8px">${esc(text)}</p>`;
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; if (status) status.textContent = ''; }
+}
+
+// 2. Image classification
+function utilAiClassifyBody() { return visionBody('aiclassify', 'AI image classification', 'Classify image contents', 'Classify'); }
+async function utilAiClassify() {
+  const file = document.querySelector('[data-util="aiclassify-file"]')?.files?.[0];
+  const out = document.getElementById('util-aiclassify-out');
+  const status = document.getElementById('util-aiclassify-status');
+  if (!file) { if (out) out.innerHTML = '<p class="muted">Choose an image first.</p>'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const res = await runVisionPipeline('image-classification', 'Xenova/vit-base-patch16-224', file, { top_k: 5 });
+    const items = Array.isArray(res) ? res : [res];
+    if (out) out.innerHTML = items.map((r) => `<div class="mono" style="margin-top:4px">${esc(r.label)} — ${(r.score * 100).toFixed(1)}%</div>`).join('');
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; if (status) status.textContent = ''; }
+}
+
+// 3. Object detection
+function utilAiDetectBody() { return visionBody('aidetect', 'AI object detection', 'Detect objects in an image', 'Detect'); }
+async function utilAiDetect() {
+  const file = document.querySelector('[data-util="aidetect-file"]')?.files?.[0];
+  const out = document.getElementById('util-aidetect-out');
+  const status = document.getElementById('util-aidetect-status');
+  if (!file) { if (out) out.innerHTML = '<p class="muted">Choose an image first.</p>'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const res = await runVisionPipeline('object-detection', 'Xenova/detr-resnet-50', file, { threshold: 0.5 });
+    const items = Array.isArray(res) ? res : [res];
+    // draw boxes
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+    const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+    const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0);
+    ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 3; ctx.font = '16px sans-serif'; ctx.fillStyle = '#ef4444';
+    for (const r of items) {
+      const b = r.box;
+      ctx.strokeRect(b.xmin, b.ymin, b.xmax - b.xmin, b.ymax - b.ymin);
+      ctx.fillText(`${r.label} ${(r.score * 100).toFixed(0)}%`, b.xmin, Math.max(12, b.ymin - 4));
+    }
+    URL.revokeObjectURL(url);
+    const blob = await new Promise((res) => c.toBlob(res, 'image/png'));
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'detected.png'; a.click(); URL.revokeObjectURL(a.href);
+    if (out) out.innerHTML = `<p class="muted">Detected ${items.length} object(s).</p>` + items.map((r) => `<div class="mono" style="margin-top:4px">${esc(r.label)} ${(r.score * 100).toFixed(1)}%</div>`).join('');
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; if (status) status.textContent = ''; }
+}
+
+// 4. Image segmentation (background removal)
+function utilAiSegBody() { return visionBody('aiseg', 'AI image segmentation', 'Segment objects / remove background', 'Segment'); }
+async function utilAiSeg() {
+  const file = document.querySelector('[data-util="aiseg-file"]')?.files?.[0];
+  const out = document.getElementById('util-aiseg-out');
+  const status = document.getElementById('util-aiseg-status');
+  if (!file) { if (out) out.innerHTML = '<p class="muted">Choose an image first.</p>'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const res = await runVisionPipeline('image-segmentation', 'Xenova/detr-resnet-50-panoptic', file);
+    const items = Array.isArray(res) ? res : [res];
+    if (out) out.innerHTML = `<p class="muted">Found ${items.length} segment(s).</p>` + items.map((r) => `<div class="mono" style="margin-top:4px">${esc(r.label)} ${(r.score * 100).toFixed(1)}%</div>`).join('');
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; if (status) status.textContent = ''; }
+}
+
+// 5. Background removal (using segmentation mask)
+function utilAiBgRemoveBody() { return visionBody('aibgremove', 'AI background removal', 'Remove background (local model)', 'Remove BG'); }
+async function utilAiBgRemove() {
+  const file = document.querySelector('[data-util="aibgremove-file"]')?.files?.[0];
+  const out = document.getElementById('util-aibgremove-out');
+  const status = document.getElementById('util-aibgremove-status');
+  if (!file) { if (out) out.innerHTML = '<p class="muted">Choose an image first.</p>'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const { pipeline } = await getTransformers();
+    const seg = await pipeline('background-removal', 'Xenova/modnet');
+    const url = URL.createObjectURL(file);
+    const result = await seg(url);
+    URL.revokeObjectURL(url);
+    // result is an image with alpha
+    if (out) out.innerHTML = '<p class="muted">Background removed. Check downloads.</p>';
+    if (result && result.toBlob) {
+      const blob = await result.toBlob();
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'no-bg.png'; a.click(); URL.revokeObjectURL(a.href);
+    } else if (result && result.canvas) {
+      const blob = await new Promise((res) => result.canvas.toBlob(res, 'image/png'));
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'no-bg.png'; a.click(); URL.revokeObjectURL(a.href);
+    }
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; if (status) status.textContent = ''; }
+}
+
+// 6. Depth estimation
+function utilAiDepthBody() { return visionBody('aidepth', 'AI depth estimation', 'Estimate depth map from image', 'Estimate'); }
+async function utilAiDepth() {
+  const file = document.querySelector('[data-util="aidepth-file"]')?.files?.[0];
+  const out = document.getElementById('util-aidepth-out');
+  const status = document.getElementById('util-aidepth-status');
+  if (!file) { if (out) out.innerHTML = '<p class="muted">Choose an image first.</p>'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const res = await runVisionPipeline('depth-estimation', 'Xenova/depth-anything-small-hf', file);
+    // res.depth is a RawImage
+    if (res?.depth) {
+      const canvas = res.depth.toCanvas ? res.depth.toCanvas() : null;
+      if (canvas) {
+        const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'depth.png'; a.click(); URL.revokeObjectURL(a.href);
+      }
+    }
+    if (out) out.innerHTML = '<p class="muted">Depth map generated.</p>';
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; if (status) status.textContent = ''; }
+}
+
+// 7. Zero-shot image classification
+function utilAiZsicBody() { return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>AI zero-shot image classification</strong><span>Classify with custom labels</span></div></div>
+      <div class="stage-body">
+        <label class="btn btn-secondary btn-sm" for="util-aizsic-file">Choose image</label>
+        <input id="util-aizsic-file" type="file" accept="image/*" data-util="aizsic-file" hidden />
+        <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Labels (comma-separated)</span></div><input type="text" data-util="aizsic-labels" class="input" style="width:100%" value="cat, dog, car, person" /></div>
+        <button class="btn btn-primary btn-sm" data-action="util-aizsic" style="margin-top:10px">Classify</button>
+        <div id="util-aizsic-status" class="muted" style="margin-top:8px;font-size:12px"></div>
+        <div id="util-aizsic-out" class="util-out" style="margin-top:10px"></div>
+      </div>
+    </div>`; }
+async function utilAiZsic() {
+  const file = document.querySelector('[data-util="aizsic-file"]')?.files?.[0];
+  const out = document.getElementById('util-aizsic-out');
+  const status = document.getElementById('util-aizsic-status');
+  const labels = (document.querySelector('[data-util="aizsic-labels"]')?.value || '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (!file || !labels.length) { if (out) out.innerHTML = '<p class="muted">Choose an image and labels.</p>'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const res = await runVisionPipeline('zero-shot-image-classification', 'Xenova/clip-vit-base-patch32', file, { candidate_labels: labels });
+    const items = Array.isArray(res) ? res : [res];
+    if (out) out.innerHTML = items.map((r) => `<div class="mono" style="margin-top:4px">${esc(r.label)} — ${(r.score * 100).toFixed(1)}%</div>`).join('');
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; if (status) status.textContent = ''; }
+}
+
+// 8. Zero-shot object detection
+function utilAiZsodBody() { return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>AI zero-shot object detection</strong><span>Detect objects by text query</span></div></div>
+      <div class="stage-body">
+        <label class="btn btn-secondary btn-sm" for="util-aizsod-file">Choose image</label>
+        <input id="util-aizsod-file" type="file" accept="image/*" data-util="aizsod-file" hidden />
+        <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Labels (comma-separated)</span></div><input type="text" data-util="aizsod-labels" class="input" style="width:100%" value="person, car, dog" /></div>
+        <button class="btn btn-primary btn-sm" data-action="util-aizsod" style="margin-top:10px">Detect</button>
+        <div id="util-aizsod-status" class="muted" style="margin-top:8px;font-size:12px"></div>
+        <div id="util-aizsod-out" class="util-out" style="margin-top:10px"></div>
+      </div>
+    </div>`; }
+async function utilAiZsod() {
+  const file = document.querySelector('[data-util="aizsod-file"]')?.files?.[0];
+  const out = document.getElementById('util-aizsod-out');
+  const status = document.getElementById('util-aizsod-status');
+  const labels = (document.querySelector('[data-util="aizsod-labels"]')?.value || '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (!file || !labels.length) { if (out) out.innerHTML = '<p class="muted">Choose an image and labels.</p>'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const res = await runVisionPipeline('zero-shot-object-detection', 'Xenova/owlvit-base-patch32', file, { candidate_labels: labels, threshold: 0.1 });
+    const items = Array.isArray(res) ? res : [res];
+    if (out) out.innerHTML = items.map((r) => `<div class="mono" style="margin-top:4px">${esc(r.label)} ${(r.score * 100).toFixed(1)}%</div>`).join('') || '<p class="muted">No objects found.</p>';
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; if (status) status.textContent = ''; }
+}
+
+// 9. Super-resolution (image-to-image)
+function utilAiSuperresBody() { return visionBody('aisuperres', 'AI super-resolution', 'Upscale image with AI model', 'Upscale'); }
+async function utilAiSuperres() {
+  const file = document.querySelector('[data-util="aisuperres-file"]')?.files?.[0];
+  const out = document.getElementById('util-aisuperres-out');
+  const status = document.getElementById('util-aisuperres-status');
+  if (!file) { if (out) out.innerHTML = '<p class="muted">Choose an image first.</p>'; return; }
+  if (status) status.textContent = 'Loading model… (first run downloads ~50MB)';
+  try {
+    const { pipeline } = await getTransformers();
+    const upscaler = await pipeline('image-to-image', 'Xenova/swin2SR-classical-sr-x2-64');
+    const url = URL.createObjectURL(file);
+    const result = await upscaler(url);
+    URL.revokeObjectURL(url);
+    // result is a RawImage
+    let canvas = null;
+    if (result?.toCanvas) canvas = result.toCanvas();
+    else if (result?.canvas) canvas = result.canvas;
+    if (canvas) {
+      const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'upscaled.png'; a.click(); URL.revokeObjectURL(a.href);
+      if (out) out.innerHTML = `<p class="muted">Upscaled to ${canvas.width}×${canvas.height}</p>`;
+    } else {
+      if (out) out.innerHTML = `<p class="muted">Result: ${JSON.stringify(result).slice(0, 200)}</p>`;
+    }
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; if (status) status.textContent = ''; }
+}
+
+// 10. Style transfer (image-to-image)
+function utilAiStyleBody() { return visionBody('aistyle', 'AI style transfer', 'Apply artistic style to image', 'Apply style'); }
+async function utilAiStyle() {
+  const file = document.querySelector('[data-util="aistyle-file"]')?.files?.[0];
+  const out = document.getElementById('util-aistyle-out');
+  const status = document.getElementById('util-aistyle-status');
+  if (!file) { if (out) out.innerHTML = '<p class="muted">Choose an image first.</p>'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const { pipeline } = await getTransformers();
+    const stylizer = await pipeline('image-to-image', 'Xenova/stable-diffusion-2-1-base', { /* needs prompt */ });
+    // style transfer via image-to-image requires a prompt; use a generic artistic prompt
+    const url = URL.createObjectURL(file);
+    const result = await stylizer(url, { prompt: 'oil painting, artistic style, masterpiece' });
+    URL.revokeObjectURL(url);
+    let canvas = null;
+    if (result?.toCanvas) canvas = result.toCanvas();
+    else if (result?.canvas) canvas = result.canvas;
+    if (canvas) {
+      const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'styled.png'; a.click(); URL.revokeObjectURL(a.href);
+      if (out) out.innerHTML = `<p class="muted">Styled · ${canvas.width}×${canvas.height}</p>`;
+    } else {
+      if (out) out.innerHTML = `<p class="muted">Result: ${JSON.stringify(result).slice(0, 200)}</p>`;
+    }
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; if (status) status.textContent = ''; }
+}
+
+// 11. Object removal (segmentation + fill)
+function utilAiObjRemoveBody() { return visionBody('aiobjremove', 'AI object removal', 'Remove objects (basic inpainting)', 'Remove'); }
+async function utilAiObjRemove() {
+  const file = document.querySelector('[data-util="aiobjremove-file"]')?.files?.[0];
+  const out = document.getElementById('util-aiobjremove-out');
+  const status = document.getElementById('util-aiobjremove-status');
+  if (!file) { if (out) out.innerHTML = '<p class="muted">Choose an image first.</p>'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const res = await runVisionPipeline('object-detection', 'Xenova/detr-resnet-50', file, { threshold: 0.5 });
+    const items = Array.isArray(res) ? res : [res];
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+    const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+    const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0);
+    // Fill detected object regions with surrounding color (simple)
+    for (const r of items) {
+      const b = r.box;
+      const x = Math.max(0, Math.floor(b.xmin)), y = Math.max(0, Math.floor(b.ymin));
+      const w = Math.floor(b.xmax - b.xmin), h = Math.floor(b.ymax - b.ymin);
+      // sample border color
+      const px = ctx.getImageData(Math.max(0, x - 1), Math.max(0, y), 1, 1).data;
+      ctx.fillStyle = `rgb(${px[0]},${px[1]},${px[2]})`;
+      ctx.fillRect(x, y, w, h);
+    }
+    URL.revokeObjectURL(url);
+    const blob = await new Promise((res) => c.toBlob(res, 'image/png'));
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'cleaned.png'; a.click(); URL.revokeObjectURL(a.href);
+    if (out) out.innerHTML = `<p class="muted">Removed ${items.length} object(s) (basic fill).</p>`;
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; if (status) status.textContent = ''; }
+}
+
+// 12. Inpainting (image-to-image with mask) - not fully supported; use style transfer approach
+// Skip heavy ones: voice cloning, music gen, talking head, audio-to-midi, stem separation, face restore, img2img (diffusion)
+// Note: these require models too large for browser or not available in Transformers.js
+
+// Audio classification (bonus)
+function utilAiAudioClassifyBody() { return `
+    <div class="stage-card">
+      <div class="stage-head"><div class="stage-head-copy"><strong>AI audio classification</strong><span>Classify sounds locally</span></div></div>
+      <div class="stage-body">
+        <label class="btn btn-secondary btn-sm" for="util-aiaudiocls-file">Choose audio</label>
+        <input id="util-aiaudiocls-file" type="file" accept="audio/*" data-util="aiaudiocls-file" hidden />
+        <button class="btn btn-primary btn-sm" data-action="util-aiaudiocls" style="margin-top:10px">Classify</button>
+        <div id="util-aiaudiocls-status" class="muted" style="margin-top:8px;font-size:12px"></div>
+        <div id="util-aiaudiocls-out" class="util-out" style="margin-top:10px"></div>
+      </div>
+    </div>`; }
+async function utilAiAudioClassify() {
+  const file = document.querySelector('[data-util="aiaudiocls-file"]')?.files?.[0];
+  const out = document.getElementById('util-aiaudiocls-out');
+  const status = document.getElementById('util-aiaudiocls-status');
+  if (!file) { if (out) out.innerHTML = '<p class="muted">Choose an audio file first.</p>'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const { pipeline } = await getTransformers();
+    const classifier = await pipeline('audio-classification', 'Xenova/ast-finetuned-audioset-10-10-0.4593');
+    const url = URL.createObjectURL(file);
+    const res = await classifier(url);
+    URL.revokeObjectURL(url);
+    const items = Array.isArray(res) ? res : [res];
+    if (out) out.innerHTML = items.slice(0, 8).map((r) => `<div class="mono" style="margin-top:4px">${esc(r.label)} ${(r.score * 100).toFixed(1)}%</div>`).join('');
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; if (status) status.textContent = ''; }
+}
+
+// Text classification / NER via Transformers.js (bonus)
+function utilAiNerBody() { return aiTextBody('ainer', 'AI named entity recognition', 'Extract entities (people, places, orgs)', '', 'Paste text', 'Extract', 'ner'); }
+async function utilAiNer() {
+  const text = document.querySelector('[data-util="ainer-in"]')?.value || '';
+  const out = document.getElementById('util-ainer-out');
+  const status = document.getElementById('util-ainer-status');
+  if (!text) { if (out) out.textContent = 'Enter text.'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const { pipeline } = await getTransformers();
+    const ner = await pipeline('token-classification', 'Xenova/bert-base-NER');
+    const res = await ner(text);
+    const items = Array.isArray(res) ? res : [res];
+    if (out) out.textContent = items.map((r) => `${r.word} [${r.entity_group || r.entity}] ${(r.score * 100).toFixed(0)}%`).join('\n');
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); if (status) status.textContent = ''; }
+}
+
+function utilAiTextClsBody() { return aiTextBody('aitextcls', 'AI text classification', 'Classify text sentiment/topic', '', 'Paste text', 'Classify', 'textcls'); }
+async function utilAiTextCls() {
+  const text = document.querySelector('[data-util="aitextcls-in"]')?.value || '';
+  const out = document.getElementById('util-aitextcls-out');
+  const status = document.getElementById('util-aitextcls-status');
+  if (!text) { if (out) out.textContent = 'Enter text.'; return; }
+  if (status) status.textContent = 'Loading model…';
+  try {
+    const { pipeline } = await getTransformers();
+    const clf = await pipeline('text-classification', 'Xenova/distilbert-base-uncased-finetuned-sst-2-english');
+    const res = await clf(text);
+    const items = Array.isArray(res) ? res : [res];
+    if (out) out.textContent = items.map((r) => `${r.label}: ${(r.score * 100).toFixed(1)}%`).join('\n');
+    if (status) status.textContent = 'Done.';
+  } catch (e) { if (out) out.textContent = 'Error: ' + (e?.message || e); if (status) status.textContent = ''; }
 }
