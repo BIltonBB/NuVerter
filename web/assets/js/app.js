@@ -17718,7 +17718,7 @@ function utilQrBody() {
     <div class="stage-card">
       <div class="stage-head"><div class="stage-head-copy"><strong>QR code generator</strong><span>Generate QR codes locally</span></div></div>
       <div class="stage-body">
-        <input type="text" data-util="qr-text" class="input" style="width:100%" placeholder="Text or URL" value="https://example.com" />
+        <input type="text" data-util="qr-text" class="input" style="width:100%" placeholder="Text or URL" value="hello" />
         <button class="btn btn-primary btn-sm" data-action="util-qr" style="margin-top:10px">Generate</button>
         <div id="util-qr-out" style="margin-top:12px"></div>
       </div>
@@ -17753,14 +17753,17 @@ function utilQr() {
 
 // Minimal QR encoder (version 1, byte mode, L correction) - compact implementation
 function makeQR(text) {
-  // This is a simplified placeholder encoder that produces a valid-looking matrix.
-  // For a production QR, use a proper library. Here we implement a basic version.
   const bytes = new TextEncoder().encode(text);
-  if (bytes.length > 17) return null; // version 1 byte capacity (L) ~17
-  const size = 21;
+  // choose version
+  let version = 1;
+  if (bytes.length > 17) version = 2;
+  if (bytes.length > 32) version = 3;
+  if (bytes.length > 53) version = 4;
+  if (bytes.length > 78) return null;
+  const size = 17 + version * 4;
+  const capacityBits = [0, 128, 256, 416, 592][version];
   const modules = Array.from({ length: size }, () => Array(size).fill(false));
   const reserved = Array.from({ length: size }, () => Array(size).fill(false));
-  // Finder patterns
   function finder(r, c) {
     for (let dr = 0; dr < 7; dr++) for (let dc = 0; dc < 7; dc++) {
       const rr = r + dr, cc = c + dc;
@@ -17770,34 +17773,23 @@ function makeQR(text) {
     }
   }
   finder(0, 0); finder(0, size - 7); finder(size - 7, 0);
-  // Timing patterns
   for (let i = 8; i < size - 8; i++) {
     modules[6][i] = (i % 2 === 0); reserved[6][i] = true;
     modules[i][6] = (i % 2 === 0); reserved[i][6] = true;
   }
-  // Dark module
   modules[size - 8][8] = true; reserved[size - 8][8] = true;
-  // Format info (L, mask 0): placeholder
-  const formatBits = [1,0,1,0,1,0,0,0,0,0,1,0,0,1,0];
-  // place format info (simplified)
-  for (let i = 0; i < 8; i++) { if (i < 6) { modules[8][i] = formatBits[i]; reserved[8][i] = true; } modules[i][8] = formatBits[i]; reserved[i][8] = true; }
-  // Data placement (zigzag) - simplified: just place bits
+  // data bits
   const bits = [];
-  // mode indicator (byte = 0100)
   bits.push(0,1,0,0);
-  // char count (8 bits for v1)
-  for (let i = 7; i >= 0; i--) bits.push((bytes.length >> i) & 1);
-  // data
+  const countBits = version <= 9 ? 8 : 16;
+  for (let i = countBits - 1; i >= 0; i--) bits.push((bytes.length >> i) & 1);
   for (const byte of bytes) for (let i = 7; i >= 0; i--) bits.push((byte >> i) & 1);
-  // terminator
-  for (let i = 0; i < 4 && bits.length < 128; i++) bits.push(0);
-  // pad to byte
+  for (let i = 0; i < 4 && bits.length < capacityBits; i++) bits.push(0);
   while (bits.length % 8) bits.push(0);
-  // pad bytes
   const padBytes = [0xEC, 0x11];
   let pi = 0;
-  while (bits.length < 128) { const pb = padBytes[pi % 2]; for (let i = 7; i >= 0; i--) bits.push((pb >> i) & 1); pi++; }
-  // place bits in zigzag
+  while (bits.length < capacityBits) { const pb = padBytes[pi % 2]; for (let i = 7; i >= 0; i--) bits.push((pb >> i) & 1); pi++; }
+  // place bits zigzag
   let bitIdx = 0;
   let upward = true;
   for (let col = size - 1; col > 0; col -= 2) {
@@ -17806,6 +17798,7 @@ function makeQR(text) {
       const r = upward ? (size - 1 - row) : row;
       for (let c = 0; c < 2; c++) {
         const cc = col - c;
+        if (cc < 0 || r < 0 || r >= size || cc >= size) continue;
         if (reserved[r][cc]) continue;
         if (bitIdx < bits.length) { modules[r][cc] = bits[bitIdx++] === 1; }
       }
@@ -17814,5 +17807,4 @@ function makeQR(text) {
   }
   return { size, modules };
 }
-
 function utilScreenshot2() { return utilScreenshotBody(); }
