@@ -30,6 +30,14 @@ The server only serves files and sets the `Cross-Origin-Opener-Policy` /
   each file to the right format. Supports MP4, WEBM, MOV, MKV, GIF, MP3, WAV,
   M4A, FLAC, OGG, PNG, JPG, WEBP. Advanced trim, bitrate, resolution, fps,
   aspect ratio, normalize and fade.
+- **PDF Tools** (Documents) - merge PDFs (page numbers, normalise to A4/Letter/
+  Legal), split/extract to separate files or ZIP, redact regions, render pages
+  to PNG/JPEG, build PDFs from images, text → PDF with real pagination. PDF.js
+  and pdf-lib are vendored; nothing is fetched from a CDN.
+- **Utilities** - 77 local helpers: QR generator, image/video/audio merge,
+  speed, rotate and normalize, hashing, JWT decode, cron parsing, password
+  generation, archive zip/unzip, code formatters, mock data and more. Every
+  tool runs in the tab; no uploads.
 - **Video Compressor** - quality presets, target file size, resolution and mute.
 - **Video Cropper** - draggable crop box with aspect chips (Free, 16:9, 9:16,
   1:1, 4:5, 4:3). Images are cropped losslessly to PNG.
@@ -53,8 +61,10 @@ The server only serves files and sets the `Cross-Origin-Opener-Policy` /
 - **Theming** - system / light / dark plus full appearance control: presets,
   background, surface, sidebar, border, text, accent and button colors, corner
   radius, ambient glow and gradient background. Persisted in `localStorage`.
-- **Fully responsive** - desktop sidebar, mobile drawer, adbar never overlaps
-  content.
+- **Fully responsive** - desktop sidebar, mobile drawer and layouts that
+  never overlap content. The Android build (Tauri) adds safe-area padding,
+  larger touch targets and a one-tap update prompt that downloads the latest
+  APK from GitHub releases.
 
 ## Static hosting (GitHub Pages, Netlify, etc.)
 

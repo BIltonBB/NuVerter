@@ -12,6 +12,7 @@ const PORT = Number(process.argv[2] || process.env.PORT || 4173);
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
@@ -216,6 +217,7 @@ const server = http.createServer((req, res) => {
     }
     const headers = {
       'Content-Type': MIME[path.extname(target).toLowerCase()] || 'application/octet-stream',
+      'Content-Length': stat.size,
       'Cache-Control': 'no-cache',
       // Required if the multi-threaded ffmpeg core is ever swapped in.
       'Cross-Origin-Opener-Policy': 'same-origin',

@@ -12,3 +12,17 @@ Thumbs.db
 
 # Rust/Tauri build
 tauri/src-tauri/target/
+
+# Android build output, generated glue and local signing material
+tauri/dist/
+tauri/src-tauri/gen/android/app/build/
+tauri/src-tauri/gen/android/build/
+tauri/src-tauri/gen/android/.gradle/
+tauri/src-tauri/gen/android/local.properties
+tauri/src-tauri/gen/android/keystore.properties
+tauri/src-tauri/gen/android/*.jks
+tauri/src-tauri/gen/android/tauri.settings.gradle
+tauri/src-tauri/gen/android/app/tauri.build.gradle.kts
+tauri/src-tauri/gen/android/app/src/main/jniLibs/
+tauri/src-tauri/gen/android/app/proguard-tauri.pro
+tauri/src-tauri/gen/android/app/src/main/java/**/generated/

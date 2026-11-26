@@ -15,16 +15,13 @@ const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(
 const raf = () => new Promise((resolve) => requestAnimationFrame(resolve));
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/* ---------- payment / ads configuration (edit these) ----------
+/* ---------- payment configuration (edit these) ----------
    PAYMENT_URL: your hosted checkout link (Sociabuzz donation/product, Stripe
    Payment Link, Midtrans/Xendit, etc.). Leave '' to keep the unlock.
-   AD_SNIPPET: optional HilltopAds (or other) <script> snippet to inject into
-   the ad slot. Leave '' to keep the placeholder.
    ---------------------------------------------------------------- */
 const PAYMENT_URL = 'https://sociabuzz.com/biltonb/shop';
-const APP_VERSION = '1.1.21';
+const APP_VERSION = '1.1.36';
 const APP_DOWNLOAD_URL = 'https://github.com/BIltonBB/NuVerter/releases/latest'; // Desktop app (versioned release assets)
-const AD_SNIPPET = '';
 
 function icon(name, cls = '') {
   return `<svg class="icon ${cls}" aria-hidden="true"><use href="#i-${name}"></use></svg>`;
@@ -160,12 +157,55 @@ function uniqueQueueOutputName(name) {
   return uniqueName(name, queueUsedOutputNames);
 }
 
+let mobileSaveInFlight = false;
+
+// Android WebView ignores <a download>, so ask the system for a destination
+// (ACTION_CREATE_DOCUMENT) and stream the bytes into the returned content:// URI.
+// Resolves 'saved', 'cancelled' or throws on a real write failure.
+async function saveBlobNative(blob, name) {
+  const dialog = window.__TAURI__?.dialog;
+  const tauri = window.__TAURI__ || window.__TAURI_INTERNALS__;
+  const inv = tauri?.core?.invoke || tauri?.invoke;
+  if (!dialog?.save || typeof inv !== 'function') throw new Error('native save is unavailable');
+
+  let uri;
+  try {
+    uri = await dialog.save({ defaultPath: name || 'download' });
+  } catch {
+    return 'cancelled';
+  }
+  if (!uri) return 'cancelled';
+
+  const data = new Uint8Array(await blob.arrayBuffer());
+  await inv.call(tauri?.core || tauri, 'save_to_uri', data, {
+    headers: { 'x-target-uri': encodeURIComponent(uri) }
+  });
+  return 'saved';
+}
+
 function downloadBlob(blob, name) {
   if (!blob) return;
+  const fileName = name || 'download';
+  if (window.NV_MOBILE && window.__TAURI__) {
+    if (mobileSaveInFlight) {
+      toast('Still saving', 'Finish the open save dialog first.', 'info');
+      return;
+    }
+    mobileSaveInFlight = true;
+    saveBlobNative(blob, fileName)
+      .then((result) => {
+        if (result === 'saved') toast('Saved', fileName + ' was written to the folder you picked.', 'success');
+      })
+      .catch((err) => {
+        toast('Could not save file', String(err?.message || err || 'Unknown error'), 'error');
+      })
+      .finally(() => { mobileSaveInFlight = false; });
+    return;
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = name || 'download';
+  a.download = fileName;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -484,7 +524,7 @@ const state = {
     busy: false,
     peaks: null,
     waveformError: false,
-    settings: { format: 'mp3', bitrate: 192, sampleRate: 'source', normalize: false, fade: false, trimStart: 0, trimEnd: 100 }
+    settings: { format: 'mp3', bitrate: 192, sampleRate: 'source', channels: 'source', gain: 0, normalize: false, fade: false, trimStart: 0, trimEnd: 100 }
   },
   gif: {
     source: null,
@@ -505,7 +545,7 @@ const state = {
     audioContext: null,
     micStream: null,
     countdownTimer: null,
-    settings: { format: 'webm', quality: '1080', fps: 30, mic: true, systemAudio: true, countdown: 3, bitrate: 8000 }
+    settings: { format: 'webm', quality: '1080', fps: 30, mic: true, systemAudio: true, countdown: 3, bitrate: 0 }
   },
   imageEditor: {
     source: null, result: null, busy: false,
@@ -526,14 +566,16 @@ const state = {
     overlays: [],
     audioKf: [],
     trimStart: 0, trimEnd: 100, aspect: 'free', speed: '1',
+    rotation: 0, flipH: false, flipV: false, fadeIn: 0, fadeOut: 0,
+    audioVolume: 100,
     history: [], historyIndex: -1,
-    settings: { format: 'mp4', quality: 'balanced', keepAudio: true }
+    settings: { format: 'mp4', quality: 'balanced', keepAudio: true, stripMetadata: false, resolution: 'source', fps: 'source' }
   },
   reframe: {
     source: null, result: null, busy: false,
     target: '9:16', smart: true, manualX: 50,
     cropX: 0, cropW: 0, cropH: 0,
-    settings: { format: 'mp4', quality: 'balanced', keepAudio: true }
+    settings: { format: 'mp4', quality: 'balanced', audioBitrate: 128, keepAudio: true }
   },
   appUi: {
     media: { pane: 'queue', selectedId: null, showInspector: true, filter: 'all' },
@@ -1921,8 +1963,10 @@ function videoFilterChain(settings, item) {
   return filters.join(',');
 }
 
-function audioFilterChain({ normalize = false, fade = false, duration = 0, speed = 1, denoise = false } = {}) {
+function audioFilterChain({ normalize = false, fade = false, duration = 0, speed = 1, denoise = false, gain = 0 } = {}) {
   const filters = [];
+  const gainDb = clamp(Number(gain) || 0, -24, 24);
+  if (gainDb) filters.push(`volume=${gainDb}dB`);
   if (denoise) filters.push('afftdn=nf=-25');
   if (normalize) filters.push('loudnorm=I=-16:TP=-1.5:LRA=11');
   const sp = Number(speed) || 1;
@@ -1947,6 +1991,8 @@ function audioEncodeArgs(container, opts = {}) {
   else args.push('-c:a', 'aac');
   if (lossy) args.push('-b:a', `${bitrate}k`);
   if (opts.sampleRate && opts.sampleRate !== 'source') args.push('-ar', String(opts.sampleRate));
+  if (opts.channels === 'mono') args.push('-ac', '1');
+  else if (opts.channels === 'stereo') args.push('-ac', '2');
   const filters = audioFilterChain(opts);
   if (filters) args.push('-af', filters);
   return args;
@@ -2066,6 +2112,8 @@ function buildAudioExtractorArgs(item) {
   args.push(...audioEncodeArgs(settings.format, {
     bitrate: settings.bitrate,
     sampleRate: settings.sampleRate,
+    channels: settings.channels,
+    gain: settings.gain,
     normalize: settings.normalize,
     fade: settings.fade,
     duration: window?.duration || item.duration
@@ -3544,7 +3592,6 @@ function converterPanes() {
           <span class="field-label">Max dimension</span>
           <span class="field-value">${conv.imageMax === 'original' ? 'Original' : `${conv.imageMax}px`}</span>
         </div>
-        <div class="select-wrap">
         <div class="input-group">
           <input class="input" type="number" min="0" max="20000" step="1" value="${conv.imageMax === 'original' ? '' : conv.imageMax}" data-field="converter.imageMax" aria-label="Maximum image dimension in pixels (leave empty for original)" placeholder="original" />
           <span class="input-suffix">px</span>
@@ -3642,16 +3689,11 @@ function converterPanes() {
 
 
       <div class="field">
-      <div class="field">
-        <div class="field-head"><span class="field-label">${icon('crop')}Rotate / flip</span><span class="field-value">${conv.rotate === '0' ? 'None' : conv.rotate}</span></div>
+        <div class="field-head"><span class="field-label">${icon('crop')}Rotate / flip</span><span class="field-value">${conv.rotate === '0' ? 'None' : conv.rotate === 'hflip' ? 'Horizontal' : conv.rotate === 'vflip' ? 'Vertical' : conv.rotate + '°'}</span></div>
         <div class="select-wrap">
           <select class="select" data-field="converter.rotate" aria-label="Rotate or flip video">
-            <option value="0">None</option>
-            <option value="90">90 deg</option>
-            <option value="180">180 deg</option>
-            <option value="270">270 deg</option>
-            <option value="hflip">Flip horizontal</option>
-            <option value="vflip">Flip vertical</option>
+            ${[['0', 'None'], ['90', 'Rotate 90°'], ['180', 'Rotate 180°'], ['270', 'Rotate 270°'], ['hflip', 'Flip horizontal'], ['vflip', 'Flip vertical']]
+              .map(([value, text]) => `<option value="${value}"${String(conv.rotate) === value ? ' selected' : ''}>${text}</option>`).join('')}
           </select>
           ${icon('chevron-down')}
         </div>
@@ -3660,20 +3702,19 @@ function converterPanes() {
         <div class="field-head"><span class="field-label">${icon('gauge')}Playback speed</span><span class="field-value">${conv.speed}x</span></div>
         <div class="select-wrap">
           <select class="select" data-field="converter.speed" aria-label="Playback speed">
-            <option value="1">1x</option>
-            <option value="0.5">0.5x</option>
-            <option value="1.25">1.25x</option>
-            <option value="1.5">1.5x</option>
-            <option value="2">2x</option>
+            ${[['0.5', '0.5× (slow)'], ['0.75', '0.75×'], ['1', '1× (normal)'], ['1.25', '1.25×'], ['1.5', '1.5×'], ['2', '2×']]
+              .map(([value, text]) => `<option value="${value}"${String(conv.speed) === value ? ' selected' : ''}>${text}</option>`).join('')}
           </select>
           ${icon('chevron-down')}
         </div>
       </div>
+      <div class="field">
         <div class="field-head"><span class="field-label">${icon('sliders-horizontal')}Rate control</span><span class="field-value">${conv.rateMode === 'quality' ? 'Constant quality' : 'Target bitrate'}</span></div>
         <div class="segmented" role="group" aria-label="Rate control">
           <button data-action="set-rate-mode" data-mode="quality" class="${conv.rateMode === 'quality' ? 'is-active' : ''}">Quality</button>
           <button data-action="set-rate-mode" data-mode="bitrate" class="${conv.rateMode === 'bitrate' ? 'is-active' : ''}">Bitrate</button>
         </div>
+        <p class="field-help">Constant quality adapts the bitrate per scene. Target bitrate gives a predictable file size.</p>
       </div>
 
       ${conv.rateMode === 'quality' ? `
@@ -3764,8 +3805,8 @@ function converterView() {
         <div class="dropzone" data-action="pick-files" data-context="converter" data-drop="converter" role="button" tabindex="0" aria-label="Add media files">
           <span class="drop-ico">${icon('cloud-upload')}</span>
           <div class="drop-copy">
-            <div class="drop-title">Drop your media here</div>
-            <div class="drop-sub">Videos, audio and images · processed locally in your browser</div>
+            <div class="drop-title">${isMobileRuntime() ? 'Tap to add media' : 'Drop your media here'}</div>
+            <div class="drop-sub">${isMobileRuntime() ? 'Videos, audio and images · converted on this device' : 'Videos, audio and images · processed locally in your browser'}</div>
             <div class="drop-formats">
               ${['MP4', 'WEBM', 'MOV', 'MKV', 'MP3', 'WAV', 'FLAC', 'PNG', 'JPG', 'WEBP', 'TXT', 'MD', 'JSON', 'CSV'].map((label) => `<span class="drop-format">${label}</span>`).join('')}
             </div>
@@ -4343,23 +4384,28 @@ function subtitleEditorView() {
 
 function utilitiesView() {
   const data = state.utilities;
-  const tab = data.tab || 'frames';
+  const isAudio = state.tool === 'audiotools';
+  const audioTabs = ['audioclean','silencetrim','waveform','tts','audspeed','audnorm'];
+  const rawTab = data.tab || 'frames';
+  const tab = isAudio && !audioTabs.includes(rawTab) ? 'audioclean' : rawTab;
+  const audioLabels = { audioclean: 'Audio clean', silencetrim: 'Silence trim', waveform: 'Waveform', tts: 'Text to speech', audspeed: 'Audio speed', audnorm: 'Normalize' };
+  const head = isAudio
+    ? viewHead({ index: '12', kicker: 'Audio tools', title: 'Clean up <span class="accent">the sound.</span>', sub: 'Trim silence, normalize, change speed, clean noise, inspect waveforms and speak text — all on this device.' })
+    : viewHead({ index: '09', kicker: 'Utilities', title: 'Small tools. <span class="accent">Big help.</span>', sub: 'Frames, spritesheets, text, audio, AI and dev helpers — all local.' });
   return `
-    ${viewHead({ index: '09', kicker: 'Utilities', title: 'Small tools. <span class="accent">Big help.</span>', sub: 'Frames, spritesheets, text, audio, AI and dev helpers — all local.' })}
-    ${(() => {
+    ${head}
+    ${isAudio ? `
+    <div class="util-tabs segmented" role="tablist">
+      ${audioTabs.map((t) => `<button data-action="util-tab" data-tab="${t}" class="${tab === t ? 'is-active' : ''}">${audioLabels[t]}</button>`).join('')}
+    </div>` : (() => {
       const groups = [
-        { name: 'Media', items: [
-          ['frames','Frames'], ['spritesheet','Spritesheet'], ['slicer','Slice sheet'], ['textimage','Text card'], ['trimmer','Trimmer'], ['watermark','Watermark'], ['upscale','Upscale'], ['pdf','PDF'], ['chroma','Chroma key'], ['fileinfo','File info'], ['palette','Palette'], ['favicon','Favicon'], ['vector','Vectorize'], ['imgresize','Image resize'], ['videomerge','Video merge'], ['audiomerge','Audio merge'], ['vidrotate','Video rotate/flip'], ['vidspeed','Video speed'], ['exifstrip','EXIF strip'], ['screenshot','Screen capture'], ['collage','Image collage']
-        ]},
-        { name: 'Audio', items: [
-          ['audioclean','Audio clean'], ['silencetrim','Silence trim'], ['waveform','Waveform'], ['tts','TTS'], ['audspeed','Audio speed'], ['audnorm','Audio normalize']
-        ]},
-        { name: 'AI', items: [
-          ['ocr','OCR'], ['aibg','AI BG'], ['aiup','AI Upscale'], ['emb','Embeddings']
-        ]},
-        { name: 'Text', items: [
-          ['hash','File hash'], ['textpaper','Text to paper'], ['dupfind','Duplicate finder']
-        ]},
+        { name: 'Media', items: ['frames','spritesheet','slicer','textimage','trimmer','watermark','upscale','imgresize','videomerge','audiomerge','vidrotate','vidspeed','chroma','palette','favicon','vector','collage','screenshot'] },
+        { name: 'Audio', items: ['audioclean','silencetrim','waveform','tts','audspeed','audnorm'] },
+        { name: 'Documents', items: ['pdf','img2pdf','textpdf','markdown','mdeditor','doccompare','filesize'] },
+        { name: 'AI', items: ['ocr','aibg','aiup','emb','summarize'] },
+        { name: 'Text & data', items: ['hash','textpaper','dupfind','caseconv','slug','lorem','diffview','ascii','mdtable','fmtcode','minify'] },
+        { name: 'Developer', items: ['jsonfmt','base64','regex','jwt','uuid','timestamp','colorconv','yamlconv','xmlfmt','sqlfmt','curlbuild','baseconv','roman','urlenc','htmlent','ua','cron','cronhuman','semver','chmod','unitconv','timezone','asciitable','passgen','qrcode'] },
+        { name: 'Files', items: ['fileinfo','batchrename','archive','exifview','exifstrip'] },
       ];
       const labels = { frames:'Frames', spritesheet:'Spritesheet', slicer:'Slice sheet', textimage:'Text card', trimmer:'Trimmer', watermark:'Watermark', upscale:'Upscale', pdf:'PDF', chroma:'Chroma key', fileinfo:'File info', palette:'Palette', favicon:'Favicon', vector:'Vectorize', audioclean:'Audio clean', silencetrim:'Silence trim', waveform:'Waveform', tts:'TTS', ocr:'OCR', aibg:'AI BG', aiup:'AI Upscale', emb:'Embeddings', hash:'File hash', textpaper:'Text to paper', imgresize:'Image resize', videomerge:'Video merge', audiomerge:'Audio merge', jsonfmt:'JSON format', base64:'Base64', regex:'Regex tester', uuid:'UUID gen', timestamp:'Timestamp', colorconv:'Color convert', diffview:'Diff viewer', minify:'Minify/Beautify', vidrotate:'Video rotate/flip', vidspeed:'Video speed', exifstrip:'EXIF strip', audspeed:'Audio speed', audnorm:'Audio normalize', jwt:'JWT decoder', archive:'Archive zip/unzip', ascii:'Image to ASCII', markdown:'Markdown to HTML', textpdf:'Text to PDF', exifview:'EXIF viewer', filesize:'File size analyzer', batchrename:'Batch rename', screenshot:'Screen capture', collage:'Image collage', dupfind:'Duplicate finder', summarize:'Text summarizer', qrcode:'QR code generator', caseconv:'Case converter', slug:'Slug generator', lorem:'Lorem ipsum', passgen:'Password generator', baseconv:'Number base converter', roman:'Roman numerals', urlenc:'URL encode/decode', htmlent:'HTML entities', cron:'Cron parser', chmod:'Chmod calculator', semver:'Semver calculator', unitconv:'Unit converter', timezone:'Timezone converter', asciitable:'ASCII codes', ua:'User agent parser', mdtable:'Markdown table', fmtcode:'Code formatter', xmlfmt:'XML formatter', yamlconv:'YAML/JSON', sqlfmt:'SQL formatter', curlbuild:'cURL builder', img2pdf:'Images to PDF', doccompare:'Doc compare', mdeditor:'Markdown editor', cronhuman:'Cron to human' };
       const currentLabel = labels[tab] || 'Frames';
@@ -4372,10 +4418,10 @@ function utilitiesView() {
           onkeydown="if(event.key==='Escape'){this.blur();var l=document.getElementById('util-combo-list'); if(l) l.hidden=true;} if(event.key==='Enter'){var v=document.querySelector('#util-combo-list .util-combo-opt:not([style*=&quot;display: none&quot;])'); if(v){v.click();}}"
         />
         <svg class="icon" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;opacity:.6;width:14px;height:14px"><use href="#i-chevron-down" /></svg>
-        <div id="util-combo-list" class="util-combo-list" hidden style="position:absolute;z-index:30;left:0;right:0;top:calc(100% + 4px);max-height:300px;overflow:auto;border:1px solid var(--border);border-radius:10px;background:var(--surface);box-shadow:var(--shadow-lg);padding:6px">
+        <div id="util-combo-list" class="util-combo-list" hidden style="position:absolute;z-index:30;left:0;right:0;top:calc(100% + 4px);max-height:320px;overflow:auto;border:1px solid var(--border);border-radius:10px;background:var(--surface);box-shadow:var(--shadow-lg);padding:6px">
           ${groups.map((g) => `<div class="util-combo-group" style="margin-bottom:6px">
             <div style="font-size:10.5px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;padding:4px 8px">${esc(g.name)}</div>
-            ${g.items.map(([k, lbl]) => `<button type="button" class="util-combo-opt" data-tab="${k}" data-label="${esc(lbl)}" data-action="util-tab" onmousedown="event.preventDefault()" style="display:flex;width:100%;align-items:center;gap:8px;padding:8px 10px;border:0;background:${tab===k?'var(--accent-soft)':'transparent'};color:var(--text);border-radius:6px;cursor:pointer;text-align:left;font-size:13px">${tab===k?'✓ ':''}${esc(lbl)}</button>`).join('')}
+            ${g.items.map((k) => `<button type="button" class="util-combo-opt" data-tab="${k}" data-label="${esc(labels[k] || k)}" data-action="util-tab" onmousedown="event.preventDefault()" style="display:flex;width:100%;align-items:center;gap:8px;padding:8px 10px;border:0;background:${tab===k?'var(--accent-soft)':'transparent'};color:var(--text);border-radius:6px;cursor:pointer;text-align:left;font-size:13px">${tab===k?'✓ ':''}${esc(labels[k] || k)}</button>`).join('')}
           </div>`).join('')}
         </div>
       </div>`;
@@ -5532,69 +5578,122 @@ async function utilUpscale() {
 function utilPdfBody() {
   return `
     <div class="stage-card">
-      <div class="stage-head"><div class="stage-head-copy"><strong>PDF to images</strong><span>Render PDF pages to PNG</span></div></div>
+      <div class="stage-head"><div class="stage-head-copy"><strong>PDF to images</strong><span>Render PDF pages to PNG or JPEG, or download them all as a ZIP</span></div></div>
       <div class="stage-body">
         <input type="file" accept="application/pdf" data-util="pdf-file" hidden id="util-pdf-file" />
         <label class="btn btn-secondary btn-sm" for="util-pdf-file">Choose PDF</label>
-        <div class="field" style="margin-top:10px">
-          <div class="field-head"><span class="field-label">Scale</span></div>
-          <select data-util="pdf-scale" class="select">
-            <option value="1">1x</option>
-            <option value="2" selected>2x</option>
-            <option value="3">3x</option>
-          </select>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:10px">
+          <div class="field"><div class="field-head"><span class="field-label">Scale</span></div><select data-util="pdf-scale" class="select" style="width:100%"><option value="1">1×</option><option value="2" selected>2×</option><option value="3">3×</option><option value="4">4×</option></select></div>
+          <div class="field"><div class="field-head"><span class="field-label">Format</span></div><select data-util="pdf-img-format" class="select" style="width:100%"><option value="png" selected>PNG</option><option value="jpeg">JPEG</option></select></div>
+          <div class="field"><div class="field-head"><span class="field-label">Pages</span></div><input class="input" data-util="pdf-page-range" placeholder="All pages, or e.g. 1-3,5" style="width:100%" /></div>
+          <div class="field"><div class="field-head"><span class="field-label">JPEG quality</span></div><input type="number" min="30" max="100" value="90" data-util="pdf-jpeg-quality" class="input" style="width:100%" /></div>
         </div>
-        <button class="btn btn-primary btn-sm" data-action="util-pdf" style="margin-top:10px">Render pages</button>
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" data-action="util-pdf">Render pages</button>
+          <button class="btn btn-secondary btn-sm" data-action="util-pdf-zip" disabled>Download all (ZIP)</button>
+        </div>
+        <p id="util-pdf-status" class="field-help" style="margin:8px 0 0"></p>
         <div id="util-pdf-out" class="util-out"></div>
       </div>
     </div>`;
 }
-
+function parsePageRange(raw, total) {
+  const value = String(raw || '').trim();
+  if (!value) return Array.from({ length: total }, (_, i) => i);
+  const indices = [];
+  for (const part of value.split(',')) {
+    const m = part.trim().match(/^(\d+)(?:-(\d+))?$/);
+    if (!m) continue;
+    const a = Math.max(1, Number(m[1]));
+    const b = m[2] ? Math.min(total, Number(m[2])) : a;
+    const step = a <= b ? 1 : -1;
+    for (let i = a; step > 0 ? i <= b : i >= b; i += step) if (i >= 1 && i <= total && !indices.includes(i - 1)) indices.push(i - 1);
+  }
+  return indices.length ? indices : Array.from({ length: total }, (_, i) => i);
+}
+async function renderPdfToImages({ file, scale = 2, format = 'png', quality = 0.9, range = '', out = null, status = null }) {
+  const report = (msg) => { if (status) status.textContent = msg; };
+  report('Loading PDF engine…');
+  const pdfjsLib = await getPdfJs();
+  report('Opening PDF…');
+  const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+  const indices = parsePageRange(range, pdf.numPages);
+  if (out) out.innerHTML = '';
+  const ext = format === 'jpeg' ? 'jpg' : 'png';
+  const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png';
+  const rendered = [];
+  for (let idx = 0; idx < indices.length; idx++) {
+    const p = indices[idx];
+    report(`Rendering page ${p + 1} of ${pdf.numPages}…`);
+    const page = await pdf.getPage(p + 1);
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(viewport.width);
+    canvas.height = Math.round(viewport.height);
+    const ctx = canvas.getContext('2d');
+    await renderPdfPage(page, viewport, ctx);
+    report(`Encoding page ${p + 1} of ${pdf.numPages}…`);
+    if (format === 'jpeg') {
+      ctx.fillStyle = '#fff';
+      ctx.globalCompositeOperation = 'destination-over';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    const dataUrl = canvas.toDataURL(mime, quality);
+    const blob = await canvasToBlob(canvas, mime, quality);
+    rendered.push({ name: `page-${p + 1}.${ext}`, dataUrl, blob });
+    if (out) {
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'margin:10px 0;padding:8px;border:1px solid var(--border);border-radius:8px;background:repeating-conic-gradient(#80808022 0% 25%, transparent 0% 50%) 0 0 / 16px 16px';
+      const img = document.createElement('img');
+      img.src = dataUrl; img.style.maxWidth = '100%'; img.style.borderRadius = '6px';
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-top:6px';
+      const a = document.createElement('a');
+      a.href = dataUrl; a.download = `page-${p + 1}.${ext}`; a.textContent = `Download page ${p + 1}`;
+      a.className = 'btn btn-secondary btn-sm';
+      const meta = document.createElement('span'); meta.className = 'muted'; meta.style.fontSize = '12px'; meta.textContent = `${p + 1} / ${pdf.numPages}`;
+      row.append(a, meta); wrap.append(img, row); out.appendChild(wrap);
+    }
+  }
+  report(rendered.length ? `${rendered.length} page(s) ready. Download individually, or grab them all as a ZIP.` : 'Nothing was rendered — check the page range.');
+  return rendered;
+}
+async function downloadPdfPagesZip(pages, zipName = 'pdf-pages.zip') {
+  if (!pages || !pages.length) return false;
+  const data = {};
+  for (const p of pages) {
+    if (p.blob) data[p.name] = new Uint8Array(await p.blob.arrayBuffer());
+  }
+  const zipped = fflate.zipSync(data, { level: 6 });
+  const blob = new Blob([zipped], { type: 'application/zip' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = zipName; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  return true;
+}
 async function utilPdf() {
   const file = document.querySelector('[data-util="pdf-file"]')?.files?.[0];
   if (!file) { toast('No PDF', 'Choose a PDF file.', 'error'); return; }
   const scale = Number(document.querySelector('[data-util="pdf-scale"]')?.value || 2);
+  const format = document.querySelector('[data-util="pdf-img-format"]')?.value || 'png';
+  const quality = Math.max(30, Math.min(100, Number(document.querySelector('[data-util="pdf-jpeg-quality"]')?.value || 90))) / 100;
+  const range = document.querySelector('[data-util="pdf-page-range"]')?.value || '';
   const out = document.getElementById('util-pdf-out');
-  if (out) out.innerHTML = 'Loading PDF.js...';
+  const status = document.getElementById('util-pdf-status');
   try {
-    if (!window.__pdfjs) {
-      window.__pdfjs = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.mjs');
-    }
-    const pdfjsLib = window.__pdfjs;
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.mjs';
-    const data = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data }).promise;
-    if (out) out.innerHTML = '';
-    for (let p = 1; p <= pdf.numPages; p++) {
-      const page = await pdf.getPage(p);
-      const viewport = page.getViewport({ scale });
-      const canvas = document.createElement('canvas');
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      const ctx = canvas.getContext('2d');
-      await page.render({ canvasContext: ctx, viewport }).promise;
-      const url = canvas.toDataURL('image/png');
-      if (out) {
-        const wrap = document.createElement('div');
-        wrap.style.margin = '8px 0';
-        const img = document.createElement('img');
-        img.src = url; img.style.maxWidth = '100%';
-       img.style.boxShadow = '0 4px 18px rgba(0,0,0,.35)';
-       img.style.border = '1px solid var(--border-strong)';
-       wrap.style.background = 'repeating-conic-gradient(#80808022 0% 25%, transparent 0% 50%) 0 0 / 16px 16px';
-       wrap.style.padding = '8px';
-       wrap.style.borderRadius = '8px';
-        const a = document.createElement('a');
-        a.href = url; a.download = `page-${pi + 1}.png`; a.textContent = `Download page ${pi + 1}`;
-        wrap.appendChild(img); wrap.appendChild(a);
-        out.appendChild(wrap);
-      }
-    }
-    toast('PDF rendered', `${pdf.numPages} page(s).`, 'success');
+    const rendered = await renderPdfToImages({ file, scale, format, quality, range, out, status });
+    state.utilPdfPages = rendered;
+    const zipBtn = document.querySelector('[data-action="util-pdf-zip"]');
+    if (zipBtn) zipBtn.disabled = rendered.length === 0;
+    toast('PDF rendered', `${rendered.length} page(s).`, 'success');
   } catch (e) {
     if (out) out.innerHTML = '';
+    if (status) status.textContent = '';
     toast('PDF failed', e?.message || 'Failed.', 'error');
   }
+}
+async function utilPdfZip() {
+  await downloadPdfPagesZip(state.utilPdfPages, 'pdf-pages.zip');
 }
 
 function utilChromaBody() {
@@ -7792,35 +7891,61 @@ function pdfToolsView() {
 }
 
 function pdfMergeBody() {
-  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>Merge PDFs</strong><span>Combine multiple PDFs into one</span></div></div><div class="stage-body">
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>Merge PDFs</strong><span>Combine multiple PDFs into one, with optional normalised page size and page numbers</span></div></div><div class="stage-body">
     <input type="file" accept="application/pdf" multiple data-util="pdf-merge-files" hidden id="pdf-merge-files" />
     <label class="btn btn-secondary btn-sm" for="pdf-merge-files">Choose PDFs</label>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:10px">
+      <div class="field"><div class="field-head"><span class="field-label">Output name</span></div><input class="input" data-util="pdf-merge-name" value="merged" style="width:100%" /></div>
+      <div class="field"><div class="field-head"><span class="field-label">Page size</span></div><select data-util="pdf-merge-size" class="select" style="width:100%"><option value="keep" selected>Keep each page’s size</option><option value="a4">Normalise to A4</option><option value="letter">Normalise to Letter</option><option value="legal">Normalise to Legal</option></select></div>
+    </div>
+    <label class="muted" style="display:flex;gap:6px;align-items:center;font-size:12px;margin-top:10px"><input type="checkbox" data-util="pdf-merge-pagenums" /> Add page numbers (bottom center)</label>
+    <p class="field-help" style="margin-top:8px">Files are merged in the order you select them. Encrypted PDFs are opened with best-effort handling.</p>
     <button class="btn btn-primary btn-sm" data-action="pdf-merge" style="margin-top:10px">Merge &amp; download</button>
     <div id="pdf-merge-out" class="util-out"></div>
   </div></div>`;
 }
 function pdfSplitBody() {
-  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>Split PDF</strong><span>Extract pages or ranges</span></div></div><div class="stage-body">
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>Split PDF</strong><span>Extract ranges or split into separate files</span></div></div><div class="stage-body">
     <input type="file" accept="application/pdf" data-util="pdf-split-file" hidden id="pdf-split-file" />
     <label class="btn btn-secondary btn-sm" for="pdf-split-file">Choose PDF</label>
-    <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Pages (e.g. 1-3,5,7-9)</span></div><input class="input" data-util="pdf-split-range" placeholder="1-3,5" style="width:200px" /></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:10px">
+      <div class="field"><div class="field-head"><span class="field-label">Mode</span></div><select data-util="pdf-split-mode" class="select" style="width:100%"><option value="extract" selected>Extract range to one PDF</option><option value="single">Split every page (ZIP)</option><option value="chunks">Split every N pages (ZIP)</option></select></div>
+      <div class="field"><div class="field-head"><span class="field-label">Pages / chunk size</span></div><input class="input" data-util="pdf-split-range" placeholder="e.g. 1-3,5" style="width:100%" /></div>
+    </div>
+    <p class="field-help" style="margin-top:8px">Leave pages empty to include everything. For “every N pages”, enter a number such as 5.</p>
     <button class="btn btn-primary btn-sm" data-action="pdf-split" style="margin-top:10px">Split &amp; download</button>
     <div id="pdf-split-out" class="util-out"></div>
   </div></div>`;
 }
 function pdfImg2PdfBody() {
-  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>Images to PDF</strong><span>Combine images into a PDF</span></div></div><div class="stage-body">
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>Images to PDF</strong><span>Combine images with page size, fit and margins</span></div></div><div class="stage-body">
     <input type="file" accept="image/*" multiple data-util="pdf-img-files" hidden id="pdf-img-files" />
     <label class="btn btn-secondary btn-sm" for="pdf-img-files">Choose images</label>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:10px">
+      <div class="field"><div class="field-head"><span class="field-label">Page size</span></div><select data-util="pdf-img-size" class="select" style="width:100%"><option value="auto" selected>Fit each image</option><option value="a4">A4</option><option value="letter">Letter</option><option value="legal">Legal</option></select></div>
+      <div class="field"><div class="field-head"><span class="field-label">Orientation</span></div><select data-util="pdf-img-orient" class="select" style="width:100%"><option value="auto" selected>Auto (per image)</option><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></div>
+      <div class="field"><div class="field-head"><span class="field-label">Image fit</span></div><select data-util="pdf-img-fit" class="select" style="width:100%"><option value="contain" selected>Contain (letterbox)</option><option value="cover">Cover (crop)</option><option value="stretch">Stretch</option></select></div>
+      <div class="field"><div class="field-head"><span class="field-label">Margin (pt)</span></div><input type="number" min="0" max="120" value="24" data-util="pdf-img-margin" class="input" style="width:100%" /></div>
+    </div>
     <button class="btn btn-primary btn-sm" data-action="pdf-img2pdf" style="margin-top:10px">Build PDF</button>
     <div id="pdf-img2pdf-out" class="util-out"></div>
   </div></div>`;
 }
 function pdfPdf2ImgBody() {
-  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>PDF to images</strong><span>Render pages to PNG</span></div></div><div class="stage-body">
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>PDF to images</strong><span>Render pages to PNG or JPEG, or download them all as a ZIP</span></div></div><div class="stage-body">
     <input type="file" accept="application/pdf" data-util="pdf-p2i-file" hidden id="pdf-p2i-file" />
     <label class="btn btn-secondary btn-sm" for="pdf-p2i-file">Choose PDF</label>
-    <button class="btn btn-primary btn-sm" data-action="pdf-pdf2img" style="margin-top:10px">Render pages</button>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:10px">
+      <div class="field"><div class="field-head"><span class="field-label">Scale</span></div><select data-util="pdf-p2i-scale" class="select" style="width:100%"><option value="1">1×</option><option value="2" selected>2×</option><option value="3">3×</option><option value="4">4×</option></select></div>
+      <div class="field"><div class="field-head"><span class="field-label">Format</span></div><select data-util="pdf-p2i-format" class="select" style="width:100%"><option value="png" selected>PNG</option><option value="jpeg">JPEG</option></select></div>
+      <div class="field"><div class="field-head"><span class="field-label">Pages</span></div><input class="input" data-util="pdf-p2i-range" placeholder="All, or e.g. 1-3,5" style="width:100%" /></div>
+      <div class="field"><div class="field-head"><span class="field-label">JPEG quality</span></div><input type="number" min="30" max="100" value="90" data-util="pdf-p2i-quality" class="input" style="width:100%" /></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <button class="btn btn-primary btn-sm" data-action="pdf-pdf2img">Render pages</button>
+      <button class="btn btn-secondary btn-sm" data-action="pdf-pdf2img-zip" disabled>Download all (ZIP)</button>
+    </div>
+    <p id="pdf-p2img-status" class="field-help" style="margin:8px 0 0"></p>
     <div id="pdf-p2img-out" class="util-out"></div>
   </div></div>`;
 }
@@ -7878,7 +8003,7 @@ async function pdfRedactRenderPage() {
   canvas.width = viewport.width;
   canvas.height = viewport.height;
   const ctx = canvas.getContext('2d');
-  await page.render({ canvasContext: ctx, viewport }).promise;
+  await renderPdfPage(page, viewport, ctx);
   // draw existing redactions
   const rects = rd.rects[rd.page] || [];
   ctx.fillStyle = 'rgba(0,0,0,0.85)';
@@ -7906,7 +8031,7 @@ async function pdfRedactExport() {
       canvas.width = viewport.width;
       canvas.height = viewport.height;
       const ctx = canvas.getContext('2d');
-      await page.render({ canvasContext: ctx, viewport }).promise;
+      await renderPdfPage(page, viewport, ctx);
       const rects = rd.rects[p] || [];
       ctx.fillStyle = 'rgb(0,0,0)';
       rects.forEach((r) => ctx.fillRect(r.x, r.y, r.w, r.h));
@@ -7972,48 +8097,147 @@ function bindPdfRedact() {
   };
 }
 
+const PDF_LIB_URL = new URL('../../vendor/pdf-lib/pdf-lib.esm.min.js', import.meta.url).href;
+const PDF_JS_URL = new URL('../../vendor/pdfjs/pdf.min.mjs', import.meta.url).href;
+const PDF_WORKER_URL = new URL('../../vendor/pdfjs/pdf.worker.min.mjs', import.meta.url).href;
 async function getPdfLib() {
-  if (!window.PDFLib) window.PDFLib = await import('https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.esm.min.js');
+  if (!window.PDFLib) window.PDFLib = await import(PDF_LIB_URL);
   return window.PDFLib;
 }
 async function getPdfJs() {
   if (!window.pdfjsLib) {
-    window.pdfjsLib = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pdf.min.mjs');
-    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pdf.worker.min.mjs';
+    window.pdfjsLib = await import(PDF_JS_URL);
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER_URL;
   }
   return window.pdfjsLib;
+}
+// pdf.js drives its render loop with requestAnimationFrame. Browsers pause rAF
+// for background tabs, which makes conversions hang until the tab is shown
+// again. Use timer-based frames while a page renders so jobs always finish.
+let pdfRenderDepth = 0;
+let pdfNativeRaf = null;
+let pdfNativeCaf = null;
+function beginPdfRenderFrames() {
+  if (pdfRenderDepth === 0 && typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+    pdfNativeRaf = window.requestAnimationFrame;
+    pdfNativeCaf = window.cancelAnimationFrame;
+    window.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()), 8);
+    window.cancelAnimationFrame = (id) => clearTimeout(id);
+  }
+  pdfRenderDepth++;
+}
+function endPdfRenderFrames() {
+  pdfRenderDepth = Math.max(0, pdfRenderDepth - 1);
+  if (pdfRenderDepth === 0 && pdfNativeRaf) {
+    window.requestAnimationFrame = pdfNativeRaf;
+    window.cancelAnimationFrame = pdfNativeCaf;
+    pdfNativeRaf = pdfNativeCaf = null;
+  }
+}
+async function renderPdfPage(page, viewport, canvasContext) {
+  beginPdfRenderFrames();
+  try {
+    await page.render({ canvasContext, viewport }).promise;
+  } finally {
+    endPdfRenderFrames();
+  }
 }
 
 async function pdfMerge() {
   const files = Array.from(document.querySelector('[data-util="pdf-merge-files"]')?.files || []);
   if (!files.length) { toast('No PDFs', 'Choose PDF files.', 'error'); return; }
+  const outNameRaw = (document.querySelector('[data-util="pdf-merge-name"]')?.value || 'merged').trim();
+  const safeBase = outNameRaw.replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'merged';
+  const outName = `${safeBase}.pdf`;
+  const targetSize = document.querySelector('[data-util="pdf-merge-size"]')?.value || 'keep';
+  const addPageNumbers = Boolean(document.querySelector('[data-util="pdf-merge-pagenums"]')?.checked);
   const out = document.getElementById('pdf-merge-out');
   if (out) out.innerHTML = 'Merging...';
   try {
-    const { PDFDocument } = await getPdfLib();
+    const { PDFDocument, StandardFonts, rgb } = await getPdfLib();
+    const TARGETS = { a4: [595.28, 841.89], letter: [612, 792], legal: [612, 1008] };
     const merged = await PDFDocument.create();
     for (const f of files) {
-      const doc = await PDFDocument.load(await f.arrayBuffer());
-      const pages = await merged.copyPages(doc, doc.getPageIndices());
-      pages.forEach((p) => merged.addPage(p));
+      const doc = await PDFDocument.load(await f.arrayBuffer(), { ignoreEncryption: true });
+      if (targetSize === 'keep' || !TARGETS[targetSize]) {
+        const pages = await merged.copyPages(doc, doc.getPageIndices());
+        pages.forEach((p) => merged.addPage(p));
+      } else {
+        const [w, h] = TARGETS[targetSize];
+        for (const srcPage of doc.getPages()) {
+          const embedded = await merged.embedPage(srcPage);
+          const page = merged.addPage([w, h]);
+          const scale = Math.min(w / embedded.width, h / embedded.height);
+          const pw = embedded.width * scale;
+          const ph = embedded.height * scale;
+          page.drawPage(embedded, { x: (w - pw) / 2, y: (h - ph) / 2, width: pw, height: ph });
+        }
+      }
     }
-    const bytes = await merged.save();
+    if (addPageNumbers) {
+      const font = await merged.embedFont(StandardFonts.Helvetica);
+      const total = merged.getPageCount();
+      merged.getPages().forEach((page, i) => {
+        const { width } = page.getSize();
+        const label = `${i + 1} / ${total}`;
+        const textWidth = font.widthOfTextAtSize(label, 9);
+        page.drawText(label, { x: (width - textWidth) / 2, y: 16, size: 9, font, color: rgb(0.35, 0.35, 0.35) });
+      });
+    }
+    merged.setTitle(safeBase);
+    const bytes = await merged.save({ useObjectStreams: true });
     const blob = new Blob([bytes], { type: 'application/pdf' });
     const url = URL.createObjectURL(blob);
-    if (out) { out.innerHTML = ''; const a = document.createElement('a'); a.href = url; a.download = 'merged.pdf'; a.textContent = 'Download merged.pdf'; out.appendChild(a); }
+    if (out) { out.innerHTML = ''; const a = document.createElement('a'); a.href = url; a.download = outName; a.textContent = `Download ${outName}`; out.appendChild(a); const meta = document.createElement('span'); meta.className = 'muted'; meta.style.fontSize = '12px'; meta.textContent = ` ${files.length} file(s) · ${merged.getPageCount()} page(s) · ${formatBytes(blob.size)}`; out.appendChild(meta); }
     toast('Merged', 'PDF ready.', 'success');
   } catch (e) { if (out) out.innerHTML = ''; toast('Merge failed', e?.message || 'Failed.', 'error'); }
 }
 async function pdfSplit() {
   const file = document.querySelector('[data-util="pdf-split-file"]')?.files?.[0];
   if (!file) { toast('No PDF', 'Choose a PDF.', 'error'); return; }
+  const mode = document.querySelector('[data-util="pdf-split-mode"]')?.value || 'extract';
   const rangeStr = (document.querySelector('[data-util="pdf-split-range"]')?.value || '').trim();
   const out = document.getElementById('pdf-split-out');
-  if (out) out.innerHTML = 'Splitting...';
+  if (out) out.innerHTML = 'Splitting…';
   try {
     const { PDFDocument } = await getPdfLib();
     const src = await PDFDocument.load(await file.arrayBuffer());
     const total = src.getPageCount();
+    const base = (baseName(file.name) || 'document').replace(/\.[^.]+$/, '');
+    const download = (blob, name, label) => {
+      const url = URL.createObjectURL(blob);
+      if (!out) return;
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px';
+      const a = document.createElement('a');
+      a.className = 'btn btn-secondary btn-sm'; a.href = url; a.download = name; a.textContent = label || name;
+      const span = document.createElement('span');
+      span.className = 'muted'; span.style.fontSize = '12px'; span.textContent = formatBytes(blob.size);
+      row.append(a, span); out.appendChild(row);
+    };
+    if (mode === 'single' || mode === 'chunks') {
+      let groups = [];
+      if (mode === 'single') groups = src.getPageIndices().map((i) => [i]);
+      else {
+        const n = Math.max(1, Number(rangeStr) || 1);
+        for (let i = 0; i < total; i += n) groups.push(Array.from({ length: Math.min(n, total - i) }, (_, k) => i + k));
+      }
+      const zipData = {};
+      for (let g = 0; g < groups.length; g++) {
+        const doc = await PDFDocument.create();
+        const pages = await doc.copyPages(src, groups[g]);
+        pages.forEach((p) => doc.addPage(p));
+        const bytes = await doc.save();
+        const first = groups[g][0] + 1, last = groups[g][groups[g].length - 1] + 1;
+        const name = groups[g].length === 1 ? `${base}-page-${first}.pdf` : `${base}-pages-${first}-${last}.pdf`;
+        zipData[name] = new Uint8Array(bytes);
+      }
+      const zipped = fflate.zipSync(zipData, { level: 6 });
+      if (out) out.innerHTML = '';
+      download(new Blob([zipped], { type: 'application/zip' }), `${base}-split.zip`, `Download ${groups.length} PDF${groups.length === 1 ? '' : 's'} (ZIP)`);
+      toast('Split', `${groups.length} file(s) ready.`, 'success');
+      return;
+    }
     let indices = [];
     if (!rangeStr) { indices = src.getPageIndices(); }
     else {
@@ -8022,7 +8246,8 @@ async function pdfSplit() {
         if (!m) continue;
         const a = Math.max(1, Number(m[1]));
         const b = m[2] ? Math.min(total, Number(m[2])) : a;
-        for (let i = a; i <= b; i++) if (i >= 1 && i <= total) indices.push(i - 1);
+        const step = a <= b ? 1 : -1;
+        for (let i = a; step > 0 ? i <= b : i >= b; i += step) if (i >= 1 && i <= total) indices.push(i - 1);
       }
     }
     if (!indices.length) throw new Error('No valid pages.');
@@ -8030,60 +8255,94 @@ async function pdfSplit() {
     const pages = await doc.copyPages(src, indices);
     pages.forEach((p) => doc.addPage(p));
     const bytes = await doc.save();
-    const blob = new Blob([bytes], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    if (out) { out.innerHTML = ''; const a = document.createElement('a'); a.href = url; a.download = 'split.pdf'; a.textContent = 'Download split.pdf'; out.appendChild(a); }
+    if (out) out.innerHTML = '';
+    download(new Blob([bytes], { type: 'application/pdf' }), `${base}-split.pdf`, 'Download split PDF');
     toast('Split', 'PDF ready.', 'success');
   } catch (e) { if (out) out.innerHTML = ''; toast('Split failed', e?.message || 'Failed.', 'error'); }
+}
+async function imageBlobToPng(file) {
+  if (file.type === 'image/png') return new Uint8Array(await file.arrayBuffer());
+  if (file.type === 'image/jpeg' || file.type === 'image/jpg') return new Uint8Array(await file.arrayBuffer());
+  const bitmap = await loadBitmap(file);
+  const canvas = document.createElement('canvas');
+  canvas.width = bitmap.width; canvas.height = bitmap.height;
+  canvas.getContext('2d').drawImage(bitmap, 0, 0);
+  const blob = await canvasToBlob(canvas, 'image/png');
+  return new Uint8Array(await blob.arrayBuffer());
+}
+const PDF_PAGE_SIZES = { a4: [595.28, 841.89], letter: [612, 792], legal: [612, 1008] };
+async function imagesToPdf(files, { sizeKey = 'auto', orient = 'auto', fit = 'contain', margin = 24, title = 'images' } = {}) {
+  margin = Math.max(0, Math.min(120, Number(margin) || 0));
+  const { PDFDocument } = await getPdfLib();
+  const doc = await PDFDocument.create();
+  for (const f of files) {
+    const bytes = await imageBlobToPng(f);
+    const isJpg = f.type === 'image/jpeg' || f.type === 'image/jpg';
+    const img = isJpg ? await doc.embedJpg(bytes) : await doc.embedPng(bytes);
+    let pw, ph;
+    if (sizeKey === 'auto' || !PDF_PAGE_SIZES[sizeKey]) { pw = img.width + margin * 2; ph = img.height + margin * 2; }
+    else {
+      [pw, ph] = PDF_PAGE_SIZES[sizeKey];
+      const landscape = orient === 'landscape' || (orient === 'auto' && img.width > img.height);
+      if (landscape) [pw, ph] = [ph, pw];
+    }
+    const page = doc.addPage([pw, ph]);
+    const areaW = Math.max(1, pw - margin * 2);
+    const areaH = Math.max(1, ph - margin * 2);
+    let w, h;
+    if (fit === 'stretch') { w = areaW; h = areaH; }
+    else {
+      const scale = fit === 'cover' ? Math.max(areaW / img.width, areaH / img.height) : Math.min(areaW / img.width, areaH / img.height);
+      w = img.width * scale; h = img.height * scale;
+    }
+    page.drawImage(img, { x: (pw - w) / 2, y: (ph - h) / 2, width: w, height: h });
+  }
+  doc.setTitle(title);
+  const pdfBytes = await doc.save({ useObjectStreams: true });
+  return { bytes: pdfBytes, pageCount: doc.getPageCount() };
+}
+function imagesToPdfLink(out, url, name, pageCount, size) {
+  if (!out) return;
+  out.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><a class="btn btn-secondary btn-sm" href="${url}" download="${name}">Download ${name}</a><span class="muted" style="font-size:12px">${pageCount} page(s) · ${formatBytes(size)}</span></div>`;
 }
 async function pdfImg2Pdf() {
   const files = Array.from(document.querySelector('[data-util="pdf-img-files"]')?.files || []);
   if (!files.length) { toast('No images', 'Choose images.', 'error'); return; }
+  const sizeKey = document.querySelector('[data-util="pdf-img-size"]')?.value || 'auto';
+  const orient = document.querySelector('[data-util="pdf-img-orient"]')?.value || 'auto';
+  const fit = document.querySelector('[data-util="pdf-img-fit"]')?.value || 'contain';
+  const margin = Math.max(0, Math.min(120, Number(document.querySelector('[data-util="pdf-img-margin"]')?.value || 24)));
   const out = document.getElementById('pdf-img2pdf-out');
-  if (out) out.innerHTML = 'Building...';
+  if (out) out.innerHTML = 'Building…';
   try {
-    const { PDFDocument } = await getPdfLib();
-    const doc = await PDFDocument.create();
-    for (const f of files) {
-      const bytes = await f.arrayBuffer();
-      const img = f.type === 'image/png' ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
-      const page = doc.addPage([img.width, img.height]);
-      page.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
-    }
-    const pdfBytes = await doc.save();
-    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const { bytes, pageCount } = await imagesToPdf(files, { sizeKey, orient, fit, margin, title: 'images' });
+    const blob = new Blob([bytes], { type: 'application/pdf' });
     const url = URL.createObjectURL(blob);
-    if (out) { out.innerHTML = ''; const a = document.createElement('a'); a.href = url; a.download = 'images.pdf'; a.textContent = 'Download images.pdf'; out.appendChild(a); }
+    imagesToPdfLink(out, url, 'images.pdf', pageCount, blob.size);
+    const a = document.createElement('a'); a.href = url; a.download = 'images.pdf'; a.click();
     toast('Built', 'PDF ready.', 'success');
   } catch (e) { if (out) out.innerHTML = ''; toast('Build failed', e?.message || 'Failed.', 'error'); }
 }
 async function pdfPdf2Img() {
   const file = document.querySelector('[data-util="pdf-p2i-file"]')?.files?.[0];
   if (!file) { toast('No PDF', 'Choose a PDF.', 'error'); return; }
+  const scale = Number(document.querySelector('[data-util="pdf-p2i-scale"]')?.value || 2);
+  const format = document.querySelector('[data-util="pdf-p2i-format"]')?.value || 'png';
+  const quality = Math.max(30, Math.min(100, Number(document.querySelector('[data-util="pdf-p2i-quality"]')?.value || 90))) / 100;
+  const range = document.querySelector('[data-util="pdf-p2i-range"]')?.value || '';
   const out = document.getElementById('pdf-p2img-out');
-  if (out) out.innerHTML = 'Rendering...';
+  const status = document.getElementById('pdf-p2img-status');
   try {
-    const pdfjs = await getPdfJs();
-    const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+    const rendered = await renderPdfToImages({ file, scale, format, quality, range, out, status });
+    state.pdfPages = rendered;
+    const zipBtn = document.querySelector('[data-action="pdf-pdf2img-zip"]');
+    if (zipBtn) zipBtn.disabled = rendered.length === 0;
+    toast('Rendered', `${rendered.length} page(s).`, 'success');
+  } catch (e) {
     if (out) out.innerHTML = '';
-    for (let i = 1; i <= doc.numPages; i++) {
-      const page = await doc.getPage(i);
-      const vp = page.getViewport({ scale: 2 });
-      const canvas = document.createElement('canvas');
-      canvas.width = vp.width; canvas.height = vp.height;
-      await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
-      const url = canvas.toDataURL('image/png');
-      const img = document.createElement('img');
-      img.src = url; img.style.maxWidth = '100%'; img.style.margin = '6px 0';
-      const a = document.createElement('a');
-      a.href = url; a.download = 'page-' + i + '.png'; a.textContent = 'Download page ' + i;
-      a.className = 'btn btn-secondary btn-sm'; a.style.marginLeft = '8px';
-      const wrap = document.createElement('div');
-      wrap.append(img, a);
-      if (out) out.appendChild(wrap);
-    }
-    toast('Rendered', doc.numPages + ' pages.', 'success');
-  } catch (e) { if (out) out.innerHTML = ''; toast('Render failed', e?.message || 'Failed.', 'error'); }
+    if (status) status.textContent = '';
+    toast('Render failed', e?.message || 'Failed.', 'error');
+  }
 }
 
 function aiChatView() {
@@ -9380,6 +9639,11 @@ function videoEditorUpdatePreview() {
   const dur = Number(data.source.duration) || 0;
   const t = video.currentTime || 0;
   container.innerHTML = (data.overlays || []).map((o) => {
+    if (dur > 0) {
+      const start = (dur * (Number(o.start) || 0)) / 100;
+      const end = (dur * (Number(o.end ?? 100))) / 100;
+      if (t < start || t > end) return '';
+    }
     const size = interpVeKf(o.kf, 'size', t, dur);
     const opacityKf = interpVeKf(o.kf, 'opacity', t, dur);
     const xKf = interpVeKf(o.kf, 'x', t, dur);
@@ -9410,9 +9674,9 @@ function videoEditorView() {
           <div class="stage-head"><div class="stage-head-copy"><strong>Preview</strong><span>Live output</span></div></div>
           <div class="stage-body" style="display:flex;flex-direction:column;align-items:center;gap:8px">
             ${source ? `<div style="position:relative;display:inline-block;max-width:100%">
-              <video src="${source.url}" controls style="max-width:100%;border-radius:8px;display:block"></video>
+              <video src="${source.url}" controls playsinline style="max-width:100%;border-radius:8px;display:block"></video>
               <div id="ve-preview-overlay" style="position:absolute;inset:0;pointer-events:none;overflow:hidden"></div>
-            </div>` : `<label class="btn btn-secondary btn-sm" for="ve-file">Choose video</label><input id="ve-file" type="file" accept="video/*" data-ve="file" hidden />`}
+            </div>` : `<label class="btn btn-secondary btn-sm" for="ve-file">Choose video</label>`}
             ${source ? '' : ''}
           </div>
         </div>
@@ -9482,8 +9746,35 @@ function videoEditorView() {
             </div>` : ''}
           </div>
         </details>
+                <details class="stage-card">
+          <summary class="stage-head" style="cursor:pointer;list-style:none"><div class="stage-head-copy"><strong>Transform &amp; motion</strong><span>Rotate, flip and fades</span></div></summary>
+          <div class="stage-body">
+            <div class="field">
+              <div class="field-head"><span class="field-label">Rotation</span><span class="field-value">${data.rotation || 0}°</span></div>
+              <select data-ve="rotation" class="select">
+                ${[0, 90, 180, 270].map((r) => '<option value="' + r + '" ' + (Number(data.rotation) === r ? 'selected' : '') + '>' + r + '°</option>').join('')}
+              </select>
+            </div>
+            <div class="switch-row">
+              <div class="switch-copy"><strong>Flip horizontal</strong><small>Mirror left ↔ right</small></div>
+              <button class="switch" role="switch" aria-checked="${!!data.flipH}" aria-label="Flip horizontal" data-toggle="videoEditor.flipH"></button>
+            </div>
+            <div class="switch-row">
+              <div class="switch-copy"><strong>Flip vertical</strong><small>Mirror top ↕ bottom</small></div>
+              <button class="switch" role="switch" aria-checked="${!!data.flipV}" aria-label="Flip vertical" data-toggle="videoEditor.flipV"></button>
+            </div>
+            <div class="field">
+              <div class="field-head"><span class="field-label">Fade in</span><span class="field-value" data-ve-val="fadeIn">${data.fadeIn ?? 0}s</span></div>
+              <input type="range" min="0" max="10" step="0.5" value="${data.fadeIn ?? 0}" data-ve="fadeIn" />
+            </div>
+            <div class="field">
+              <div class="field-head"><span class="field-label">Fade out</span><span class="field-value" data-ve-val="fadeOut">${data.fadeOut ?? 0}s</span></div>
+              <input type="range" min="0" max="10" step="0.5" value="${data.fadeOut ?? 0}" data-ve="fadeOut" />
+            </div>
+          </div>
+        </details>
         <details class="stage-card">
-          <summary class="stage-head" style="cursor:pointer;list-style:none"><div class="stage-head-copy"><strong>Trim & crop</strong><span>Range and aspect</span></div></summary>
+          <summary class="stage-head" style="cursor:pointer;list-style:none"><div class="stage-head-copy"><strong>Trim &amp; crop</strong><span>Range, aspect and speed</span></div></summary>
           <div class="stage-body">
             <div class="field">
               <div class="field-head"><span class="field-label">Trim start (%)</span></div>
@@ -9493,34 +9784,79 @@ function videoEditorView() {
               <div class="field-head"><span class="field-label">Trim end (%)</span></div>
               <input type="number" min="1" max="100" value="${data.trimEnd}" data-ve="trimEnd" class="input" style="width:80px" />
             </div>
+            <p class="field-help">${((data.source?.duration || 0) * (Number(data.trimStart) || 0) / 100).toFixed(2)}s in · ${(((data.source?.duration || 0) * ((Number(data.trimEnd) || 100) - (Number(data.trimStart) || 0))) / 100).toFixed(2)}s clip</p>
             <div class="field">
               <div class="field-head"><span class="field-label">Aspect</span></div>
               <select data-ve="aspect" class="select">
-                <option value="free" ${data.aspect === 'free' ? 'selected' : ''}>Free</option>
-                <option value="16:9" ${data.aspect === '16:9' ? 'selected' : ''}>16:9</option>
-                <option value="9:16" ${data.aspect === '9:16' ? 'selected' : ''}>9:16</option>
-                <option value="1:1" ${data.aspect === '1:1' ? 'selected' : ''}>1:1</option>
-                <option value="4:5" ${data.aspect === '4:5' ? 'selected' : ''}>4:5</option>
+                ${[['free', 'Free'], ['16:9', '16:9'], ['9:16', '9:16'], ['1:1', '1:1'], ['4:5', '4:5'], ['4:3', '4:3'], ['3:4', '3:4'], ['21:9', '21:9']]
+                  .map(([value, label]) => '<option value="' + value + '" ' + (data.aspect === value ? 'selected' : '') + '>' + label + '</option>').join('')}
               </select>
             </div>
             <div class="field">
               <div class="field-head"><span class="field-label">Speed</span></div>
               <select data-ve="speed" class="select">
-                <option value="0.5" ${data.speed === '0.5' ? 'selected' : ''}>0.5×</option>
-                <option value="1" ${data.speed === '1' ? 'selected' : ''}>1×</option>
-                <option value="1.5" ${data.speed === '1.5' ? 'selected' : ''}>1.5×</option>
-                <option value="2" ${data.speed === '2' ? 'selected' : ''}>2×</option>
-              </select>
-            </div>
-            <div class="field">
-              <div class="field-head"><span class="field-label">Output format</span></div>
-              <select data-ve="format" class="select">
-                <option value="mp4" ${data.settings.format === 'mp4' ? 'selected' : ''}>MP4</option>
-                <option value="webm" ${data.settings.format === 'webm' ? 'selected' : ''}>WEBM</option>
+                ${[['0.25', '0.25×'], ['0.5', '0.5×'], ['0.75', '0.75×'], ['1', '1×'], ['1.25', '1.25×'], ['1.5', '1.5×'], ['2', '2×'], ['3', '3×'], ['4', '4×']]
+                  .map(([value, label]) => '<option value="' + value + '" ' + (data.speed === value ? 'selected' : '') + '>' + label + '</option>').join('')}
               </select>
             </div>
           </div>
         </details>
+        <details class="stage-card">
+          <summary class="stage-head" style="cursor:pointer;list-style:none"><div class="stage-head-copy"><strong>Audio</strong><span>Volume and track</span></div></summary>
+          <div class="stage-body">
+            <div class="field">
+              <div class="field-head"><span class="field-label">Volume</span><span class="field-value" data-ve-val="audioVolume">${data.audioVolume ?? 100}%</span></div>
+              <input type="range" min="0" max="200" step="5" value="${data.audioVolume ?? 100}" data-ve="audioVolume" />
+            </div>
+            <div class="switch-row">
+              <div class="switch-copy"><strong>Keep audio</strong><small>Off exports a silent video</small></div>
+              <button class="switch" role="switch" aria-checked="${data.settings.keepAudio !== false}" aria-label="Keep audio" data-toggle="videoEditor.settings.keepAudio"></button>
+            </div>
+          </div>
+        </details>
+        <details class="stage-card">
+          <summary class="stage-head" style="cursor:pointer;list-style:none"><div class="stage-head-copy"><strong>Output</strong><span>Format, quality and metadata</span></div></summary>
+          <div class="stage-body">
+            <div class="field">
+              <div class="field-head"><span class="field-label">Container</span></div>
+              <select data-ve="format" class="select">
+                <option value="mp4" ${data.settings.format === 'mp4' ? 'selected' : ''}>MP4 · H.264</option>
+                <option value="webm" ${data.settings.format === 'webm' ? 'selected' : ''}>WEBM · VP8</option>
+              </select>
+            </div>
+            <div class="field">
+              <div class="field-head"><span class="field-label">Quality</span></div>
+              <select data-ve="quality" class="select">
+                ${[['compact', 'Compact · smallest'], ['balanced', 'Balanced'], ['sharp', 'Sharp · largest']]
+                  .map(([value, label]) => '<option value="' + value + '" ' + (data.settings.quality === value ? 'selected' : '') + '>' + label + '</option>').join('')}
+              </select>
+            </div>
+            <div class="field">
+              <div class="field-head"><span class="field-label">Resolution</span></div>
+              <select data-ve="resolution" class="select">
+                ${[['source', 'Keep source'], ['2160', '2160p'], ['1440', '1440p'], ['1080', '1080p'], ['720', '720p'], ['480', '480p'], ['360', '360p']]
+                  .map(([value, label]) => '<option value="' + value + '" ' + (data.settings.resolution === value ? 'selected' : '') + '>' + label + '</option>').join('')}
+              </select>
+            </div>
+            <div class="field">
+              <div class="field-head"><span class="field-label">Frame rate</span></div>
+              <select data-ve="fps" class="select">
+                ${[['source', 'Keep source'], ['24', '24 fps'], ['30', '30 fps'], ['60', '60 fps']]
+                  .map(([value, label]) => '<option value="' + value + '" ' + (data.settings.fps === value ? 'selected' : '') + '>' + label + '</option>').join('')}
+              </select>
+            </div>
+            <div class="switch-row">
+              <div class="switch-copy"><strong>Strip metadata</strong><small>Remove container tags from the export</small></div>
+              <button class="switch" role="switch" aria-checked="${!!data.settings.stripMetadata}" aria-label="Strip metadata" data-toggle="videoEditor.settings.stripMetadata"></button>
+            </div>
+          </div>
+        </details>
+        
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" data-action="ve-undo" ${data.historyIndex > 0 ? '' : 'disabled'}>${icon('undo-2')}Undo</button>
+          <button class="btn btn-secondary btn-sm" data-action="ve-redo" ${data.historyIndex < (data.history.length - 1) ? '' : 'disabled'}>${icon('rotate-cw')}Redo</button>
+          <button class="btn btn-ghost btn-sm" data-action="ve-reset">${icon('rotate-ccw')}Reset edits</button>
+        </div>
         <button class="btn btn-primary" data-action="ve-export" ${source ? '' : 'disabled'} style="margin-top:8px">${icon('download')}Export video</button>
         <div id="ve-out" class="util-out"></div>
         <div id="ve-progress" class="progress-wrap" hidden><div class="progress"><span style="width:0%"></span></div><span class="pct">0%</span></div>
@@ -9653,19 +9989,15 @@ function bindVideoTimeline() {
       const width = origEnd - origStart;
       o.start = Math.round(newStart);
       o.end = Math.round(Math.min(100, newStart + width));
-      renderVideoTimeline();
-      renderVideoOverlays();
+      clip.style.left = o.start + '%';
+      clip.style.width = Math.max(1, o.end - o.start) + '%';
     };
-    clip.onpointerup = () => { dragging = false; };
+    clip.onpointerup = () => {
+      if (!dragging) return;
+      dragging = false;
+      videoEditorPushHistory();
+    };
   });
-  // play/pause button
-  const playBtn = document.querySelector('[data-action="ve-play"]');
-  if (playBtn) playBtn.onclick = () => {
-    const video = document.querySelector('#view video');
-    if (!video) return;
-    if (video.paused) { video.play(); playBtn.innerHTML = icon('pause') + 'Play/Pause'; }
-    else { video.pause(); playBtn.innerHTML = icon('play') + 'Play/Pause'; }
-  };
   // timecode update
   const video = document.querySelector('#view video');
   if (video) {
@@ -9689,8 +10021,11 @@ async function videoEditorLoad(file) {
   data.overlays = [];
    data.audioKf = [];
   data.trimStart = 0; data.trimEnd = 100; data.aspect = 'free'; data.speed = '1';
-  data.history = [JSON.stringify({ adjustments: data.adjustments, text: data.text, textSize: data.textSize, textColor: data.textColor, textPos: data.textPos, trimStart: data.trimStart, trimEnd: data.trimEnd, aspect: data.aspect, speed: data.speed, overlays: data.overlays, audioKf: data.audioKf })];
+  data.rotation = 0; data.flipH = false; data.flipV = false; data.fadeIn = 0; data.fadeOut = 0;
+  data.audioVolume = 100;
+  data.history = [videoEditorSnapshot()];
   data.historyIndex = 0;
+  data.playhead = 0;
   data.result = null;
   renderView();
   toast('Video loaded', file.name, 'success');
@@ -9698,7 +10033,13 @@ async function videoEditorLoad(file) {
 
 function videoEditorSnapshot() {
   const d = state.videoEditor;
-  return JSON.stringify({ adjustments: d.adjustments, text: d.text, textSize: d.textSize, textColor: d.textColor, textPos: d.textPos, trimStart: d.trimStart, trimEnd: d.trimEnd, aspect: d.aspect, speed: d.speed, overlays: JSON.parse(JSON.stringify(d.overlays || [])), audioKf: JSON.parse(JSON.stringify(d.audioKf || [])) });
+  return JSON.stringify({
+    adjustments: d.adjustments, text: d.text, textSize: d.textSize, textColor: d.textColor, textPos: d.textPos,
+    trimStart: d.trimStart, trimEnd: d.trimEnd, aspect: d.aspect, speed: d.speed,
+    rotation: d.rotation, flipH: d.flipH, flipV: d.flipV, fadeIn: d.fadeIn, fadeOut: d.fadeOut,
+    audioVolume: d.audioVolume, settings: d.settings,
+    overlays: JSON.parse(JSON.stringify(d.overlays || [])), audioKf: JSON.parse(JSON.stringify(d.audioKf || []))
+  });
 }
 
 function videoEditorPushHistory() {
@@ -9718,6 +10059,9 @@ function videoEditorUndo() {
   const s = JSON.parse(d.history[d.historyIndex]);
   d.adjustments = s.adjustments; d.text = s.text; d.textSize = s.textSize; d.textColor = s.textColor; d.textPos = s.textPos;
   d.trimStart = s.trimStart; d.trimEnd = s.trimEnd; d.aspect = s.aspect; d.speed = s.speed;
+  d.rotation = s.rotation ?? 0; d.flipH = !!s.flipH; d.flipV = !!s.flipV;
+  d.fadeIn = s.fadeIn ?? 0; d.fadeOut = s.fadeOut ?? 0; d.audioVolume = s.audioVolume ?? 100;
+  if (s.settings) d.settings = { ...d.settings, ...s.settings };
   if (s.overlays) d.overlays = JSON.parse(JSON.stringify(s.overlays));
    if (s.audioKf) d.audioKf = JSON.parse(JSON.stringify(s.audioKf));
   renderView();
@@ -9730,6 +10074,9 @@ function videoEditorRedo() {
   const s = JSON.parse(d.history[d.historyIndex]);
   d.adjustments = s.adjustments; d.text = s.text; d.textSize = s.textSize; d.textColor = s.textColor; d.textPos = s.textPos;
   d.trimStart = s.trimStart; d.trimEnd = s.trimEnd; d.aspect = s.aspect; d.speed = s.speed;
+  d.rotation = s.rotation ?? 0; d.flipH = !!s.flipH; d.flipV = !!s.flipV;
+  d.fadeIn = s.fadeIn ?? 0; d.fadeOut = s.fadeOut ?? 0; d.audioVolume = s.audioVolume ?? 100;
+  if (s.settings) d.settings = { ...d.settings, ...s.settings };
   if (s.overlays) d.overlays = JSON.parse(JSON.stringify(s.overlays));
    if (s.audioKf) d.audioKf = JSON.parse(JSON.stringify(s.audioKf));
   renderView();
@@ -9740,6 +10087,8 @@ function videoEditorReset() {
   d.adjustments = { brightness: 100, contrast: 100, saturation: 100, hue: 0 };
   d.text = ''; d.textSize = 24; d.textColor = '#ffffff'; d.textPos = 'bottom';
   d.trimStart = 0; d.trimEnd = 100; d.aspect = 'free'; d.speed = '1';
+  d.rotation = 0; d.flipH = false; d.flipV = false; d.fadeIn = 0; d.fadeOut = 0;
+  d.audioVolume = 100;
   videoEditorPushHistory();
 }
 
@@ -9767,31 +10116,82 @@ function buildVeKfExpr(kf, prop, dur) {
   expr = `if(lt(t,${sp[0].t.toFixed(3)}),${sp[0].v},${expr})`;
   return expr;
 }
+function veAtempoChain(speed) {
+  const parts = [];
+  let v = Number(speed) || 1;
+  while (v > 2.0001) { parts.push('atempo=2'); v /= 2; }
+  while (v < 0.4999) { parts.push('atempo=0.5'); v /= 0.5; }
+  parts.push(`atempo=${v.toFixed(4)}`);
+  return parts;
+}
+
 function buildVideoEditorArgs(data) {
-  const a = data.adjustments;
+  const a = data.adjustments || {};
+  const settings = data.settings || {};
+  const speed = clamp(Number(data.speed) || 1, 0.25, 4);
+  const dur = Number(data.source?.duration) || 0;
+  const srcW = Number(data.source?.width) || 0;
+  const srcH = Number(data.source?.height) || 0;
+
+  const startPct = clamp(Number(data.trimStart) || 0, 0, 100);
+  const rawEnd = data.trimEnd === '' || data.trimEnd == null ? 100 : Number(data.trimEnd);
+  const endPct = clamp(Number.isFinite(rawEnd) ? rawEnd : 100, 0, 100);
+  const safeEnd = endPct > startPct ? endPct : 100;
+  const startSec = (dur * startPct) / 100;
+  const endSec = (dur * safeEnd) / 100;
+  const clipDur = Math.max(0, endSec - startSec);
+
   const filters = [];
-  // color adjustments
+
+  // colour adjustments
   const eq = [];
-  if (a.brightness !== 100) eq.push(`brightness=${((a.brightness-100)/100).toFixed(3)}`);
-  if (a.contrast !== 100) eq.push(`contrast=${(a.contrast/100).toFixed(3)}`);
-  if (a.saturation !== 100) eq.push(`saturation=${(a.saturation/100).toFixed(3)}`);
+  if (a.brightness !== 100) eq.push(`brightness=${((a.brightness - 100) / 100).toFixed(3)}`);
+  if (a.contrast !== 100) eq.push(`contrast=${(a.contrast / 100).toFixed(3)}`);
+  if (a.saturation !== 100) eq.push(`saturation=${(a.saturation / 100).toFixed(3)}`);
   if (a.hue !== 0) eq.push(`hue=${a.hue}`);
   if (eq.length) filters.push('eq=' + eq.join(':'));
-  // speed
-  if (data.speed !== '1') filters.push(`setpts=${(1/Number(data.speed)).toFixed(3)}*PTS`);
-  // aspect crop
-  const aspectMap = { '16:9': '16/9', '9:16': '9/16', '1:1': '1/1', '4:5': '4/5' };
-  if (data.aspect && data.aspect !== 'free' && aspectMap[data.aspect]) {
-    filters.push(`crop=ih*${aspectMap[data.aspect]}:ih`);
+
+  // rotate / flip
+  const rotation = Number(data.rotation) || 0;
+  if (rotation === 90) filters.push('transpose=1');
+  else if (rotation === 180) filters.push('transpose=2,transpose=2');
+  else if (rotation === 270) filters.push('transpose=2');
+  if (data.flipH) filters.push('hflip');
+  if (data.flipV) filters.push('vflip');
+
+  // aspect crop (computed from the real source size so the box always fits)
+  const aspectMap = { '16:9': 16 / 9, '9:16': 9 / 16, '1:1': 1, '4:5': 4 / 5, '4:3': 4 / 3, '3:4': 3 / 4, '21:9': 21 / 9 };
+  const ratio = aspectMap[data.aspect];
+  if (ratio) {
+    const swapped = rotation === 90 || rotation === 270;
+    const w0 = swapped ? srcH : srcW;
+    const h0 = swapped ? srcW : srcH;
+    if (w0 > 0 && h0 > 0) {
+      let cw = w0;
+      let ch = h0;
+      if (w0 / h0 > ratio) cw = h0 * ratio; else ch = w0 / ratio;
+      cw = Math.max(2, Math.floor(cw / 2) * 2);
+      ch = Math.max(2, Math.floor(ch / 2) * 2);
+      filters.push(`crop=${cw}:${ch}`);
+    } else {
+      filters.push(`crop=ih*${ratio.toFixed(6)}:ih`);
+    }
   }
-  // text overlay (legacy single)
+
+  // output resolution (keeps aspect, even dimensions)
+  if (settings.resolution && settings.resolution !== 'source') {
+    const h = clamp(Number(settings.resolution) || 1080, 144, 4320);
+    filters.push(`scale=-2:${h}:flags=lanczos`);
+  }
+
+  // text overlay (legacy single line)
   if (data.text && data.text.trim()) {
     const pos = data.textPos === 'top' ? 'x=(w-text_w)/2:y=20' : data.textPos === 'center' ? 'x=(w-text_w)/2:y=(h-text_h)/2' : 'x=(w-text_w)/2:y=h-text_h-20';
     const color = data.textColor || '#ffffff';
-    filters.push(`drawtext=text='${data.text.replace(/'/g, "\\'")}':fontsize=${data.textSize}:fontcolor=${color}:${pos}`);
+    filters.push(`drawtext=text='${data.text.replace(/'/g, "\'")}':fontsize=${data.textSize}:fontcolor=${color}:${pos}`);
   }
+
   // overlay layers
-  const dur = Number(data.source?.duration) || 0;
   (data.overlays || []).forEach((o) => {
     if (!o.text || !o.text.trim()) return;
     const color = o.color || '#ffffff';
@@ -9801,40 +10201,66 @@ function buildVideoEditorArgs(data) {
     const xExpr = xKf || String(Number(o.offsetX) || 0);
     const yExpr = yKf || String(Number(o.offsetY) || 0);
     const pos = `x=(w-text_w)/2+(${xExpr}):y=${baseY}+(${yExpr})`;
-    const startPct = Math.max(0, Math.min(100, Number(o.start) || 0)) / 100;
-    const endPct = Math.max(0, Math.min(100, Number(o.end) || 100)) / 100;
+    const startPctO = Math.max(0, Math.min(100, Number(o.start) || 0)) / 100;
+    const endPctO = Math.max(0, Math.min(100, Number(o.end) || 100)) / 100;
     let enable = '';
     if (dur > 0) {
-      const s = (dur * startPct).toFixed(3);
-      const e = (dur * endPct).toFixed(3);
-      enable = `:enable='between(t,${s},${e})'`;
+      enable = `:enable='between(t,${(dur * startPctO).toFixed(3)},${(dur * endPctO).toFixed(3)})'`;
     }
     const opacityNum = Number(o.opacity ?? 100);
     const sizeExpr = buildVeKfExpr(o.kf, 'size', dur);
     const opacityExprRaw = buildVeKfExpr(o.kf, 'opacity', dur);
     const opacityExpr = opacityExprRaw ? `(${opacityExprRaw})/100` : null;
     const fontsizePart = sizeExpr ? `fontsize='${sizeExpr}'` : `fontsize=${Number(o.size) || 24}`;
-    const parts = [`text='${o.text.replace(/'/g, "\\'")}'`, fontsizePart, `fontcolor=${color}`];
+    const parts = [`text='${o.text.replace(/'/g, "\'")}'`, fontsizePart, `fontcolor=${color}`];
     if (opacityExpr) parts.push(`alpha='${opacityExpr}'`);
     else if (opacityNum !== 100) parts.push(`alpha=${(opacityNum / 100).toFixed(3)}`);
     parts.push(pos);
     filters.push(`drawtext=${parts.join(':')}${enable}`);
   });
-  const vf = filters.join(',');
-  const args = ['-hide_banner', '-y', '-i', '{in}'];
-  if (vf) args.push('-vf', vf);
-  const fmt = data.settings.format === 'webm' ? 'webm' : 'mp4';
-  args.push(...(fmt === 'webm' ? ['-c:v', 'libvpx', '-b:v', '2M'] : ['-c:v', 'libx264', '-preset', 'fast', '-crf', '23']));
-  if (data.settings.keepAudio) args.push('-c:a', 'aac', '-b:a', '128k'); else args.push('-an');
-  // volume keyframes
-  if (data.settings.keepAudio && Array.isArray(data.audioKf) && data.audioKf.length) {
-    const dur = Number(data.source?.duration) || 0;
-    let volExpr = null;
-    if (data.audioKf.length >= 2) volExpr = buildVeKfExpr(data.audioKf, 'volume', dur);
-    else volExpr = String(Number(data.audioKf[0].volume ?? 100));
-    if (volExpr) args.push('-af', `volume='${volExpr}/100'`);
+
+  // fades (applied on the source timeline, before speed changes)
+  if (dur > 0 && clipDur > 0) {
+    const fadeIn = clamp(Number(data.fadeIn) || 0, 0, 30);
+    const fadeOut = clamp(Number(data.fadeOut) || 0, 0, 30);
+    if (fadeIn > 0) filters.push(`fade=t=in:st=${startSec.toFixed(3)}:d=${Math.min(fadeIn, clipDur).toFixed(3)}`);
+    if (fadeOut > 0) filters.push(`fade=t=out:st=${Math.max(startSec, endSec - fadeOut).toFixed(3)}:d=${Math.min(fadeOut, clipDur).toFixed(3)}`);
   }
-  if (data.settings.stripMetadata) args.push('-map_metadata', '-1');
+
+  // speed goes last so drawtext/keyframe times stay in source-seconds
+  if (speed !== 1) filters.push(`setpts=${(1 / speed).toFixed(6)}*PTS`);
+  if (settings.fps && settings.fps !== 'source') filters.push(`fps=${clamp(Number(settings.fps) || 30, 1, 120)}`);
+
+  const fmt = settings.format === 'webm' ? 'webm' : 'mp4';
+  const args = ['-hide_banner', '-y', '-i', '{in}'];
+  if (filters.length) args.push('-vf', filters.join(','));
+
+  const crf = ({ compact: 30, balanced: 23, sharp: 18 })[settings.quality] ?? 23;
+  if (fmt === 'webm') args.push('-c:v', 'libvpx', '-b:v', '0', '-crf', String(crf + 8));
+  else args.push('-c:v', 'libx264', '-preset', 'fast', '-crf', String(crf), '-pix_fmt', 'yuv420p');
+
+  if (settings.keepAudio !== false) {
+    const audioFilters = [];
+    const baseVol = clamp(Number(data.audioVolume ?? 100), 0, 200);
+    if (baseVol !== 100) audioFilters.push(`volume=${(baseVol / 100).toFixed(3)}`);
+    const kfs = Array.isArray(data.audioKf) ? data.audioKf : [];
+    if (kfs.length) {
+      const volExpr = kfs.length >= 2 ? buildVeKfExpr(kfs, 'volume', dur) : String(Number(kfs[0].volume ?? 100));
+      if (volExpr) audioFilters.push(`volume='${volExpr}/100'`);
+    }
+    if (speed !== 1) audioFilters.push(...veAtempoChain(speed));
+    if (audioFilters.length) args.push('-af', audioFilters.join(','));
+    if (fmt === 'webm') args.push('-c:a', 'libopus', '-b:a', '96k');
+    else args.push('-c:a', 'aac', '-b:a', '128k');
+  } else {
+    args.push('-an');
+  }
+
+  // output-side trim: the filters above still see the full source timeline
+  if (dur > 0 && clipDur > 0 && (startPct > 0 || safeEnd < 100)) {
+    args.push('-ss', (startSec / speed).toFixed(3), '-t', (clipDur / speed).toFixed(3));
+  }
+  if (settings.stripMetadata) args.push('-map_metadata', '-1');
   args.push('{out}');
   return { args, fmt };
 }
@@ -9931,16 +10357,8 @@ function renderVideoOverlays() {
         </div>`).join('')}
       </div>` : ''}
     </div>`).join('');
-  // render timeline
-  const tl = document.getElementById('ve-timeline');
-  if (tl) {
-    const colors = ['#7c3aed','#10b981','#f59e0b','#ef4444','#3b82f6'];
-    tl.innerHTML = data.overlays.map((o, i) => {
-      const left = Math.max(0, Math.min(100, o.start || 0));
-      const width = Math.max(1, (o.end || 100) - left);
-      return `<div title="Layer ${i+1}: ${esc(o.text)}" style="position:absolute;left:${left}%;width:${width}%;top:4px;height:20px;background:${colors[i % colors.length]};opacity:0.85;border-radius:3px;font-size:10px;color:#fff;padding:2px 4px;overflow:hidden;white-space:nowrap">${esc(o.text)}</div>`;
-    }).join('');
-  }
+  // repaint the timeline tracks without destroying their structure
+  if (document.getElementById('ve-timeline')) renderVideoTimeline();
   try { videoEditorUpdatePreview(); } catch {}
 }
 function bindVideoEditor() {
@@ -9983,7 +10401,7 @@ function bindVideoEditor() {
   document.querySelectorAll('[data-ve]').forEach((el) => {
     const key = el.dataset.ve;
     if (key === 'file') return;
-    if (key === 'format' || key === 'text' || key === 'textColor' || key === 'textPos' || key === 'aspect' || key === 'speed' || key === 'trimStart' || key === 'trimEnd' || key === 'textSize') {
+    if (['format', 'text', 'textColor', 'textPos', 'aspect', 'speed', 'trimStart', 'trimEnd', 'textSize', 'rotation', 'fadeIn', 'fadeOut', 'audioVolume', 'quality', 'resolution', 'fps'].includes(key)) {
       const handler = () => {
         const d = state.videoEditor;
         if (key === 'format') d.settings.format = el.value;
@@ -9995,6 +10413,13 @@ function bindVideoEditor() {
         else if (key === 'trimStart') d.trimStart = Number(el.value);
         else if (key === 'trimEnd') d.trimEnd = Number(el.value);
         else if (key === 'textSize') d.textSize = Number(el.value);
+        else if (key === 'rotation') d.rotation = Number(el.value) || 0;
+        else if (key === 'fadeIn') d.fadeIn = Number(el.value) || 0;
+        else if (key === 'fadeOut') d.fadeOut = Number(el.value) || 0;
+        else if (key === 'audioVolume') d.audioVolume = Number(el.value);
+        else if (key === 'quality') d.settings.quality = el.value;
+        else if (key === 'resolution') d.settings.resolution = el.value;
+        else if (key === 'fps') d.settings.fps = el.value;
         else if (['brightness','contrast','saturation','hue'].includes(key)) d.adjustments[key] = Number(el.value);
         const v = document.querySelector(`[data-ve-val="${key}"]`);
         if (v) v.textContent = el.value;
@@ -10058,6 +10483,24 @@ function reframeView() {
                 <option value="mp4" ${data.settings.format === 'mp4' ? 'selected' : ''}>MP4</option>
                 <option value="webm" ${data.settings.format === 'webm' ? 'selected' : ''}>WEBM</option>
               </select>
+            </div>
+            <div class="field">
+              <div class="field-head"><span class="field-label">Quality</span><span class="field-value">CRF ${QUALITY[data.settings.quality]?.crf ?? 23}</span></div>
+              <div class="select-wrap">
+                <select class="select" data-field="reframe.settings.quality" aria-label="Reframe output quality">
+                  ${Object.entries(QUALITY).map(([key, preset]) => `<option value="${key}"${data.settings.quality === key ? ' selected' : ''}>${preset.label}</option>`).join('')}
+                </select>
+                ${icon('chevron-down')}
+              </div>
+            </div>
+            <div class="field">
+              <div class="field-head"><span class="field-label">Audio bitrate</span><span class="field-value">${data.settings.audioBitrate} kbps</span></div>
+              <div class="select-wrap">
+                <select class="select" data-field="reframe.settings.audioBitrate" data-number="1" aria-label="Reframe audio bitrate" ${data.settings.keepAudio ? '' : 'disabled'}>
+                  ${[96, 128, 160, 192, 256].map((value) => `<option value="${value}"${Number(data.settings.audioBitrate) === value ? ' selected' : ''}>${value} kbps</option>`).join('')}
+                </select>
+                ${icon('chevron-down')}
+              </div>
             </div>
             <div class="field">
               <div class="field-head"><span class="field-label">Keep audio</span></div>
@@ -10250,8 +10693,15 @@ async function reframeExport() {
       const xExpr = reframeBuildCropExpr(data, x);
       args.push('-vf', `crop=${w}:${h}:'${xExpr}':0,scale=${w}:${h}`);
     }
-    if (fmt === 'webm') args.push('-c:v', 'libvpx', '-b:v', '2M'); else args.push('-c:v', 'libx264', '-preset', 'fast', '-crf', '23');
-    if (data.settings.keepAudio) args.push('-c:a', 'aac', '-b:a', '128k'); else args.push('-an');
+    const crf = QUALITY[data.settings.quality]?.crf ?? 23;
+    if (fmt === 'webm') args.push('-c:v', 'libvpx', '-deadline', 'good', '-cpu-used', '2', '-crf', String(crf), '-b:v', '0');
+    else args.push('-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p', '-crf', String(crf));
+    if (fmt === 'mp4') args.push('-movflags', '+faststart');
+    if (data.settings.keepAudio) {
+      const audioKbps = clamp(Number(data.settings.audioBitrate) || 128, 64, 320);
+      if (fmt === 'webm') args.push('-c:a', 'libvorbis', '-b:a', `${audioKbps}k`);
+      else args.push('-c:a', 'aac', '-b:a', `${audioKbps}k`);
+    } else args.push('-an');
     args.push('{out}');
     const result = await Engine.run({ blob: data.source.file, inputName: extOf(data.source.name) || 'mp4', outputName: fmt, args, mime: fmt === 'webm' ? 'video/webm' : 'video/mp4', onProgress: updateProgress });
     const name = data.source.name.replace(/\\.[^.]+$/, '') + '-reframed.' + fmt;
@@ -10301,6 +10751,9 @@ function workflowView() {
   const pan = data.pan || { x: 0, y: 0 };
   const zoom = data.zoom || 1;
   // edges as svg lines
+  const gridStyle = data.settings?.gridBg !== false
+    ? `background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);background-size:${Math.max(4, 24 * zoom)}px ${Math.max(4, 24 * zoom)}px;background-position:${pan.x}px ${pan.y}px;`
+    : '';
   const lines = data.edges.map((e) => {
     const a = data.nodes.find((n) => n.id === e.from);
     const b = data.nodes.find((n) => n.id === e.to);
@@ -10394,9 +10847,8 @@ function workflowView() {
         <div class="stage-card" style="height:100%">
           <div class="stage-head"><div class="stage-head-copy"><strong>Canvas</strong><span>Drag to pan · scroll to zoom · drag from an output dot to an input dot to connect</span></div></div>
           <div class="stage-body" style="padding:0">
-            <div id="wf-canvas" style="position:relative;width:100%;height:460px;overflow:hidden;background:var(--surface-2);border-radius:8px;cursor:grab;touch-action:none">
+            <div id="wf-canvas" style="position:relative;width:100%;height:460px;overflow:hidden;background:var(--surface-2);border-radius:8px;cursor:grab;touch-action:none;${gridStyle}">
               <div id="wf-viewport" style="position:absolute;inset:0;transform-origin:0 0;transform:translate(${data.pan.x}px,${data.pan.y}px) scale(${data.zoom})">
-                ${(data.settings?.gridBg !== false) ? '<div style="position:absolute;left:0;top:0;width:4000px;height:4000px;pointer-events:none;background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);background-size:24px 24px;opacity:.9"></div>' : ''}
                 <svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none" id="wf-svg">
                   <defs><marker id="wf-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="var(--accent)" /></marker></defs>
                   ${lines}
@@ -11084,8 +11536,8 @@ function mediaWorkspace(app) {
     <div class="ws-drop" data-action="pick-files" data-context="converter" data-drop="converter" role="button" tabindex="0" aria-label="Add media files" style="min-height:180px">
       <span class="drop-ico">${icon('cloud-upload')}</span>
       <div class="drop-copy">
-        <div class="ws-drop-title">Drop media here</div>
-        <div class="ws-drop-sub">Videos, audio and images — processed locally in your browser</div>
+        <div class="ws-drop-title">${isMobileRuntime() ? 'Tap to add media' : 'Drop media here'}</div>
+        <div class="ws-drop-sub">${isMobileRuntime() ? 'Videos, audio and images — converted on this device' : 'Videos, audio and images — processed locally in your browser'}</div>
       </div>
       <div class="drop-foot">
         <span class="drop-browse">${icon('folder-open')}Browse files</span>
@@ -11792,6 +12244,14 @@ function compressorView() {
       <div class="switch-copy"><strong>Remove audio</strong><small>Shrink further for silent clips</small></div>
       <button class="switch" role="switch" aria-checked="${s.mute}" aria-label="Remove audio" data-toggle="compressor.settings.mute"></button>
     </div>
+    <div class="switch-row">
+      <div class="switch-copy"><strong>Normalize loudness</strong><small>Target -16 LUFS for consistent playback</small></div>
+      <button class="switch" role="switch" aria-checked="${s.normalize}" aria-label="Normalize loudness" data-toggle="compressor.settings.normalize"></button>
+    </div>
+    <div class="switch-row">
+      <div class="switch-copy"><strong>Clean up audio</strong><small>Denoise hiss and background noise</small></div>
+      <button class="switch" role="switch" aria-checked="${s.denoise}" aria-label="Clean up audio" data-toggle="compressor.settings.denoise"></button>
+    </div>
     <div class="field">
       <div class="field-head"><span class="field-label">Estimated output size</span><span class="field-value">${source ? formatBytes(Math.round(source.size * (s.mode === 'size' ? (s.targetMB * 1024 * 1024 / Math.max(1, source.size)) : compressorFactor(s.quality)))) : '—'}</span></div>
       <p class="field-help">Approximate. Actual size depends on content.</p>
@@ -11841,7 +12301,7 @@ function cropHandles() {
 function runCropPreview() {
   const frame = document.getElementById('crop-frame');
   const media = frame ? frame.querySelector('img, video') : null;
-  const canvas = document.getElementById('crop-preview');
+  const canvas = document.getElementById('crop-final-preview') || document.getElementById('crop-preview');
   if (!media || !canvas) return;
   const crop = state.cropper.crop;
   const sw = media.naturalWidth || media.videoWidth || 0;
@@ -11914,7 +12374,7 @@ function cropperView() {
     </div>
      <div class="field">
        <div class="field-head"><span class="field-label">Final framing preview</span></div>
-       <canvas id="crop-preview" style="max-width:100%;border:1px solid var(--border);border-radius:8px;background:var(--surface-2)"></canvas>
+       <canvas id="crop-final-preview" style="max-width:100%;border:1px solid var(--border);border-radius:8px;background:var(--surface-2)"></canvas>
        <div style="margin-top:6px"><button class="btn btn-secondary btn-sm" data-action="crop-preview">${icon('eye')}<span>Render preview</span></button></div>
      </div>
     ${!isImage ? `
@@ -11934,10 +12394,25 @@ function cropperView() {
             </button>`).join('')}
         </div>
       </div>
+      <div class="field">
+        <div class="field-head"><span class="field-label">${icon('rotate-cw')}Rotate</span><span class="field-value">${s.rotate === '0' ? 'None' : `${s.rotate}°`}</span></div>
+        <div class="segmented" role="group" aria-label="Rotate output">
+          ${['0', '90', '180', '270'].map((value) => `<button data-action="cropper-rotate" data-rotate="${value}" class="${String(s.rotate) === value ? 'is-active' : ''}">${value === '0' ? 'None' : `${value}°`}</button>`).join('')}
+        </div>
+      </div>
+      <div class="switch-row">
+        <div class="switch-copy"><strong>Flip horizontal</strong><small>Mirror left to right</small></div>
+        <button class="switch" role="switch" aria-checked="${s.flipH}" aria-label="Flip horizontal" data-toggle="cropper.settings.flipH"></button>
+      </div>
+      <div class="switch-row">
+        <div class="switch-copy"><strong>Flip vertical</strong><small>Mirror top to bottom</small></div>
+        <button class="switch" role="switch" aria-checked="${s.flipV}" aria-label="Flip vertical" data-toggle="cropper.settings.flipV"></button>
+      </div>
       <div class="switch-row">
         <div class="switch-copy"><strong>Keep audio</strong><small>Re-encode the original track</small></div>
         <button class="switch" role="switch" aria-checked="${s.keepAudio}" aria-label="Keep audio" data-toggle="cropper.settings.keepAudio"></button>
-      </div>` : `
+      </div>
+      <p class="field-help">The crop preview is unrotated; rotation and flips are applied on export.</p>` : `
       <div class="modal-note">${icon('info')} Images crop to lossless <strong>PNG</strong>. For WEBP or JPG, run the result through the converter afterwards.</div>`}`;
 
   return `
@@ -12008,6 +12483,18 @@ function extractorView() {
         </select>
         ${icon('chevron-down')}
       </div>
+    </div>
+    <div class="field">
+      <div class="field-head"><span class="field-label">Channels</span><span class="field-value">${s.channels === 'mono' ? 'Mono (1.0)' : s.channels === 'stereo' ? 'Stereo (2.0)' : 'Keep source'}</span></div>
+      <div class="segmented" role="group" aria-label="Audio channels">
+        ${[['source', 'Source'], ['mono', 'Mono'], ['stereo', 'Stereo']].map(([value, text]) => `<button data-action="extractor-channels" data-channels="${value}" class="${s.channels === value ? 'is-active' : ''}">${text}</button>`).join('')}
+      </div>
+      <p class="field-help">Mono halves the size of voice recordings.</p>
+    </div>
+    <div class="field">
+      <div class="field-head"><span class="field-label">Volume</span><span class="field-value">${s.gain > 0 ? '+' : ''}${s.gain} dB</span></div>
+      <input type="range" min="-12" max="12" step="1" value="${s.gain}" data-field="extractor.settings.gain" data-number="1" aria-label="Volume gain in decibels" />
+      <p class="field-help">Quiet source? Lift it here. Loudness normalization overrides this.</p>
     </div>
     <div class="hr-label">Trim window</div>
     <div class="trim-row">
@@ -12125,6 +12612,12 @@ function gifView() {
         ${icon('chevron-down')}
       </div>
     </div>
+    <div class="field">
+      <div class="field-head"><span class="field-label">Playback speed</span><span class="field-value">${s.speed}×</span></div>
+      <div class="segmented" role="group" aria-label="GIF playback speed">
+        ${[['0.5', '0.5×'], ['0.75', '0.75×'], ['1', '1×'], ['1.5', '1.5×'], ['2', '2×']].map(([value, text]) => `<button data-action="gif-speed" data-speed="${value}" class="${String(s.speed) === value ? 'is-active' : ''}">${text}</button>`).join('')}
+      </div>
+    </div>
     <div class="hr-label">Clip range</div>
     <div class="trim-row">
       <div class="field-head"><span class="field-label">Start</span><span class="field-value">${Math.round(s.start)}%</span></div>
@@ -12140,9 +12633,14 @@ function gifView() {
         <input type="range" min="0" max="100" step="1" value="${s.end}" data-field="gif.settings.end" data-trim="end" aria-label="GIF end percent" />
       </div>
     </div>
-    <div class="switch-row">
-      <div class="switch-copy"><strong>Loop forever</strong><small>Uncheck for a single play</small></div>
-      <button class="switch" role="switch" aria-checked="${s.loop}" aria-label="Loop GIF forever" data-toggle="gif.settings.loop"></button>
+    <div class="field">
+      <div class="field-head"><span class="field-label">Repeat</span><span class="field-value">${Number(s.loopCount) > 0 ? `${s.loopCount}×` : 'Forever'}</span></div>
+      <div class="select-wrap">
+        <select class="select" data-field="gif.settings.loopCount" data-number="1" aria-label="GIF repeat count">
+          ${[[0, 'Forever'], [1, 'Play once'], [2, '2 times'], [3, '3 times'], [5, '5 times']].map(([value, text]) => `<option value="${value}"${Number(s.loopCount) === value ? ' selected' : ''}>${text}</option>`).join('')}
+        </select>
+        ${icon('chevron-down')}
+      </div>
     </div>`;
 
   return `
@@ -12288,6 +12786,15 @@ function recorderView() {
               </div>
             </div>
             <div class="field">
+              <div class="field-head"><span class="field-label">Video bitrate</span><span class="field-value">${Number(settings.bitrate) > 0 ? `${settings.bitrate / 1000} Mbps` : 'Auto'}</span></div>
+              <div class="select-wrap">
+                <select class="select" data-field="recorder.settings.bitrate" data-number="1" aria-label="Recording video bitrate">
+                  ${[[0, 'Auto (by resolution)'], [4000, '4 Mbps'], [8000, '8 Mbps'], [12000, '12 Mbps']].map(([value, text]) => `<option value="${value}"${Number(settings.bitrate) === value ? ' selected' : ''}>${text}</option>`).join('')}
+                </select>
+                ${icon('chevron-down')}
+              </div>
+            </div>
+            <div class="field">
               <div class="field-head"><span class="field-label">Countdown</span><span class="field-value">${settings.countdown ? `${settings.countdown} sec` : 'Off'}</span></div>
               <div class="segmented" role="group" aria-label="Countdown">
                 ${[0, 3, 5].map((value) => `<button data-action="rec-countdown" data-countdown="${value}" class="${Number(settings.countdown) === value ? 'is-active' : ''}">${value ? value + 's' : 'Off'}</button>`).join('')}
@@ -12301,7 +12808,7 @@ function recorderView() {
               <div class="switch-copy"><strong>System audio</strong><small>Only tabs that allow audio capture</small></div>
               <button class="switch" role="switch" aria-checked="${settings.systemAudio}" aria-label="Record system audio" data-toggle="recorder.settings.systemAudio"></button>
             </div>
-            <div class="modal-note" style="margin-top:12px">${icon('shield')}Chrome and Edge support this API. Safari may only offer the current tab. If MP4 is not available, NuVerter records WEBM and labels it honestly.</div>
+            <div class="modal-note" style="margin-top:12px">${isMobileRuntime() ? `${icon('info')}Screen capture needs a desktop browser. The converter, editor and PDF tools all work on this device.` : `${icon('shield')}Chrome and Edge support this API. Safari may only offer the current tab. If MP4 is not available, NuVerter records WEBM and labels it honestly.`}</div>
           </div>
           <div class="settings-foot">
             <div class="settings-summary">
@@ -12309,7 +12816,7 @@ function recorderView() {
               <span class="mono">${formatClock(s.elapsed * 1000)}</span>
             </div>
             ${['idle', 'finished'].includes(s.status)
-              ? `<button class="btn btn-primary" data-action="rec-start">${icon('circle-play')}<span>${s.status === 'finished' ? 'Record again' : 'Start recording'}</span></button>`
+              ? `<button class="btn btn-primary" data-action="rec-start"${isMobileRuntime() ? ' disabled title="Screen capture is not available on mobile"' : ''}>${icon('circle-play')}<span>${isMobileRuntime() ? 'Desktop only' : (s.status === 'finished' ? 'Record again' : 'Start recording')}</span></button>`
               : s.status === 'processing'
                 ? `<button class="btn btn-primary" disabled>${icon('loader-circle', 'spin')}<span>Saving clip…</span></button>`
                 : `<button class="btn btn-danger" data-action="rec-stop">${icon('square')}<span>${s.status === 'countdown' ? 'Cancel countdown' : 'Stop recording'}</span></button>`}
@@ -12440,7 +12947,7 @@ async function startRecording() {
   const s = state.recorder;
   if (['countdown', 'recording', 'paused', 'processing'].includes(s.status)) return;
   if (!navigator.mediaDevices?.getDisplayMedia) {
-    s.error = 'This browser does not expose screen capture. Try Chrome or Edge on desktop.';
+    s.error = isMobileRuntime() ? 'Screen capture is not available in the mobile app. Open NuVerter on a desktop browser instead.' : 'This browser does not expose screen capture. Try Chrome or Edge on desktop.';
     renderView();
     toast('Screen capture unavailable', s.error, 'error');
     return;
@@ -12489,7 +12996,8 @@ async function startRecording() {
   }
   let recorder;
   try {
-    const bitrate = Number(s.settings.quality) >= 1440 ? 12000000 : Number(s.settings.quality) >= 1080 ? 7000000 : 3500000;
+    const autoBitrate = Number(s.settings.quality) >= 1440 ? 12000000 : Number(s.settings.quality) >= 1080 ? 7000000 : 3500000;
+    const bitrate = Number(s.settings.bitrate) > 0 ? Number(s.settings.bitrate) * 1000 : autoBitrate;
     recorder = new MediaRecorder(recordStream, mime ? { mimeType: mime, videoBitsPerSecond: bitrate } : undefined);
   } catch (error) {
     stopRecorderStreams();
@@ -13248,7 +13756,7 @@ function syncToolChrome(tool) {
 }
 
 /* ==========================================================================
-   Modals — plans, settings, help, privacy, advertise, engine, preview
+   Modals — plans, settings, help, privacy, engine, preview
    ========================================================================== */
 function plansBody() {
   const team = state.plansPlan === 'team';
@@ -13409,10 +13917,10 @@ function settingsBody() {
     <div class="modal-section">
       <div class="modal-section-title">${icon('info')}Updates</div>
       <div class="settings-list">
-        <div class="settings-item"><div class="settings-item-copy"><strong>Installed version</strong><small>This build</small></div><span class="mono" data-app-version>v${APP_VERSION}</span></div>
+        <div class="settings-item"><div class="settings-item-copy"><strong>Installed version</strong><small>This build</small></div><span class="mono" data-app-version>v${window.NV_APP_VERSION || APP_VERSION}</span></div>
         <div class="settings-item"><div class="settings-item-copy"><strong>Latest release</strong><small>GitHub</small></div><span class="mono" data-latest-release>checking…</span></div>
       </div>
-      ${isTauri ? '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn btn-secondary btn-sm" data-action="check-update">Check for updates</button><button class="btn btn-danger btn-sm" data-action="uninstall-app">Uninstall NuVerter</button></div>' : ''}
+      ${isTauri ? `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn btn-secondary btn-sm" data-action="check-update">Check for updates</button>${isMobileRuntime() ? '' : '<button class="btn btn-danger btn-sm" data-action="uninstall-app">Uninstall NuVerter</button>'}</div>` : ''}
     </div>
     <div class="modal-section">
       <div class="modal-section-title">${icon('activity')}Usage (local)</div>
@@ -13709,24 +14217,32 @@ function settingsBody() {
       <div class="modal-note" style="font-size:10.5px;line-height:1.65">Models download once and are cached by the browser. In the desktop app they are stored under the user data directory so they persist across updates. You can change the storage folder at any time; auto-fetch keeps working.</div>
       <div id="models-path" style="margin-top:6px;font-size:10.5px;color:var(--text-3)"></div>
       <div id="storage-root" style="margin-top:4px;font-size:10.5px;color:var(--text-3)"></div>
-      <div style="display:flex;gap:6px;margin-top:9px;flex-wrap:wrap">
+      <div style="display:flex;gap:6px;margin-top:9px;flex-wrap:wrap"${isMobileRuntime() ? ' hidden' : ''}>
         <button class="btn btn-secondary btn-sm" data-action="change-storage-dir">${icon('folder-open')}Change storage folder</button>
         <button class="btn btn-ghost btn-sm" data-action="reset-storage-dir">${icon('rotate-ccw')}Use default</button>
       </div>
     </div>
 
-    <div class="modal-section">
+    ${isMobileRuntime() ? '' : `<div class="modal-section">
       <div class="modal-section-title">${icon('download')}Desktop app (Tauri)</div>
       <div class="modal-note" style="font-size:10.5px;line-height:1.65">Download the optimized desktop app (Tauri, system webview). Extract the zip and run <code>NuVerter-Tauri.exe</code>. Includes storage directories, models, and auto-update wiring (configure endpoints to enable updates).</div>
       <div style="display:flex;gap:6px;margin-top:9px;flex-wrap:wrap">
         <button class="btn btn-primary btn-sm" data-action="download-app">${icon('download')}Download desktop app</button>
       </div>
-    </div>
+    </div>`}
+
+    ${(isMobileRuntime() && getTauriBridge()) ? '' : `<div class="modal-section">
+      <div class="modal-section-title">${icon('download')}Android app</div>
+      <div class="modal-note" style="font-size:10.5px;line-height:1.65">Install the native Android build (APK). It runs the same offline engine on your phone and checks GitHub for updates at launch. Android only — iPhone and iPad stay on the web version.</div>
+      <div style="display:flex;gap:6px;margin-top:9px;flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm" data-action="download-android-app">${icon('download')}Download Android APK</button>
+      </div>
+    </div>`}
 
     <div class="modal-section">
       <div class="modal-section-title">${icon('info')}About this build</div>
       <div class="engine-info-grid">
-        <div class="engine-info-cell"><span>App</span><strong data-app-version>v${APP_VERSION}</strong></div>
+        <div class="engine-info-cell"><span>App</span><strong data-app-version>v${window.NV_APP_VERSION || APP_VERSION}</strong></div>
         <div class="engine-info-cell"><span>Latest release</span><strong data-latest-release>Checking...</strong></div>
         <div class="engine-info-cell"><span>Engine</span><strong>ffmpeg.wasm 0.12</strong></div>
         <div class="engine-info-cell"><span>Served from</span><strong>${esc(protocol)}</strong></div>
@@ -13880,7 +14396,6 @@ function openHelp() {
       <div class="modal-section" style="display:flex;gap:6px;flex-wrap:wrap">
         <button class="btn btn-secondary btn-sm" data-action="privacy">${icon('shield')}Privacy details</button>
         <button class="btn btn-secondary btn-sm" data-action="engine-info">${icon('cpu')}Engine diagnostics</button>
-        <button class="btn btn-ghost btn-sm" data-action="advertise">${icon('badge-dollar-sign')}Advertise here</button>
       </div>`,
     footer: `<button class="btn btn-primary" data-action="close-modal">Got it</button>`
   });
@@ -13925,7 +14440,7 @@ function openPrivacy() {
   });
 }
 
-/* ---------- advertise ---------- */
+/* ---------- subtitle editor ---------- */
 function openSubtitleEditor() {
   const cues = state.converter.subtitleCues || [];
   openModal({
@@ -14028,51 +14543,6 @@ function parseSrtText(text) {
   return cues;
 }
 
-function openAdvertise() {
-  openModal({
-    title: 'Advertise in the quiet slot',
-    subtitle: 'One reserved placement. No trackers, no interstitials, no uploads.',
-    size: 'wide',
-    kind: 'advertise',
-    body: `
-      <div class="advertise-hero">
-        <strong>A calm 970 × 90 placement</strong>
-        <p>The bar is fixed to the bottom of the workspace, never overlaps content, and is visible on desktop and mobile. This build ships with an empty, clearly labelled placeholder.</p>
-      </div>
-      <div class="ad-spec-grid">
-        <div class="ad-spec"><span>Desktop</span><strong>970 × 90</strong></div>
-        <div class="ad-spec"><span>Mobile</span><strong>fluid × 50</strong></div>
-        <div class="ad-spec"><span>Slots</span><strong>1 · fixed</strong></div>
-      </div>
-      <div class="modal-section">
-        <div class="modal-section-title">${icon('shield-check')}Placement principles</div>
-        <div class="ad-principles">
-          <div class="feature-item">${icon('check')}<span>Static creative or a privacy-respecting partner link — <b>no scripts that inspect media</b>.</span></div>
-          <div class="feature-item">${icon('check')}<span>No pop-ups, no auto-play audio, no layout shift.</span></div>
-          <div class="feature-item">${icon('check')}<span>Clearly labelled and dismissible in a future build.</span></div>
-          <div class="feature-item">${icon('check')}<span>Content stays aligned with a local-first, creative audience.</span></div>
-        </div>
-      </div>
-      <div class="modal-section">
-        <div class="modal-section-title">${icon('info')}Demo notice</div>
-        <div class="modal-note">This static build has no ad server and no sales pipeline attached. The bar is a reserved slot so the layout is honest about where a partner would live. Use the button below to copy placeholder media-kit text.</div>
-      </div>`,
-    footer: `
-      <button class="btn btn-secondary" data-action="copy-media-kit">${icon('copy')}Copy media kit</button>
-      <button class="btn btn-primary" data-action="close-modal">Close</button>`
-  });
-}
-
-function copyMediaKit() {
-  const text = [
-    'NuVerter — Local Media Suite · advertising placeholder',
-    'Placement: fixed bottom bar, 970 × 90 desktop, fluid × 50 mobile',
-    'Audience: creators, editors and privacy-conscious teams using local media tools',
-    'Principles: static creative only, no trackers, no media inspection, no pop-ups',
-    'This build is a local with no live ad server.'
-  ].join('\n');
-  copyText(text).then((ok) => toast(ok ? 'Media kit copied' : 'Copy failed', ok ? 'Paste it into your notes or email.' : 'Your browser blocked clipboard access.', ok ? 'success' : 'error'));
-}
 
 /* ---------- engine diagnostics ---------- */
 function engineInfoBody() {
@@ -14163,6 +14633,32 @@ npm run build</pre>
       </div>`,
     footer: `<button class="btn btn-primary" data-action="close-modal">Done</button>`
   });
+}
+
+async function openAndroidAppInfo() {
+  const releasesUrl = APP_DOWNLOAD_URL;
+  try {
+    const res = await fetch('https://api.github.com/repos/BIltonBB/NuVerter/releases?per_page=10', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const rels = await res.json();
+    for (const rel of rels || []) {
+      const asset = (rel.assets || []).find((a) => /\.apk$/i.test(a.name || ''));
+      if (!asset) continue;
+      const a = document.createElement('a');
+      a.href = asset.browser_download_url;
+      a.download = asset.name;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      toast('Download started', asset.name + ' is downloading. Open it to install, then allow installs from your browser when Android asks.', 'success');
+      return;
+    }
+    window.open(releasesUrl, '_blank', 'noopener');
+    toast('Opening releases', 'No APK is attached to a release yet — check the latest release assets on GitHub.', 'info');
+  } catch (e) {
+    window.open(releasesUrl, '_blank', 'noopener');
+  }
 }
 
 function openEngineInfo() {
@@ -14358,6 +14854,9 @@ function updateLiveValues(path, value) {
   } else if (path === 'subtitleEditor.fontSize') {
     const overlay = document.getElementById('sub-overlay');
     if (overlay) overlay.style.fontSize = `${value}px`;
+  } else if (path === 'extractor.settings.gain') {
+    const el3 = document.querySelector('[data-field="extractor.settings.gain"]')?.closest('.field')?.querySelector('.field-value');
+    if (el3) el3.textContent = `${value > 0 ? '+' : ''}${value} dB`;
   } else if (path === 'reframe.manualX') {
     const el2 = document.querySelector('[data-field="reframe.manualX"]')?.closest('.field')?.querySelector('.field-value');
     if (el2) el2.textContent = `${value}%`;
@@ -14533,9 +15032,11 @@ document.addEventListener('click', () => {
 
 async function handleExtraAction(action, el) {
   switch (action) {
+    case 'account':
+      state.account ? openAccount() : openAuth('login');
+      return true;
     case 'util-tab':
       state.utilities.tab = el.dataset.tab || 'frames';
-      if (state.tool === 'practical' || state.tool === 'audiotools') state.tool = 'utilities';
       renderView();
       return true;
     case 'ai-cat':
@@ -14652,13 +15153,14 @@ async function handleExtraAction(action, el) {
     case 'util-watermark': await utilWatermark(); return true;
     case 'util-upscale': await utilUpscale(); return true;
     case 'util-pdf': await utilPdf(); return true;
+    case 'util-pdf-zip': await utilPdfZip(); return true;
     case 'util-chroma': await utilChroma(); return true;
     case 'util-fileinfo': await utilFileInfo(); return true;
     case 'util-palette': await utilPalette(); return true;
     case 'util-favicon': await utilFavicon(); return true;
     case 'util-slicer': await utilSlicer(); return true;
     case 'util-vector': await utilVector(); return true;
-    case 'util-vector-dl': { if (window.__lastSvg) { const blob = new Blob([window.__lastSvg], { type: 'image/svg+xml' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'vectorized.svg'; a.click(); URL.revokeObjectURL(a.href); } return true; }
+    case 'util-vector-dl': { if (window.__lastSvg) { const blob = new Blob([window.__lastSvg], { type: 'image/svg+xml' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'vectorized.svg'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); } return true; }
     case 'util-palette-copy': { const h = el?.dataset?.hex || ''; if (h) { try { await navigator.clipboard.writeText(h); toast('Copied', h, 'success'); } catch {} } return true; }
     case 'util-ocr': await utilOcr(); return true;
     case 'doc-add': await utilDocAdd(); return true;
@@ -14710,24 +15212,32 @@ async function handleExtraAction(action, el) {
     case 'util-imgresize': await utilImgResize(); return true;
     case 'util-videomerge': await utilVideoMerge(); return true;
     case 'util-audiomerge': await utilAudioMerge(); return true;
-    case 'util-jsonfmt': utilJsonFmt(); return true;
-    case 'util-base64': utilBase64(); return true;
+    case 'util-jsonfmt': utilJsonFmt(el); return true;
+    case 'util-base64': utilBase64(el); return true;
     case 'util-regex': utilRegex(); return true;
     case 'util-uuid': utilUuid(); return true;
     case 'util-timestamp': utilTimestamp(); return true;
     case 'util-colorconv': utilColorConv(); return true;
     case 'util-diffview': utilDiffView(); return true;
-    case 'util-minify': utilMinify(); return true;
+    case 'util-minify': utilMinify(el); return true;
     case 'util-vidrotate': await utilVidRotate(); return true;
     case 'util-vidspeed': await utilVidSpeed(); return true;
+    case 'util-vr': await utilVidRotate(); return true;
+    case 'util-vs': await utilVidSpeed(); return true;
     case 'util-exifstrip': await utilExifStrip(); return true;
+    case 'util-exifs': await utilExifStrip(); return true;
     case 'util-audspeed': await utilAudSpeed(); return true;
+    case 'util-as': await utilAudSpeed(); return true;
     case 'util-audnorm': await utilAudNorm(); return true;
+    case 'util-an': await utilAudNorm(); return true;
     case 'util-jwt': utilJwt(); return true;
     case 'util-zip': await utilZip(); return true;
     case 'util-unzip': await utilUnzip(); return true;
     case 'util-ascii': await utilAscii(); return true;
     case 'util-md': utilMd(); return true;
+    case 'util-md-preview': utilMdPreview(); return true;
+    case 'util-md-download': utilMdDownload(); return true;
+    case 'util-md-copy': await utilMdCopy(); return true;
     case 'util-tpdf': utilTextPdf(); return true;
     case 'util-exif': await utilExif(); return true;
     case 'util-fs': utilFilesize(); return true;
@@ -14737,14 +15247,17 @@ async function handleExtraAction(action, el) {
     case 'util-dup': await utilDup(); return true;
     case 'util-sum': utilSummarize(); return true;
     case 'util-qr': utilQr(); return true;
-    case 'util-case': utilCase(); return true;
+    case 'util-qr-download': await utilQrDownload(); return true;
+    case 'util-qr-svg': utilQrSvg(); return true;
+    case 'util-qr-copy': await utilQrCopy(); return true;
+    case 'util-case': utilCase(el); return true;
     case 'util-slug': utilSlug(); return true;
     case 'util-lorem': utilLorem(); return true;
     case 'util-pg': utilPassgen(); return true;
     case 'util-bc': utilBaseConv(); return true;
     case 'util-rom': utilRoman(); return true;
-    case 'util-urlenc': utilUrlenc(); return true;
-    case 'util-htmlent': utilHtmlent(); return true;
+    case 'util-urlenc': utilUrlenc(el); return true;
+    case 'util-htmlent': utilHtmlent(el); return true;
     case 'util-cron': utilCron(); return true;
     case 'util-chmod': utilChmod(); return true;
     case 'util-sv': utilSemver(); return true;
@@ -14755,7 +15268,7 @@ async function handleExtraAction(action, el) {
     case 'util-mdt': utilMdTable(); return true;
     case 'util-fmt': utilFmtCode(); return true;
     case 'util-xml': utilXml(); return true;
-    case 'util-yaml': utilYaml(); return true;
+    case 'util-yaml': utilYaml(el); return true;
     case 'util-sql': utilSql(); return true;
     case 'util-curl': utilCurl(); return true;
     case 'util-i2p': await utilImg2Pdf(); return true;
@@ -14867,6 +15380,7 @@ async function handleExtraAction(action, el) {
     case 'pdf-split': await pdfSplit(); return true;
     case 'pdf-img2pdf': await pdfImg2Pdf(); return true;
     case 'pdf-pdf2img': await pdfPdf2Img(); return true;
+    case 'pdf-pdf2img-zip': await downloadPdfPagesZip(state.pdfPages, 'pdf-pages.zip'); return true;
     case 'pdf-redact-prev': { state.pdfRedact.page = Math.max(1, state.pdfRedact.page - 1); renderView(); await pdfRedactRenderPage(); return true; }
     case 'pdf-redact-next': { state.pdfRedact.page = Math.min(state.pdfRedact.numPages, state.pdfRedact.page + 1); renderView(); await pdfRedactRenderPage(); return true; }
     case 'pdf-redact-clear-page': pdfRedactClearPage(); return true;
@@ -14878,7 +15392,7 @@ async function handleExtraAction(action, el) {
     case 'dev-regex': await devRegex(); return true;
     case 'dev-pii-scan': piiScan(); return true;
     case 'dev-pii-copy': { const t = window.__piiRedacted; if (t) { try { await navigator.clipboard.writeText(t); toast('Copied', 'Redacted text copied.', 'success'); } catch {} } return true; }
-    case 'dev-pii-dl': { const t = window.__piiRedacted; if (t) { const blob = new Blob([t], { type: 'text/plain' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'redacted.txt'; a.click(); URL.revokeObjectURL(a.href); toast('Downloaded', 'redacted.txt', 'success'); } return true; }
+    case 'dev-pii-dl': { const t = window.__piiRedacted; if (t) { const blob = new Blob([t], { type: 'text/plain' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'redacted.txt'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); toast('Downloaded', 'redacted.txt', 'success'); } return true; }
     case 'dev-wc-run': { await runWebCodecsDiag(); return true; }
     case 'dev-wc-decode': { await runWebCodecsDecode(); return true; }
     case 'dev-wc-frame': { await runWebCodecsFrameExtract(); return true; }
@@ -14901,7 +15415,7 @@ async function handleExtraAction(action, el) {
     }
     case 'dev-mock-gen': devMockGenerate(); return true;
     case 'dev-mock-copy': { const d = window.__mockData; if (d) { try { await navigator.clipboard.writeText(JSON.stringify(d, null, 2)); toast('Copied', 'Mock data copied.', 'success'); } catch {} } return true; }
-    case 'dev-mock-dl': { const d = window.__mockData; if (d) { const blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'mock-data.json'; a.click(); URL.revokeObjectURL(a.href); } return true; }
+    case 'dev-mock-dl': { const d = window.__mockData; if (d) { const blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'mock-data.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); } return true; }
     case 'ai-chat-send': await aiChatSend(); return true;
     case 'ai-chat-starter': {
       const prompt = el.dataset.prompt || '';
@@ -15031,7 +15545,7 @@ try { await idbWorkflowsSave(state.workflows); } catch {}
       const snap = { name: 'workflow', nodes: state.workflow.nodes, edges: state.workflow.edges };
       const blob = new Blob([JSON.stringify(snap, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob); a.download = 'workflow.json'; a.click(); URL.revokeObjectURL(a.href);
+      a.href = URL.createObjectURL(blob); a.download = 'workflow.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
       return true;
     }
     case 'wf-import': {
@@ -15093,6 +15607,7 @@ async function handleAction(action, el) {
     case 'close-nav': closeNav(); break;
     case 'engine-info': openEngineInfo(); break;
      case 'download-app': { openDesktopAppInfo(); } break;
+     case 'download-android-app': { openAndroidAppInfo(); } break;
      case 'install-pwa': installPwa(); break;
     case 'privacy': openPrivacy(); break;
     case 'settings': openSettings(); break;
@@ -15109,7 +15624,7 @@ async function handleAction(action, el) {
     }
     case 'check-update': {
       (async () => {
-        if (!getTauriBridge()) { toast('Not available', 'Updates are only available in the desktop app.', 'info'); return; }
+        if (!getTauriBridge()) { toast('Not available', 'Updates are only available in the installed app.', 'info'); return; }
         try {
           const info = await detectDesktopUpdate();
           if (info) showUpdateModal(info);
@@ -15121,7 +15636,6 @@ async function handleAction(action, el) {
       return true;
     }
     case 'help': openHelp(); break;
-    case 'advertise': openAdvertise(); break;
     case 'open-plans': openPlans(el.dataset.plan || null); break;
     case 'close-modal': closeModal(); break;
     case 'cmd-go': { const t = el?.dataset?.tool; if (t && TOOLS[t]) { closeModal(); setTool(t); } break; }
@@ -15291,12 +15805,24 @@ async function handleAction(action, el) {
       state.compressor.settings.format = el.dataset.format;
       restoreScrollAndRender();
       break;
+    case 'extractor-channels':
+      state.extractor.settings.channels = el.dataset.channels || 'source';
+      restoreScrollAndRender();
+      break;
     case 'cropper-format':
       state.cropper.settings.format = el.dataset.format;
       restoreScrollAndRender();
       break;
     case 'cropper-quality':
       state.cropper.settings.quality = el.dataset.quality;
+      restoreScrollAndRender();
+      break;
+    case 'cropper-rotate':
+      state.cropper.settings.rotate = el.dataset.rotate || '0';
+      restoreScrollAndRender();
+      break;
+    case 'gif-speed':
+      state.gif.settings.speed = Number(el.dataset.speed) || 1;
       restoreScrollAndRender();
       break;
     case 'crop-aspect':
@@ -15406,7 +15932,6 @@ async function handleAction(action, el) {
     })(); break;
     case 'engine-selftest': await runEngineSelfTest(); break;
     case 'engine-reset': restartEngine(); break;
-    case 'copy-media-kit': copyMediaKit(); break;
     case 'edit-subtitles': openSubtitleEditor(); break;
     case 'subtitles-save': {
       const ta = document.getElementById('subtitle-textarea');
@@ -15714,6 +16239,13 @@ function bindEvents() {
       try { localStorage.setItem('NuVerter-launched', '1'); } catch {}
     }
   }
+  // Clicking the dimmed backdrop dismisses the overlay.
+  const launchBackdropEl = document.getElementById('launch-overlay');
+  if (launchBackdropEl) {
+    launchBackdropEl.addEventListener('click', (event) => {
+      if (event.target.classList && event.target.classList.contains('launch-backdrop')) closeLaunchOverlay(true);
+    });
+  }
   // first-run
   try {
     if (localStorage.getItem('NuVerter-launched') !== '1') {
@@ -15796,6 +16328,8 @@ function bindEvents() {
       }
     }
     if (event.key === 'Escape') {
+      const launchOverlay = document.getElementById('launch-overlay');
+      if (launchOverlay && !launchOverlay.hidden) { window.closeLaunchOverlay?.(true); return; }
       if (activeModal) { closeModal(); return; }
       if (document.body.classList.contains('nav-open')) { closeNav(); return; }
       if (['countdown', 'recording', 'paused'].includes(state.recorder.status)) { stopRecording(); return; }
@@ -15852,14 +16386,7 @@ function bindEvents() {
       if (b) b.click();
       return;
     }
-    if (event.key === 'F12') {
-      try {
-        const tauri = window.__TAURI__ || window.__TAURI_INTERNALS__;
-        const inv = tauri?.core?.invoke || tauri?.invoke;
-        if (typeof inv === 'function') { inv.call(tauri?.core || tauri, 'install_update').catch((e) => {}); }
-      } catch {}
-      return;
-    }
+
     if (!typing && !mod && event.key === '?') {
       event.preventDefault();
       openHelp();
@@ -15905,7 +16432,8 @@ async function fetchLatestGitHubRelease() {
     const data = await res.json();
     const version = String(data.tag_name || '').replace(/^v/, '');
     const url = data.html_url || 'https://github.com/BIltonBB/NuVerter/releases/latest';
-    return version ? { version, url } : null;
+    const apk = (data.assets || []).find((asset) => /\.apk$/i.test(asset.name || ''));
+    return version ? { version, url, apkUrl: apk?.browser_download_url || '' } : null;
   } catch {
     return null;
   }
@@ -15964,6 +16492,11 @@ function initDesktopUpdates() {
   } catch {}
 }
 
+function isMobileRuntime() {
+  if (window.NV_MOBILE) return true;
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+}
+
 function getTauriBridge() {
   const tauri = window.__TAURI__ || window.__TAURI_INTERNALS__;
   const inv = tauri?.core?.invoke || tauri?.invoke;
@@ -15997,7 +16530,7 @@ async function detectDesktopUpdate() {
       const latest = await fetchLatestGitHubRelease();
       if (latest && cmpVersions(latest.version, installed) > 0) {
         newVersion = latest.version;
-        latestUrl = latest.url;
+        latestUrl = (isMobileRuntime() && latest.apkUrl) ? latest.apkUrl : latest.url;
       }
     } catch {}
   }
@@ -16016,15 +16549,16 @@ async function installDesktopUpdate(info) {
 
 function showUpdateModal(info) {
   if (document.getElementById('nv-update-modal')) return;
+  const mobile = isMobileRuntime();
   const modal = document.createElement('div');
   modal.id = 'nv-update-modal';
   modal.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.5);backdrop-filter:blur(4px)';
   modal.innerHTML = '<div style="background:var(--surface);border:1px solid var(--border-strong);border-radius:16px;padding:24px;max-width:360px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.4)">' +
     '<h3 style="margin:0 0 8px;font-size:18px">Update available</h3>' +
-    '<p style="margin:0 0 16px;font-size:13px;color:var(--text-2)">NuVerter ' + info.version + ' is available. Update now?</p>' +
+    '<p style="margin:0 0 16px;font-size:13px;color:var(--text-2)">NuVerter ' + info.version + ' is available. ' + (mobile ? 'Download the new APK from GitHub?' : 'Update now?') + '</p>' +
     '<div style="display:flex;gap:8px;justify-content:flex-end">' +
     '<button class="btn btn-ghost" id="upd-no">Not now</button>' +
-    '<button class="btn btn-primary" id="upd-yes">Update</button>' +
+    '<button class="btn btn-primary" id="upd-yes">' + (mobile ? 'Download APK' : 'Update') + '</button>' +
     '</div></div>';
   document.body.appendChild(modal);
   const close = () => modal.remove();
@@ -16084,6 +16618,17 @@ async function boot() {
   updateChrome();
   loadHistory();
   initDesktopUpdates();
+  // Prefer the native package version (CI bumps it from the release tag).
+  try {
+    const bridge = getTauriBridge();
+    if (bridge) {
+      const nativeVersion = await bridge.inv.call(bridge.bind, 'get_app_version');
+      if (nativeVersion) {
+        window.NV_APP_VERSION = String(nativeVersion);
+        $$('[data-app-version]').forEach((el) => { el.textContent = `v${nativeVersion}`; });
+      }
+    }
+  } catch {}
   // Delayed desktop update check (Tauri global may load after boot)
   setTimeout(async () => {
     try {
@@ -16121,6 +16666,7 @@ async function boot() {
 bindEvents();
 window.loadSubtitleSource = loadSubtitleSource;
 window.openDesktopAppInfo = openDesktopAppInfo;
+window.openAndroidAppInfo = openAndroidAppInfo;
 
 window.runSubtitleBurn = runSubtitleBurn;
 boot();
@@ -16130,8 +16676,6 @@ boot();
 
 
 
-/* ---------- optional ad snippet injection ---------- */
-if (AD_SNIPPET) { const slot = document.querySelector('.adbar'); if (slot) { const wrap = document.createElement('div'); wrap.innerHTML = AD_SNIPPET; slot.appendChild(wrap); } }
 
 
 function utilTextImage() {
@@ -17048,19 +17592,24 @@ async function utilImgResize() {
   c.getContext('2d').drawImage(img, 0, 0, nw, nh);
   URL.revokeObjectURL(url);
   const blob = await new Promise((res) => c.toBlob(res, fmt, q));
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'resized.' + fmt.split('/')[1]; a.click(); URL.revokeObjectURL(a.href);
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'resized.' + fmt.split('/')[1]; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   if (out) out.innerHTML = `<p class="muted">Done · ${nw}×${nh} · ${formatBytes(blob.size)}</p>`;
 }
 
 function utilVideoMergeBody() {
   return `
     <div class="stage-card">
-      <div class="stage-head"><div class="stage-head-copy"><strong>Video merge</strong><span>Concatenate video clips locally</span></div></div>
+      <div class="stage-head"><div class="stage-head-copy"><strong>Video merge</strong><span>Join clips in order, with automatic re-encoding for mismatched sources</span></div></div>
       <div class="stage-body">
         <label class="btn btn-secondary btn-sm" for="util-videomerge-files">Choose videos</label>
         <input id="util-videomerge-files" type="file" accept="video/*" multiple data-util="videomerge-files" hidden />
-        <p class="muted" style="margin-top:8px;font-size:12px">Clips are joined in selection order. Same codec/container recommended.</p>
-        <button class="btn btn-primary btn-sm" data-action="util-videomerge" style="margin-top:10px">Merge & download</button>
+        <p class="muted" style="margin-top:8px;font-size:12px">Clips are joined in the order selected. “Auto” tries a fast stream copy and re-encodes when the clips are not compatible.</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:10px">
+          <div class="field"><div class="field-head"><span class="field-label">Output</span></div><select data-util="videomerge-format" class="select" style="width:100%"><option value="mp4" selected>MP4</option><option value="mkv">MKV</option><option value="webm">WebM</option></select></div>
+          <div class="field"><div class="field-head"><span class="field-label">Mode</span></div><select data-util="videomerge-mode" class="select" style="width:100%"><option value="auto" selected>Auto</option><option value="copy">Stream copy (fast)</option><option value="reencode">Re-encode</option></select></div>
+          <div class="field"><div class="field-head"><span class="field-label">Resolution</span></div><select data-util="videomerge-res" class="select" style="width:100%"><option value="source" selected>Source</option><option value="1080">1080p</option><option value="720">720p</option><option value="480">480p</option></select></div>
+        </div>
+        <button class="btn btn-primary btn-sm" data-action="util-videomerge" style="margin-top:12px">Merge &amp; download</button>
         <div id="util-videomerge-out" class="util-out"></div>
       </div>
     </div>`;
@@ -17069,25 +17618,59 @@ async function utilVideoMerge() {
   const files = document.querySelector('[data-util="videomerge-files"]')?.files;
   const out = document.getElementById('util-videomerge-out');
   if (!files || !files.length) { if (out) out.innerHTML = '<p class="muted">Choose at least one video.</p>'; return; }
+  const format = document.querySelector('[data-util="videomerge-format"]')?.value || 'mp4';
+  const mode = document.querySelector('[data-util="videomerge-mode"]')?.value || 'auto';
+  const res = document.querySelector('[data-util="videomerge-res"]')?.value || 'source';
+  const mime = format === 'webm' ? 'video/webm' : format === 'mkv' ? 'video/x-matroska' : 'video/mp4';
+  const outName = `merged.${format}`;
+  const names = [];
+  const cleanup = async (ffmpeg) => {
+    for (const n of names) try { await ffmpeg.deleteFile(n); } catch {}
+    try { await ffmpeg.deleteFile('list.txt'); } catch {}
+    try { await ffmpeg.deleteFile(outName); } catch {}
+  };
   try {
     const ffmpeg = await Engine.ensure();
-    const names = [];
+    if (out) out.innerHTML = '<p class="muted">Reading clips…</p>';
     for (let i = 0; i < files.length; i++) {
-      const n = `seg_${i}.mp4`;
+      const ext = (files[i].name.split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const n = `seg_${i}.${ext || 'mp4'}`;
       await ffmpeg.writeFile(n, new Uint8Array(await files[i].arrayBuffer()));
       names.push(n);
     }
     const list = names.map((n) => `file '${n}'`).join('\n');
     await ffmpeg.writeFile('list.txt', new TextEncoder().encode(list));
-    const outName = 'merged.mp4';
-    await ffmpeg.exec(['-f','concat','-safe','0','-i','list.txt','-c','copy',outName]);
+    const base = ['-f', 'concat', '-safe', '0', '-i', 'list.txt'];
+    const tryCopy = mode === 'copy' || mode === 'auto';
+    let copied = false;
+    if (tryCopy) {
+      try {
+        if (out) out.innerHTML = '<p class="muted">Trying a fast stream copy…</p>';
+        await ffmpeg.exec([...base, '-c', 'copy', outName]);
+        copied = true;
+      } catch (copyErr) {
+        if (mode === 'copy') throw copyErr;
+      }
+    }
+    if (!copied) {
+      if (out) out.innerHTML = '<p class="muted">Re-encoding clips…</p>';
+      const args = [...base];
+      if (res !== 'source') args.push('-vf', `scale=-2:${res}`);
+      if (format === 'webm') {
+        args.push('-c:v', 'libvpx', '-deadline', 'good', '-cpu-used', '3', '-crf', '30', '-b:v', '0', '-c:a', 'libvorbis', '-b:a', '160k');
+      } else {
+        args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k');
+        if (format === 'mp4') args.push('-movflags', '+faststart');
+      }
+      args.push(outName);
+      await ffmpeg.exec(args);
+    }
     const data = await ffmpeg.readFile(outName);
-    const blob = new Blob([data], { type: 'video/mp4' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'merged.mp4'; a.click(); URL.revokeObjectURL(a.href);
-    for (const n of names) try { await ffmpeg.deleteFile(n); } catch {}
-    try { await ffmpeg.deleteFile('list.txt'); } catch {}
-    try { await ffmpeg.deleteFile(outName); } catch {}
-    if (out) out.innerHTML = `<p class="muted">Done · ${files.length} clips · ${formatBytes(blob.size)}</p>`;
+    const blob = new Blob([data], { type: mime });
+    const url = URL.createObjectURL(blob);
+    if (out) out.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><a class="btn btn-secondary btn-sm" href="${url}" download="${outName}">Download ${outName}</a><span class="muted" style="font-size:12px">${files.length} clips · ${copied ? 'stream copy' : 're-encoded'} · ${formatBytes(blob.size)}</span></div>`;
+    const a = document.createElement('a'); a.href = url; a.download = outName; a.click();
+    cleanup(ffmpeg);
   } catch (e) {
     if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`;
   }
@@ -17096,11 +17679,15 @@ async function utilVideoMerge() {
 function utilAudioMergeBody() {
   return `
     <div class="stage-card">
-      <div class="stage-head"><div class="stage-head-copy"><strong>Audio merge</strong><span>Concatenate audio clips locally</span></div></div>
+      <div class="stage-head"><div class="stage-head-copy"><strong>Audio merge</strong><span>Join audio clips even when formats or sample rates differ</span></div></div>
       <div class="stage-body">
         <label class="btn btn-secondary btn-sm" for="util-audiomerge-files">Choose audio</label>
         <input id="util-audiomerge-files" type="file" accept="audio/*" multiple data-util="audiomerge-files" hidden />
-        <button class="btn btn-primary btn-sm" data-action="util-audiomerge" style="margin-top:10px">Merge & download</button>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:10px">
+          <div class="field"><div class="field-head"><span class="field-label">Output format</span></div><select data-util="audiomerge-format" class="select" style="width:100%"><option value="mp3" selected>MP3</option><option value="wav">WAV</option><option value="m4a">M4A (AAC)</option><option value="ogg">OGG</option><option value="flac">FLAC</option></select></div>
+          <div class="field"><div class="field-head"><span class="field-label">Bitrate</span></div><select data-util="audiomerge-bitrate" class="select" style="width:100%"><option value="128">128 kbps</option><option value="192" selected>192 kbps</option><option value="256">256 kbps</option><option value="320">320 kbps</option></select></div>
+        </div>
+        <button class="btn btn-primary btn-sm" data-action="util-audiomerge" style="margin-top:12px">Merge &amp; download</button>
         <div id="util-audiomerge-out" class="util-out"></div>
       </div>
     </div>`;
@@ -17109,28 +17696,41 @@ async function utilAudioMerge() {
   const files = document.querySelector('[data-util="audiomerge-files"]')?.files;
   const out = document.getElementById('util-audiomerge-out');
   if (!files || !files.length) { if (out) out.innerHTML = '<p class="muted">Choose at least one audio file.</p>'; return; }
+  const format = document.querySelector('[data-util="audiomerge-format"]')?.value || 'mp3';
+  const bitrate = document.querySelector('[data-util="audiomerge-bitrate"]')?.value || '192';
+  const fileList = Array.from(files);
+  const mime = { mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', ogg: 'audio/ogg', flac: 'audio/flac' }[format] || 'audio/mpeg';
+  const outName = `merged.${format}`;
+  const names = [];
+  const ffmpeg = await Engine.ensure();
+  const cleanup = async () => { for (const n of names) try { await ffmpeg.deleteFile(n); } catch {} try { await ffmpeg.deleteFile(outName); } catch {} };
   try {
-    const ffmpeg = await Engine.ensure();
-    const names = [];
-    for (let i = 0; i < files.length; i++) {
-      const ext = (files[i].name.split('.').pop() || 'mp3').toLowerCase();
-      const n = `aseg_${i}.${ext}`;
-      await ffmpeg.writeFile(n, new Uint8Array(await files[i].arrayBuffer()));
+    if (out) out.innerHTML = '<p class="muted">Reading clips…</p>';
+    const inputs = [];
+    for (let i = 0; i < fileList.length; i++) {
+      const ext = (fileList[i].name.split('.').pop() || 'mp3').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const n = `aseg_${i}.${ext || 'mp3'}`;
+      await ffmpeg.writeFile(n, new Uint8Array(await fileList[i].arrayBuffer()));
       names.push(n);
+      inputs.push('-i', n);
     }
-    const list = names.map((n) => `file '${n}'`).join('\n');
-    await ffmpeg.writeFile('alist.txt', new TextEncoder().encode(list));
-    const outName = 'amerged.mp3';
-    await ffmpeg.exec(['-f','concat','-safe','0','-i','alist.txt','-c','copy',outName]);
+    const filter = fileList.length === 1 ? '' : `${fileList.map((_, i) => `[${i}:a]`).join('')}concat=n=${fileList.length}:v=0:a=1[outa]`;
+    const args = [...inputs];
+    if (filter) args.push('-filter_complex', filter, '-map', '[outa]');
+    args.push(...audioEncodeArgs(format, { bitrate }));
+    if (format === 'mp4') args.push('-movflags', '+faststart');
+    args.push(outName);
+    if (out) out.innerHTML = '<p class="muted">Merging…</p>';
+    await ffmpeg.exec(args);
     const data = await ffmpeg.readFile(outName);
-    const blob = new Blob([data], { type: 'audio/mpeg' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'merged.mp3'; a.click(); URL.revokeObjectURL(a.href);
-    for (const n of names) try { await ffmpeg.deleteFile(n); } catch {}
-    try { await ffmpeg.deleteFile('alist.txt'); } catch {}
-    try { await ffmpeg.deleteFile(outName); } catch {}
-    if (out) out.innerHTML = `<p class="muted">Done · ${files.length} clips · ${formatBytes(blob.size)}</p>`;
+    const blob = new Blob([data], { type: mime });
+    const url = URL.createObjectURL(blob);
+    if (out) out.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><a class="btn btn-secondary btn-sm" href="${url}" download="${outName}">Download ${outName}</a><span class="muted" style="font-size:12px">${fileList.length} clips · ${format.toUpperCase()} · ${formatBytes(blob.size)}</span></div>`;
+    const a = document.createElement('a'); a.href = url; a.download = outName; a.click();
+    cleanup();
   } catch (e) {
     if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`;
+    cleanup();
   }
 }
 
@@ -17149,11 +17749,11 @@ function utilJsonFmtBody() {
       </div>
     </div>`;
 }
-function utilJsonFmt() {
-  const el = document.querySelector('[data-util="json-in"]');
+function utilJsonFmt(el = null) {
+  const el2 = document.querySelector('[data-util="json-in"]');
   const out = document.getElementById('util-json-out');
-  const mode = (event?.target?.dataset?.mode) || 'pretty';
-  const raw = (el?.value || '').trim();
+  const mode = el?.dataset?.mode || 'pretty';
+  const raw = (el2?.value || '').trim();
   try {
     const obj = JSON.parse(raw);
     if (mode === 'minify') { if (out) out.textContent = JSON.stringify(obj); }
@@ -17180,11 +17780,11 @@ function utilBase64Body() {
       </div>
     </div>`;
 }
-function utilBase64() {
-  const mode = (event?.target?.dataset?.mode) || 'enc';
-  const el = document.querySelector('[data-util="b64-in"]');
+function utilBase64(el = null) {
+  const mode = el?.dataset?.mode || 'enc';
+  const el2 = document.querySelector('[data-util="b64-in"]');
   const out = document.getElementById('util-b64-out');
-  const raw = el?.value || '';
+  const raw = el2?.value || '';
   try {
     if (mode === 'enc') {
       const enc = new TextEncoder().encode(raw);
@@ -17370,9 +17970,9 @@ function utilMinifyBody() {
       </div>
     </div>`;
 }
-function utilMinify() {
+function utilMinify(el = null) {
   const type = document.querySelector('[data-util="minify-type"]')?.value || 'json';
-  const mode = (event?.target?.dataset?.mode) || 'minify';
+  const mode = el?.dataset?.mode || 'minify';
   const raw = document.querySelector('[data-util="minify-in"]')?.value || '';
   const out = document.getElementById('util-minify-out');
   try {
@@ -17457,7 +18057,7 @@ async function utilZip() {
     }
     const zipped = window.fflate.zipSync(zipObj, { level: 6 });
     const blob = new Blob([zipped], { type: 'application/zip' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'archive.zip'; a.click(); URL.revokeObjectURL(a.href);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'archive.zip'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     if (out) out.innerHTML = `<p class="muted">Zipped ${files.length} file(s) · ${formatBytes(blob.size)}</p>`;
   } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; }
 }
@@ -17472,7 +18072,7 @@ async function utilUnzip() {
     const names = Object.keys(unzipped);
     for (const name of names) {
       const blob = new Blob([unzipped[name]]);
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href);
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     }
     if (out) out.innerHTML = `<p class="muted">Extracted ${names.length} file(s).</p>`;
   } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; }
@@ -17521,73 +18121,238 @@ async function utilAscii() {
 function utilMdBody() {
   return `
     <div class="stage-card">
-      <div class="stage-head"><div class="stage-head-copy"><strong>Markdown to HTML</strong><span>Convert Markdown to HTML locally</span></div></div>
+      <div class="stage-head"><div class="stage-head-copy"><strong>Markdown to HTML</strong><span>Convert headings, lists, code, tables and links</span></div></div>
       <div class="stage-body">
-        <textarea data-util="md-in" class="input" rows="10" style="width:100%;font-family:var(--font-mono)" placeholder="# Heading"></textarea>
-        <button class="btn btn-primary btn-sm" data-action="util-md" style="margin-top:10px">Convert</button>
+        <textarea data-util="md-in" class="input" rows="10" style="width:100%;font-family:var(--font-mono)" placeholder="# Heading&#10;&#10;- item one&#10;- item two&#10;&#10;**bold** and [link](https://example.com)"></textarea>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:10px">
+          <label class="muted" style="display:flex;gap:6px;align-items:center;font-size:12px"><input type="checkbox" data-util="md-full" /> Full HTML document</label>
+          <button class="btn btn-primary btn-sm" data-action="util-md">Convert</button>
+          <button class="btn btn-secondary btn-sm" data-action="util-md-preview">Preview</button>
+          <button class="btn btn-secondary btn-sm" data-action="util-md-download">Download .html</button>
+          <button class="btn btn-ghost btn-sm" data-action="util-md-copy">Copy HTML</button>
+        </div>
+        <div id="util-md-preview" class="md-preview" style="display:none;margin-top:12px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2)"></div>
         <pre id="util-md-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
       </div>
     </div>`;
 }
+function markdownInline(src) {
+  return src
+    .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, '<img src="$2" alt="$1">')
+    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
+    .replace(/(^|[^_])_([^_\n]+)_/g, '$1<em>$2</em>')
+    .replace(/~~([^~]+)~~/g, '<del>$1</del>');
+}
+function renderSimpleMarkdown(src) {
+  const escapeHtml = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const lines = String(src ?? '').replace(/\r\n?/g, '\n').split('\n');
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (/^\s*```/.test(line)) {
+      const lang = line.replace(/^\s*```/, '').trim();
+      const code = [];
+      i++;
+      while (i < lines.length && !/^\s*```/.test(lines[i])) code.push(lines[i++]);
+      i++;
+      out.push(`<pre><code${lang ? ` class="language-${escapeHtml(lang)}"` : ''}>${escapeHtml(code.join('\n'))}</code></pre>`);
+      continue;
+    }
+    if (/^\s*$/.test(line)) { i++; continue; }
+    const h = line.match(/^(#{1,6})\s+(.*)$/);
+    if (h) { out.push(`<h${h[1].length}>${markdownInline(escapeHtml(h[2]))}</h${h[1].length}>`); i++; continue; }
+    if (/^\s*([-*_])\s*\1\s*\1[\s\-*_]*$/.test(line)) { out.push('<hr>'); i++; continue; }
+    if (/^\s*>/.test(line)) {
+      const buf = [];
+      while (i < lines.length && /^\s*>/.test(lines[i])) buf.push(lines[i++].replace(/^\s*>\s?/, ''));
+      out.push(`<blockquote>${renderSimpleMarkdown(buf.join('\n'))}</blockquote>`);
+      continue;
+    }
+    if (/^\s*[-*+]\s+/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*[-*+]\s+/, ''));
+      out.push(`<ul>${items.map((t) => `<li>${markdownInline(escapeHtml(t))}</li>`).join('')}</ul>`);
+      continue;
+    }
+    if (/^\s*\d+[.)]\s+/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*\d+[.)]\s+/, ''));
+      out.push(`<ol>${items.map((t) => `<li>${markdownInline(escapeHtml(t))}</li>`).join('')}</ol>`);
+      continue;
+    }
+    if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i + 1])) {
+      const parseRow = (row) => row.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+      const head = parseRow(line);
+      i += 2;
+      const rows = [];
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) rows.push(parseRow(lines[i++]));
+      out.push(`<table><thead><tr>${head.map((c) => `<th>${markdownInline(escapeHtml(c))}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${markdownInline(escapeHtml(c))}</td>`).join('')}</tr>`).join('')}</tbody></table>`);
+      continue;
+    }
+    const para = [];
+    while (i < lines.length && !/^\s*$/.test(lines[i]) && !/^\s*(#{1,6}\s|```|>|[-*+]\s|\d+[.)]\s|\|)/.test(lines[i])) para.push(lines[i++]);
+    if (para.length) out.push(`<p>${para.map((t) => markdownInline(escapeHtml(t))).join('<br>')}</p>`);
+    else { out.push(`<p>${markdownInline(escapeHtml(line))}</p>`); i++; }
+  }
+  return out.join('\n');
+}
 function utilMd() {
   const raw = document.querySelector('[data-util="md-in"]')?.value || '';
   const out = document.getElementById('util-md-out');
-  let html = raw
-    .replace(/^### (.*)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.*)$/gm, '<h2>$1</h2>')
-    .replace(/^# (.*)$/gm, '<h1>$1</h1>')
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/`(.*?)`/g, '<code>$1</code>')
-    .replace(/^\- (.*)$/gm, '<li>$1</li>')
-    .replace(/\n\n/g, '</p><p>')
-    .replace(/\n/g, '<br>');
-  html = '<p>' + html + '</p>';
+  const full = !!document.querySelector('[data-util="md-full"]')?.checked;
+  let html = renderSimpleMarkdown(raw);
+  if (full) html = `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width,initial-scale=1">\n<title>Document</title>\n<style>body{font-family:system-ui,sans-serif;max-width:760px;margin:40px auto;padding:0 18px;line-height:1.6;color:#1f2937}pre{background:#f3f4f6;padding:12px;border-radius:8px;overflow:auto}code{background:#f3f4f6;padding:2px 4px;border-radius:4px}blockquote{border-left:4px solid #ddd;margin-left:0;padding-left:16px;color:#555}table{border-collapse:collapse}td,th{border:1px solid #ddd;padding:6px 10px}</style>\n</head>\n<body>\n${html}\n</body>\n</html>`;
+  state.utilMdHtml = html;
   if (out) out.textContent = html;
+  const preview = document.getElementById('util-md-preview');
+  if (preview && preview.style.display !== 'none') preview.innerHTML = html;
+}
+function utilMdPreview() {
+  utilMd();
+  const preview = document.getElementById('util-md-preview');
+  if (preview) { preview.style.display = 'block'; preview.innerHTML = state.utilMdHtml || ''; }
+}
+function utilMdDownload() {
+  utilMd();
+  const html = state.utilMdHtml || '';
+  if (!html) { toast('Empty', 'Nothing to download yet.', 'error'); return; }
+  const blob = new Blob([html], { type: 'text/html' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'document.html'; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+async function utilMdCopy() {
+  utilMd();
+  await copyText(state.utilMdHtml || '');
+  toast('Copied', 'HTML copied to clipboard.', 'success');
 }
 
 function utilTextPdfBody() {
   return `
     <div class="stage-card">
-      <div class="stage-head"><div class="stage-head-copy"><strong>Text to PDF</strong><span>Generate a simple PDF from text</span></div></div>
+      <div class="stage-head"><div class="stage-head-copy"><strong>Text to PDF</strong><span>Lay out and paginate plain text into a PDF</span></div></div>
       <div class="stage-body">
-        <textarea data-util="tpdf-in" class="input" rows="10" style="width:100%" placeholder="Your text here"></textarea>
-        <button class="btn btn-primary btn-sm" data-action="util-tpdf" style="margin-top:10px">Generate PDF</button>
+        <textarea data-util="tpdf-in" class="input" rows="10" style="width:100%;font-family:var(--font-mono)" placeholder="Paste or type your text here…"></textarea>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:10px">
+          <div class="field"><div class="field-head"><span class="field-label">Page size</span></div><select data-util="tpdf-size" class="select" style="width:100%"><option value="a4" selected>A4</option><option value="letter">Letter</option><option value="legal">Legal</option><option value="a3">A3</option></select></div>
+          <div class="field"><div class="field-head"><span class="field-label">Orientation</span></div><select data-util="tpdf-orient" class="select" style="width:100%"><option value="portrait" selected>Portrait</option><option value="landscape">Landscape</option></select></div>
+          <div class="field"><div class="field-head"><span class="field-label">Font</span></div><select data-util="tpdf-font" class="select" style="width:100%"><option value="helvetica" selected>Helvetica</option><option value="times">Times</option><option value="courier">Courier</option></select></div>
+          <div class="field"><div class="field-head"><span class="field-label">Font size (pt)</span></div><input type="number" min="6" max="36" value="12" data-util="tpdf-fs" class="input" style="width:100%" /></div>
+          <div class="field"><div class="field-head"><span class="field-label">Line spacing</span></div><input type="number" min="1" max="2.5" step="0.1" value="1.4" data-util="tpdf-lh" class="input" style="width:100%" /></div>
+          <div class="field"><div class="field-head"><span class="field-label">Margin (pt)</span></div><input type="number" min="12" max="120" value="48" data-util="tpdf-margin" class="input" style="width:100%" /></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-primary btn-sm" data-action="util-tpdf">Generate PDF</button>
+          <label class="muted" style="display:flex;gap:6px;align-items:center;font-size:12px"><input type="checkbox" data-util="tpdf-numbers" checked /> Page numbers</label>
+        </div>
         <div id="util-tpdf-out" class="util-out"></div>
       </div>
     </div>`;
 }
+function pdfEscapeText(value) {
+  return String(value ?? '')
+    .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2013\u2014]/g, '-').replace(/\u2026/g, '...')
+    .replace(/[\\()]/g, (c) => '\\' + c)
+    .replace(/[^\x20-\x7E]/g, '?');
+}
+function utilWrapTextLines(text, maxChars) {
+  const out = [];
+  for (const rawLine of String(text ?? '').replace(/\r\n?/g, '\n').split('\n')) {
+    if (!rawLine.length) { out.push(''); continue; }
+    const words = rawLine.split(/(\s+)/).filter((w) => w.length);
+    let line = '';
+    for (let word of words) {
+      if (/^\s+$/.test(word)) { if (!line.length) continue; if (line.length < maxChars) line += ' '; continue; }
+      while (word.length > maxChars) {
+        if (line.length) { out.push(line); line = ''; }
+        out.push(word.slice(0, maxChars));
+        word = word.slice(maxChars);
+      }
+      if (!word) continue;
+      if (line.length + word.length > maxChars) { if (line.length) out.push(line); line = word; }
+      else line += word;
+    }
+    out.push(line);
+  }
+  return out;
+}
+function buildTextPdfBlob(text, opts = {}) {
+  const sizes = { a4: [595.28, 841.89], letter: [612, 792], legal: [612, 1008], a3: [841.89, 1190.55] };
+  let [W, H] = sizes[opts.size] || sizes.a4;
+  if (opts.orientation === 'landscape') [W, H] = [H, W];
+  const margin = Math.max(12, Math.min(120, Number(opts.margin || 48)));
+  const fontSize = Math.max(6, Math.min(36, Number(opts.fontSize || 12)));
+  const leading = fontSize * Math.max(1, Math.min(2.5, Number(opts.lineHeight || 1.4)));
+  const fontObj = { helvetica: 'Helvetica', times: 'Times-Roman', courier: 'Courier' }[opts.font] || 'Helvetica';
+  const factor = opts.font === 'courier' ? 0.6 : opts.font === 'times' ? 0.46 : 0.52;
+  const usableW = W - margin * 2;
+  const usableH = H - margin * 2;
+  const maxChars = Math.max(8, Math.floor(usableW / (fontSize * factor)));
+  const lines = utilWrapTextLines(text, maxChars);
+  const perPage = Math.max(1, Math.floor((usableH - fontSize) / leading));
+  const pages = [];
+  for (let i = 0; i < lines.length; i += perPage) pages.push(lines.slice(i, i + perPage));
+  if (!pages.length) pages.push(['']);
+  const pageCount = pages.length;
+  const pageObjNums = pages.map((_, i) => 4 + i * 2);
+  const kids = pageObjNums.map((n) => `${n} 0 R`).join(' ');
+  const objs = [];
+  objs.push(`<< /Type /Catalog /Pages 2 0 R >>`);
+  objs.push(`<< /Type /Pages /Kids [${kids}] /Count ${pageCount} >>`);
+  objs.push(`<< /Type /Font /Subtype /Type1 /BaseFont /${fontObj} >>`);
+  pages.forEach((plines, i) => {
+    const contentNum = 5 + i * 2;
+    const y = H - margin - fontSize;
+    let stream = `BT\n/F1 ${fontSize} Tf\n${leading} TL\n1 0 0 1 ${margin} ${y} Tm\n`;
+    for (const line of plines) stream += `(${pdfEscapeText(line)}) Tj\nT*\n`;
+    if (opts.pageNumbers) {
+      const label = `${i + 1} / ${pageCount}`;
+      const approx = label.length * fontSize * 0.52;
+      stream += `ET\nBT\n/F1 ${Math.max(7, fontSize * 0.75)} Tf\n1 0 0 1 ${Math.max(margin, (W - approx) / 2)} ${margin / 2} Tm\n(${pdfEscapeText(label)}) Tj\nET`;
+    } else {
+      stream += `ET`;
+    }
+    const bytes = new TextEncoder().encode(stream).length;
+    objs.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W.toFixed(2)} ${H.toFixed(2)}] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentNum} 0 R >>`);
+    objs.push(`<< /Length ${bytes} >>\nstream\n${stream}\nendstream`);
+  });
+  let pdf = '%PDF-1.4\n';
+  const offsets = [];
+  objs.forEach((body, i) => { offsets.push(pdf.length); pdf += `${i + 1} 0 obj\n${body}\nendobj\n`; });
+  const xref = pdf.length;
+  pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n`;
+  pdf += offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('');
+  pdf += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  return { blob: new Blob([pdf], { type: 'application/pdf' }), pageCount, lineCount: lines.length };
+}
 function utilTextPdf() {
   const raw = document.querySelector('[data-util="tpdf-in"]')?.value || '';
   const out = document.getElementById('util-tpdf-out');
+  if (!raw.trim()) { if (out) out.innerHTML = '<p class="muted">Type some text first.</p>'; return; }
   try {
-    const lines = raw.split('\n');
-    const escPdf = (s) => s.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
-    const content = lines.map((l, i) => `BT /F1 12 Tf 50 ${750 - i * 16} Td (${escPdf(l)}) Tj ET`).join('\n');
-    const pdf = `%PDF-1.4
-1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
-2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj
-3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj
-4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj
-5 0 obj << /Length ${content.length} >> stream
-${content}
-endstream
-endobj
-xref
-0 6
-0000000000 65535 f 
-0000000009 0000000000 n 
-0000000058 0000000000 n 
-0000000115 0000000000 n 
-0000000266 0000000000 n 
-0000000347 0000000000 n 
-trailer << /Size 6 /Root 1 0 R >>
-startxref
-${430 + content.length}
-%%EOF`;
-    const blob = new Blob([pdf], { type: 'application/pdf' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'document.pdf'; a.click(); URL.revokeObjectURL(a.href);
-    if (out) out.innerHTML = `<p class="muted">Generated PDF · ${lines.length} lines</p>`;
+    const result = buildTextPdfBlob(raw, {
+      size: document.querySelector('[data-util="tpdf-size"]')?.value || 'a4',
+      orientation: document.querySelector('[data-util="tpdf-orient"]')?.value || 'portrait',
+      font: document.querySelector('[data-util="tpdf-font"]')?.value || 'helvetica',
+      fontSize: document.querySelector('[data-util="tpdf-fs"]')?.value || 12,
+      lineHeight: document.querySelector('[data-util="tpdf-lh"]')?.value || 1.4,
+      margin: document.querySelector('[data-util="tpdf-margin"]')?.value || 48,
+      pageNumbers: !!document.querySelector('[data-util="tpdf-numbers"]')?.checked
+    });
+    const url = URL.createObjectURL(result.blob);
+    if (out) {
+      out.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <a class="btn btn-secondary btn-sm" href="${url}" download="document.pdf">Download document.pdf</a>
+        <span class="muted" style="font-size:12px">${result.pageCount} page${result.pageCount === 1 ? '' : 's'} · ${result.lineCount} lines · ${formatBytes(result.blob.size)}</span>
+      </div>`;
+    }
+    const a = document.createElement('a'); a.href = url; a.download = 'document.pdf'; a.click();
   } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; }
 }
 
@@ -17692,12 +18457,16 @@ function utilBatchRename() {
 function utilVidRotateBody() {
   return `
     <div class="stage-card">
-      <div class="stage-head"><div class="stage-head-copy"><strong>Video rotate / flip</strong><span>Rotate or mirror a video</span></div></div>
+      <div class="stage-head"><div class="stage-head-copy"><strong>Video rotate / flip</strong><span>Rotate, mirror and re-encode a video</span></div></div>
       <div class="stage-body">
         <label class="btn btn-secondary btn-sm" for="util-vr-file">Choose video</label>
         <input id="util-vr-file" type="file" accept="video/*" data-util="vr-file" hidden />
-        <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Operation</span></div><select data-util="vr-op" class="select" style="width:100%"><option value="90">Rotate 90° CW</option><option value="180">Rotate 180°</option><option value="270">Rotate 270° CW</option><option value="hflip">Flip horizontal</option><option value="vflip">Flip vertical</option></select></div>
-        <button class="btn btn-primary btn-sm" data-action="util-vr" style="margin-top:10px">Process & download</button>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:10px">
+          <div class="field"><div class="field-head"><span class="field-label">Operation</span></div><select data-util="vr-op" class="select" style="width:100%"><option value="90">Rotate 90° CW</option><option value="180">Rotate 180°</option><option value="270">Rotate 270° CW</option><option value="hflip">Flip horizontal</option><option value="vflip">Flip vertical</option><option value="hvflip">Flip both</option></select></div>
+          <div class="field"><div class="field-head"><span class="field-label">Output</span></div><select data-util="vr-format" class="select" style="width:100%"><option value="mp4" selected>MP4</option><option value="mkv">MKV</option></select></div>
+          <div class="field"><div class="field-head"><span class="field-label">Quality</span></div><select data-util="vr-quality" class="select" style="width:100%"><option value="high">High (CRF 18)</option><option value="balanced" selected>Balanced (CRF 22)</option><option value="small">Small (CRF 28)</option></select></div>
+        </div>
+        <button class="btn btn-primary btn-sm" data-action="util-vr" style="margin-top:12px">Process &amp; download</button>
         <div id="util-vr-out" class="util-out"></div>
       </div>
     </div>`;
@@ -17707,32 +18476,51 @@ async function utilVidRotate() {
   const out = document.getElementById('util-vr-out');
   if (!file) { if (out) out.innerHTML = '<p class="muted">Choose a video first.</p>'; return; }
   const op = document.querySelector('[data-util="vr-op"]')?.value || '90';
-  const vf = op === '90' ? 'transpose=1' : op === '270' ? 'transpose=2' : op === '180' ? 'transpose=1,transpose=1' : op === 'hflip' ? 'hflip' : 'vflip';
+  const format = document.querySelector('[data-util="vr-format"]')?.value || 'mp4';
+  const quality = document.querySelector('[data-util="vr-quality"]')?.value || 'balanced';
+  const crf = quality === 'high' ? '18' : quality === 'small' ? '28' : '22';
+  const vf = op === '90' ? 'transpose=1' : op === '270' ? 'transpose=2' : op === '180' ? 'transpose=1,transpose=1' : op === 'hflip' ? 'hflip' : op === 'hvflip' ? 'hflip,vflip' : 'vflip';
   try {
     const ffmpeg = await Engine.ensure();
-    const ext = (file.name.split('.').pop() || 'mp4').toLowerCase();
-    const inName = `vr_in.${ext}`;
+    const ext = (file.name.split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const inName = `vr_in.${ext || 'mp4'}`;
+    const outName = `rotated.${format}`;
     await ffmpeg.writeFile(inName, new Uint8Array(await file.arrayBuffer()));
-    const outName = 'vr_out.mp4';
-    await ffmpeg.exec(['-i', inName, '-vf', vf, '-c:a', 'copy', outName]);
+    const args = ['-i', inName, '-vf', vf, '-map', '0:v:0', '-map', '0:a?', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', crf, '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k'];
+    if (format === 'mp4') args.push('-movflags', '+faststart');
+    args.push(outName);
+    await ffmpeg.exec(args);
     const data = await ffmpeg.readFile(outName);
-    const blob = new Blob([data], { type: 'video/mp4' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'rotated.mp4'; a.click(); URL.revokeObjectURL(a.href);
+    const blob = new Blob([data], { type: format === 'mkv' ? 'video/x-matroska' : 'video/mp4' });
+    const url = URL.createObjectURL(blob);
+    if (out) out.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><a class="btn btn-secondary btn-sm" href="${url}" download="${outName}">Download ${outName}</a><span class="muted" style="font-size:12px">${formatBytes(blob.size)}</span></div>`;
+    const a = document.createElement('a'); a.href = url; a.download = outName; a.click();
     try { await ffmpeg.deleteFile(inName); } catch {}
     try { await ffmpeg.deleteFile(outName); } catch {}
-    if (out) out.innerHTML = `<p class="muted">Done · ${formatBytes(blob.size)}</p>`;
   } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; }
 }
 
+function atempoChain(speed) {
+  let s = Math.max(0.0625, Math.min(16, Number(speed) || 1));
+  const parts = [];
+  while (s > 2) { parts.push('2'); s /= 2; }
+  while (s < 0.5) { parts.push('0.5'); s /= 0.5; }
+  parts.push(String(Number(s.toFixed(4))));
+  return parts.join(',');
+}
 function utilVidSpeedBody() {
   return `
     <div class="stage-card">
-      <div class="stage-head"><div class="stage-head-copy"><strong>Video speed</strong><span>Change playback speed</span></div></div>
+      <div class="stage-head"><div class="stage-head-copy"><strong>Video speed</strong><span>Speed up or slow down video and audio together</span></div></div>
       <div class="stage-body">
         <label class="btn btn-secondary btn-sm" for="util-vs-file">Choose video</label>
         <input id="util-vs-file" type="file" accept="video/*" data-util="vs-file" hidden />
-        <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Speed (0.25–4)</span></div><input type="number" min="0.25" max="4" step="0.25" value="2" data-util="vs-speed" class="input" style="width:100%" /></div>
-        <button class="btn btn-primary btn-sm" data-action="util-vs" style="margin-top:10px">Process & download</button>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:10px">
+          <div class="field"><div class="field-head"><span class="field-label">Speed</span></div><select data-util="vs-speed" class="select" style="width:100%"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1">1×</option><option value="1.5">1.5×</option><option value="2" selected>2×</option><option value="3">3×</option><option value="4">4×</option></select></div>
+          <div class="field"><div class="field-head"><span class="field-label">Output</span></div><select data-util="vs-format" class="select" style="width:100%"><option value="mp4" selected>MP4</option><option value="mkv">MKV</option></select></div>
+          <div class="field"><div class="field-head"><span class="field-label">Audio</span></div><select data-util="vs-audio" class="select" style="width:100%"><option value="keep" selected>Keep audio</option><option value="mute">Mute</option></select></div>
+        </div>
+        <button class="btn btn-primary btn-sm" data-action="util-vs" style="margin-top:12px">Process &amp; download</button>
         <div id="util-vs-out" class="util-out"></div>
       </div>
     </div>`;
@@ -17742,33 +18530,47 @@ async function utilVidSpeed() {
   const out = document.getElementById('util-vs-out');
   if (!file) { if (out) out.innerHTML = '<p class="muted">Choose a video first.</p>'; return; }
   const speed = Math.max(0.25, Math.min(4, Number(document.querySelector('[data-util="vs-speed"]')?.value || 2)));
+  const format = document.querySelector('[data-util="vs-format"]')?.value || 'mp4';
+  const audio = document.querySelector('[data-util="vs-audio"]')?.value || 'keep';
   const pts = (1 / speed).toFixed(4);
-  const atempo = speed >= 1 ? speed.toFixed(4) : speed.toFixed(4);
   try {
     const ffmpeg = await Engine.ensure();
-    const ext = (file.name.split('.').pop() || 'mp4').toLowerCase();
-    const inName = `vs_in.${ext}`;
+    const ext = (file.name.split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const inName = `vs_in.${ext || 'mp4'}`;
+    const outName = `speed.${format}`;
     await ffmpeg.writeFile(inName, new Uint8Array(await file.arrayBuffer()));
-    const outName = 'vs_out.mp4';
-    await ffmpeg.exec(['-i', inName, '-filter:v', `setpts=${pts}*PTS`, '-filter:a', `atempo=${atempo}`, outName]);
+    const args = ['-i', inName, '-filter:v', `setpts=${pts}*PTS`, '-map', '0:v:0'];
+    if (audio === 'keep') {
+      args.push('-map', '0:a?', '-filter:a', `atempo=${atempoChain(speed)}`, '-c:a', 'aac', '-b:a', '192k');
+    }
+    args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22', '-pix_fmt', 'yuv420p');
+    if (format === 'mp4') args.push('-movflags', '+faststart');
+    args.push(outName);
+    await ffmpeg.exec(args);
     const data = await ffmpeg.readFile(outName);
-    const blob = new Blob([data], { type: 'video/mp4' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'speed.mp4'; a.click(); URL.revokeObjectURL(a.href);
+    const blob = new Blob([data], { type: format === 'mkv' ? 'video/x-matroska' : 'video/mp4' });
+    const url = URL.createObjectURL(blob);
+    if (out) out.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><a class="btn btn-secondary btn-sm" href="${url}" download="${outName}">Download ${outName}</a><span class="muted" style="font-size:12px">${speed}× · ${formatBytes(blob.size)}</span></div>`;
+    const a = document.createElement('a'); a.href = url; a.download = outName; a.click();
     try { await ffmpeg.deleteFile(inName); } catch {}
     try { await ffmpeg.deleteFile(outName); } catch {}
-    if (out) out.innerHTML = `<p class="muted">Done · ${speed}x · ${formatBytes(blob.size)}</p>`;
   } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; }
 }
 
 function utilAudSpeedBody() {
   return `
     <div class="stage-card">
-      <div class="stage-head"><div class="stage-head-copy"><strong>Audio speed / pitch</strong><span>Change audio speed</span></div></div>
+      <div class="stage-head"><div class="stage-head-copy"><strong>Audio speed / pitch</strong><span>Time-stretch audio, with optional pitch shift</span></div></div>
       <div class="stage-body">
         <label class="btn btn-secondary btn-sm" for="util-as-file">Choose audio</label>
         <input id="util-as-file" type="file" accept="audio/*" data-util="as-file" hidden />
-        <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Speed (0.5–2)</span></div><input type="number" min="0.5" max="2" step="0.1" value="1.5" data-util="as-speed" class="input" style="width:100%" /></div>
-        <button class="btn btn-primary btn-sm" data-action="util-as" style="margin-top:10px">Process & download</button>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:10px">
+          <div class="field"><div class="field-head"><span class="field-label">Speed</span></div><select data-util="as-speed" class="select" style="width:100%"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1.25">1.25×</option><option value="1.5" selected>1.5×</option><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option></select></div>
+          <div class="field"><div class="field-head"><span class="field-label">Output</span></div><select data-util="as-format" class="select" style="width:100%"><option value="mp3" selected>MP3</option><option value="wav">WAV</option><option value="m4a">M4A</option><option value="ogg">OGG</option><option value="flac">FLAC</option></select></div>
+          <div class="field"><div class="field-head"><span class="field-label">Bitrate</span></div><select data-util="as-bitrate" class="select" style="width:100%"><option value="128">128 kbps</option><option value="192" selected>192 kbps</option><option value="256">256 kbps</option><option value="320">320 kbps</option></select></div>
+        </div>
+        <label class="muted" style="display:flex;gap:6px;align-items:center;font-size:12px;margin-top:10px"><input type="checkbox" data-util="as-pitch" checked /> Preserve pitch (uncheck to pitch-shift)</label>
+        <button class="btn btn-primary btn-sm" data-action="util-as" style="margin-top:12px">Process &amp; download</button>
         <div id="util-as-out" class="util-out"></div>
       </div>
     </div>`;
@@ -17777,32 +18579,45 @@ async function utilAudSpeed() {
   const file = document.querySelector('[data-util="as-file"]')?.files?.[0];
   const out = document.getElementById('util-as-out');
   if (!file) { if (out) out.innerHTML = '<p class="muted">Choose an audio file first.</p>'; return; }
-  const speed = Math.max(0.5, Math.min(2, Number(document.querySelector('[data-util="as-speed"]')?.value || 1.5)));
+  const speed = Math.max(0.5, Math.min(4, Number(document.querySelector('[data-util="as-speed"]')?.value || 1.5)));
+  const format = document.querySelector('[data-util="as-format"]')?.value || 'mp3';
+  const bitrate = document.querySelector('[data-util="as-bitrate"]')?.value || '192';
+  const preserve = !!document.querySelector('[data-util="as-pitch"]')?.checked;
+  const mime = { mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', ogg: 'audio/ogg', flac: 'audio/flac' }[format] || 'audio/mpeg';
   try {
     const ffmpeg = await Engine.ensure();
-    const ext = (file.name.split('.').pop() || 'mp3').toLowerCase();
-    const inName = `as_in.${ext}`;
+    const ext = (file.name.split('.').pop() || 'mp3').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const inName = `as_in.${ext || 'mp3'}`;
+    const outName = `speed.${format}`;
     await ffmpeg.writeFile(inName, new Uint8Array(await file.arrayBuffer()));
-    const outName = 'as_out.mp3';
-    await ffmpeg.exec(['-i', inName, '-filter:a', `atempo=${speed}`, outName]);
+    const filter = preserve ? `atempo=${atempoChain(speed)}` : `asetrate=44100*${speed},aresample=44100`;
+    const args = ['-i', inName, '-af', filter, ...audioEncodeArgs(format, { bitrate })];
+    if (format === 'mp4') args.push('-movflags', '+faststart');
+    args.push(outName);
+    await ffmpeg.exec(args);
     const data = await ffmpeg.readFile(outName);
-    const blob = new Blob([data], { type: 'audio/mpeg' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'speed.mp3'; a.click(); URL.revokeObjectURL(a.href);
+    const blob = new Blob([data], { type: mime });
+    const url = URL.createObjectURL(blob);
+    if (out) out.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><a class="btn btn-secondary btn-sm" href="${url}" download="${outName}">Download ${outName}</a><span class="muted" style="font-size:12px">${speed}× · ${preserve ? 'pitch preserved' : 'pitch shifted'} · ${formatBytes(blob.size)}</span></div>`;
+    const a = document.createElement('a'); a.href = url; a.download = outName; a.click();
     try { await ffmpeg.deleteFile(inName); } catch {}
     try { await ffmpeg.deleteFile(outName); } catch {}
-    if (out) out.innerHTML = `<p class="muted">Done · ${speed}x · ${formatBytes(blob.size)}</p>`;
   } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; }
 }
 
 function utilAudNormBody() {
   return `
     <div class="stage-card">
-      <div class="stage-head"><div class="stage-head-copy"><strong>Audio normalizer</strong><span>Normalize audio volume</span></div></div>
+      <div class="stage-head"><div class="stage-head-copy"><strong>Audio normalizer</strong><span>Even out loudness with EBU R128 loudness normalization</span></div></div>
       <div class="stage-body">
         <label class="btn btn-secondary btn-sm" for="util-an-file">Choose audio</label>
         <input id="util-an-file" type="file" accept="audio/*" data-util="an-file" hidden />
-        <div class="field" style="margin-top:10px"><div class="field-head"><span class="field-label">Target (dB)</span></div><input type="number" min="-30" max="0" value="-16" data-util="an-target" class="input" style="width:100%" /></div>
-        <button class="btn btn-primary btn-sm" data-action="util-an" style="margin-top:10px">Normalize & download</button>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:10px">
+          <div class="field"><div class="field-head"><span class="field-label">Preset</span></div><select data-util="an-preset" class="select" style="width:100%"><option value="-16" selected>Podcast (-16 LUFS)</option><option value="-14">Streaming (-14 LUFS)</option><option value="-23">Broadcast (-23 LUFS)</option><option value="custom">Custom…</option></select></div>
+          <div class="field"><div class="field-head"><span class="field-label">Target (LUFS)</span></div><input type="number" min="-40" max="0" value="-16" data-util="an-target" class="input" style="width:100%" /></div>
+          <div class="field"><div class="field-head"><span class="field-label">Output</span></div><select data-util="an-format" class="select" style="width:100%"><option value="mp3" selected>MP3</option><option value="wav">WAV</option><option value="m4a">M4A</option><option value="ogg">OGG</option></select></div>
+        </div>
+        <button class="btn btn-primary btn-sm" data-action="util-an" style="margin-top:12px">Normalize &amp; download</button>
         <div id="util-an-out" class="util-out"></div>
       </div>
     </div>`;
@@ -17811,20 +18626,29 @@ async function utilAudNorm() {
   const file = document.querySelector('[data-util="an-file"]')?.files?.[0];
   const out = document.getElementById('util-an-out');
   if (!file) { if (out) out.innerHTML = '<p class="muted">Choose an audio file first.</p>'; return; }
-  const target = Number(document.querySelector('[data-util="an-target"]')?.value || -16);
+  const preset = document.querySelector('[data-util="an-preset"]')?.value || '-16';
+  const target = preset === 'custom'
+    ? Math.max(-40, Math.min(0, Number(document.querySelector('[data-util="an-target"]')?.value || -16)))
+    : Number(preset);
+  const format = document.querySelector('[data-util="an-format"]')?.value || 'mp3';
+  const mime = { mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', ogg: 'audio/ogg' }[format] || 'audio/mpeg';
   try {
     const ffmpeg = await Engine.ensure();
-    const ext = (file.name.split('.').pop() || 'mp3').toLowerCase();
-    const inName = `an_in.${ext}`;
+    const ext = (file.name.split('.').pop() || 'mp3').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const inName = `an_in.${ext || 'mp3'}`;
+    const outName = `normalized.${format}`;
     await ffmpeg.writeFile(inName, new Uint8Array(await file.arrayBuffer()));
-    const outName = 'an_out.mp3';
-    await ffmpeg.exec(['-i', inName, '-af', `loudnorm=I=${target}:TP=-1.5:LRA=11`, outName]);
+    const args = ['-i', inName, '-af', `loudnorm=I=${target}:TP=-1.5:LRA=11`, ...audioEncodeArgs(format, { bitrate: 192 })];
+    if (format === 'mp4') args.push('-movflags', '+faststart');
+    args.push(outName);
+    await ffmpeg.exec(args);
     const data = await ffmpeg.readFile(outName);
-    const blob = new Blob([data], { type: 'audio/mpeg' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'normalized.mp3'; a.click(); URL.revokeObjectURL(a.href);
+    const blob = new Blob([data], { type: mime });
+    const url = URL.createObjectURL(blob);
+    if (out) out.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><a class="btn btn-secondary btn-sm" href="${url}" download="${outName}">Download ${outName}</a><span class="muted" style="font-size:12px">Target ${target} LUFS · ${formatBytes(blob.size)}</span></div>`;
+    const a = document.createElement('a'); a.href = url; a.download = outName; a.click();
     try { await ffmpeg.deleteFile(inName); } catch {}
     try { await ffmpeg.deleteFile(outName); } catch {}
-    if (out) out.innerHTML = `<p class="muted">Done · target ${target} dB · ${formatBytes(blob.size)}</p>`;
   } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; }
 }
 
@@ -17851,7 +18675,7 @@ async function utilExifStrip() {
   c.getContext('2d').drawImage(img, 0, 0);
   URL.revokeObjectURL(url);
   const blob = await new Promise((res) => c.toBlob(res, file.type || 'image/jpeg', 0.95));
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'stripped.' + (file.name.split('.').pop() || 'jpg'); a.click(); URL.revokeObjectURL(a.href);
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'stripped.' + (file.name.split('.').pop() || 'jpg'); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   if (out) out.innerHTML = `<p class="muted">Done · ${formatBytes(blob.size)}</p>`;
 }
 
@@ -17863,27 +18687,41 @@ function utilScreenshotBody() {
     <div class="stage-card">
       <div class="stage-head"><div class="stage-head-copy"><strong>Screen capture</strong><span>Capture your screen or a window</span></div></div>
       <div class="stage-body">
-        <p class="muted" style="font-size:12px;margin-bottom:10px">Uses the browser's screen share API. Nothing is uploaded.</p>
-        <button class="btn btn-primary btn-sm" data-action="util-screenshot" style="margin-top:4px">Start capture</button>
+        <p class="muted" style="font-size:12px;margin-bottom:10px">Uses the browser's screen share API. Nothing is uploaded. Pick a capture delay to switch to the window you want to shoot.</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
+          <div class="field"><div class="field-head"><span class="field-label">Format</span></div><select data-util="shot-format" class="select" style="width:100%"><option value="png" selected>PNG</option><option value="jpeg">JPEG</option></select></div>
+          <div class="field"><div class="field-head"><span class="field-label">Capture delay</span></div><select data-util="shot-delay" class="select" style="width:100%"><option value="0" selected>Immediately</option><option value="2">After 2s</option><option value="5">After 5s</option></select></div>
+          <div class="field"><div class="field-head"><span class="field-label">JPEG quality</span></div><input type="number" min="30" max="100" value="90" data-util="shot-quality" class="input" style="width:100%" /></div>
+        </div>
+        <button class="btn btn-primary btn-sm" data-action="util-screenshot" style="margin-top:10px">Start capture</button>
         <div id="util-screenshot-out" class="util-out"></div>
       </div>
     </div>`;
 }
 async function utilScreenshot() {
   const out = document.getElementById('util-screenshot-out');
+  const format = document.querySelector('[data-util="shot-format"]')?.value || 'png';
+  const delay = Math.max(0, Math.min(10, Number(document.querySelector('[data-util="shot-delay"]')?.value || 0)));
+  const quality = Math.max(30, Math.min(100, Number(document.querySelector('[data-util="shot-quality"]')?.value || 90))) / 100;
   try {
     const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
     const video = document.createElement('video');
     video.srcObject = stream;
     await new Promise((res) => { video.onloadedmetadata = () => { video.play(); res(); }; });
-    await new Promise((res) => setTimeout(res, 300));
+    if (delay) { if (out) out.innerHTML = `<p class="muted">Capturing in ${delay}s…</p>`; await new Promise((res) => setTimeout(res, delay * 1000)); }
     const c = document.createElement('canvas');
     c.width = video.videoWidth; c.height = video.videoHeight;
     c.getContext('2d').drawImage(video, 0, 0);
     stream.getTracks().forEach((t) => t.stop());
-    const blob = await new Promise((res) => c.toBlob(res, 'image/png'));
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'screenshot.png'; a.click(); URL.revokeObjectURL(a.href);
-    if (out) out.innerHTML = `<p class="muted">Captured ${video.videoWidth}×${video.videoHeight}</p>`;
+    const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png';
+    const blob = await new Promise((res) => c.toBlob(res, mime, quality));
+    const ext = format === 'jpeg' ? 'jpg' : 'png';
+    const dataUrl = c.toDataURL(mime, quality);
+    if (out) {
+      out.innerHTML = `<img src="${dataUrl}" alt="Captured screen" style="max-width:100%;border:1px solid var(--border);border-radius:8px;margin-top:4px" />
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px"><a class="btn btn-secondary btn-sm" href="${dataUrl}" download="screenshot.${ext}">Download screenshot.${ext}</a><span class="muted" style="font-size:12px">${c.width}×${c.height} · ${(blob.size / 1024).toFixed(0)} KB</span></div>`;
+    }
+    toast('Captured', `${c.width}×${c.height}`, 'success');
   } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed/cancelled: ${esc(e?.message || e)}</p>`; }
 }
 
@@ -17920,7 +18758,7 @@ async function utilCollage() {
     ctx.drawImage(img, sx, sy, sw, sh, col * size, row * size, size, size);
   });
   const blob = await new Promise((res) => c.toBlob(res, 'image/png'));
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'collage.png'; a.click(); URL.revokeObjectURL(a.href);
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'collage.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   if (out) out.innerHTML = `<p class="muted">Built ${imgs.length} images into ${cols}×${rows} grid.</p>`;
 }
 
@@ -17992,97 +18830,104 @@ function utilSummarize() {
 function utilQrBody() {
   return `
     <div class="stage-card">
-      <div class="stage-head"><div class="stage-head-copy"><strong>QR code generator</strong><span>Generate QR codes locally</span></div></div>
+      <div class="stage-head"><div class="stage-head-copy"><strong>QR code generator</strong><span>Generate standards-compliant QR codes locally</span></div></div>
       <div class="stage-body">
-        <input type="text" data-util="qr-text" class="input" style="width:100%" placeholder="Text or URL" value="hello" />
-        <button class="btn btn-primary btn-sm" data-action="util-qr" style="margin-top:10px">Generate</button>
-        <div id="util-qr-out" style="margin-top:12px"></div>
+        <textarea data-util="qr-text" class="input" rows="3" style="width:100%;font-family:var(--font-mono)" placeholder="Text or URL">https://example.com</textarea>
+        <div class="field-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:10px">
+          <div class="field"><div class="field-head"><span class="field-label">Size (px)</span></div><input type="number" min="96" max="2048" step="32" value="320" data-util="qr-size" class="input" style="width:100%" /></div>
+          <div class="field"><div class="field-head"><span class="field-label">Error correction</span></div><select data-util="qr-ecc" class="select" style="width:100%"><option value="L">L · 7%</option><option value="M" selected>M · 15%</option><option value="Q">Q · 25%</option><option value="H">H · 30%</option></select></div>
+          <div class="field"><div class="field-head"><span class="field-label">Quiet zone (modules)</span></div><input type="number" min="0" max="16" value="4" data-util="qr-margin" class="input" style="width:100%" /></div>
+          <div class="field"><div class="field-head"><span class="field-label">Colors</span></div><div style="display:flex;gap:8px;align-items:center"><input type="color" data-util="qr-fg" value="#000000" title="Foreground" /><input type="color" data-util="qr-bg" value="#ffffff" title="Background" /></div></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" data-action="util-qr">Generate</button>
+          <button class="btn btn-secondary btn-sm" data-action="util-qr-download" disabled>Download PNG</button>
+          <button class="btn btn-secondary btn-sm" data-action="util-qr-svg" disabled>Download SVG</button>
+          <button class="btn btn-ghost btn-sm" data-action="util-qr-copy" disabled>Copy image</button>
+        </div>
+        <p class="field-help" style="margin-top:8px">Runs offline. Scannable by any QR reader. Use higher error correction if the code may be printed or partly obscured.</p>
+        <div id="util-qr-out" style="margin-top:12px;display:flex;flex-direction:column;gap:8px;align-items:flex-start"></div>
       </div>
     </div>`;
 }
 function utilQr() {
-  const text = document.querySelector('[data-util="qr-text"]')?.value || '';
+  const text = (document.querySelector('[data-util="qr-text"]')?.value || '').trim();
   const out = document.getElementById('util-qr-out');
+  if (!text) { if (out) out.innerHTML = '<p class="muted">Enter text or a URL first.</p>'; return; }
+  const size = Math.max(96, Math.min(2048, Number(document.querySelector('[data-util="qr-size"]')?.value || 320)));
+  const ecc = document.querySelector('[data-util="qr-ecc"]')?.value || 'M';
+  const margin = Math.max(0, Math.min(16, Number(document.querySelector('[data-util="qr-margin"]')?.value ?? 4)));
+  const fg = document.querySelector('[data-util="qr-fg"]')?.value || '#000000';
+  const bg = document.querySelector('[data-util="qr-bg"]')?.value || '#ffffff';
   try {
-    // Use a minimal QR implementation: encode as a matrix using a tiny library approach.
-    // We'll generate a simple QR code via the 'qrcode' algorithm is complex; instead use a data-URL via a public? No, local only.
-    // Fallback: render text as a placeholder with download of a generated SVG using a minimal encoder.
-    const size = 21;
-    const modules = Array.from({ length: size }, () => Array(size).fill(false));
-    // Simple pseudo-QR: not a real QR. Instead, use canvas to draw a real QR via an inline minimal encoder.
-    // We'll implement a minimal byte-mode QR version 1 (21x21) with L EC.
-    const qr = makeQR(text);
-    if (!qr) throw new Error('Could not encode');
-    const scale = 8;
-    const c = document.createElement('canvas');
-    c.width = qr.size * scale; c.height = qr.size * scale;
-    const ctx = c.getContext('2d');
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
-    ctx.fillStyle = '#000';
-    for (let y = 0; y < qr.size; y++) for (let x = 0; x < qr.size; x++) {
-      if (qr.modules[y][x]) ctx.fillRect(x * scale, y * scale, scale, scale);
+    if (typeof qrcode !== 'function') throw new Error('QR library not loaded');
+    const qr = qrcode(0, ecc);
+    qr.addData(text);
+    qr.make();
+    const count = qr.getModuleCount();
+    const modules = count + margin * 2;
+    const scale = Math.max(1, Math.floor(size / modules));
+    const px = modules * scale;
+    const canvas = document.createElement('canvas');
+    canvas.width = px; canvas.height = px;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, px, px);
+    ctx.fillStyle = fg;
+    for (let r = 0; r < count; r++) for (let c = 0; c < count; c++) {
+      if (qr.isDark(r, c)) ctx.fillRect((c + margin) * scale, (r + margin) * scale, scale, scale);
     }
-    if (out) { out.innerHTML = ''; out.appendChild(c); }
-    const a = document.createElement('a'); a.href = c.toDataURL('image/png'); a.download = 'qrcode.png'; a.click();
-  } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; }
+    state.utilQr = { text, ecc, margin, fg, bg, size: px, modules: count, canvas, dataUrl: canvas.toDataURL('image/png') };
+    if (out) {
+      out.innerHTML = `<div class="qr-preview" style="padding:10px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2)"></div>
+        <p class="muted" style="margin:0;font-size:12px">${count}×${count} modules · ${px}×${px}px · ECC ${ecc}</p>`;
+      out.querySelector('.qr-preview').appendChild(canvas);
+    }
+    ['util-qr-download','util-qr-svg','util-qr-copy'].forEach((a) => document.querySelectorAll(`[data-action="${a}"]`).forEach((b) => { b.disabled = false; }));
+  } catch (e) {
+    if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`;
+  }
+}
+async function utilQrDownload() {
+  const q = state.utilQr;
+  if (!q) return;
+  const a = document.createElement('a');
+  a.href = q.dataUrl; a.download = 'qrcode.png'; a.click();
+}
+function utilQrSvg() {
+  const q = state.utilQr;
+  if (!q) return;
+  if (typeof qrcode !== 'function') return;
+  const qr = qrcode(0, q.ecc);
+  qr.addData(q.text); qr.make();
+  const count = qr.getModuleCount();
+  const m = q.margin;
+  const mods = count + m * 2;
+  let path = '';
+  for (let r = 0; r < count; r++) for (let c = 0; c < count; c++) {
+    if (qr.isDark(r, c)) path += `M${c + m} ${r + m}h1v1h-1z`;
+  }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${mods} ${mods}" width="${q.size}" height="${q.size}" shape-rendering="crispEdges"><rect width="${mods}" height="${mods}" fill="${q.bg}"/><path d="${path}" fill="${q.fg}"/></svg>`;
+  const blob = new Blob([svg], { type: 'image/svg+xml' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'qrcode.svg'; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+async function utilQrCopy() {
+  const q = state.utilQr;
+  if (!q) return;
+  try {
+    const res = await fetch(q.dataUrl);
+    const blob = await res.blob();
+    if (navigator.clipboard && window.ClipboardItem) {
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      toast('Copied', 'QR code copied to clipboard.', 'success');
+    } else {
+      toast('Not supported', 'Clipboard images are not available in this browser.', 'error');
+    }
+  } catch (e) {
+    toast('Copy failed', e?.message || 'Could not copy image.', 'error');
+  }
 }
 
-// Minimal QR encoder (version 1, byte mode, L correction) - compact implementation
-function makeQR(text) {
-  const bytes = new TextEncoder().encode(text);
-  // choose version
-  let version = 1;
-  if (bytes.length > 17) version = 2;
-  if (bytes.length > 32) version = 3;
-  if (bytes.length > 53) version = 4;
-  if (bytes.length > 78) return null;
-  const size = 17 + version * 4;
-  const capacityBits = [0, 128, 256, 416, 592][version];
-  const modules = Array.from({ length: size }, () => Array(size).fill(false));
-  const reserved = Array.from({ length: size }, () => Array(size).fill(false));
-  function finder(r, c) {
-    for (let dr = 0; dr < 7; dr++) for (let dc = 0; dc < 7; dc++) {
-      const rr = r + dr, cc = c + dc;
-      if (rr < 0 || cc < 0 || rr >= size || cc >= size) continue;
-      const on = (dr === 0 || dr === 6 || dc === 0 || dc === 6 || (dr >= 2 && dr <= 4 && dc >= 2 && dc <= 4));
-      modules[rr][cc] = on; reserved[rr][cc] = true;
-    }
-  }
-  finder(0, 0); finder(0, size - 7); finder(size - 7, 0);
-  for (let i = 8; i < size - 8; i++) {
-    modules[6][i] = (i % 2 === 0); reserved[6][i] = true;
-    modules[i][6] = (i % 2 === 0); reserved[i][6] = true;
-  }
-  modules[size - 8][8] = true; reserved[size - 8][8] = true;
-  // data bits
-  const bits = [];
-  bits.push(0,1,0,0);
-  const countBits = version <= 9 ? 8 : 16;
-  for (let i = countBits - 1; i >= 0; i--) bits.push((bytes.length >> i) & 1);
-  for (const byte of bytes) for (let i = 7; i >= 0; i--) bits.push((byte >> i) & 1);
-  for (let i = 0; i < 4 && bits.length < capacityBits; i++) bits.push(0);
-  while (bits.length % 8) bits.push(0);
-  const padBytes = [0xEC, 0x11];
-  let pi = 0;
-  while (bits.length < capacityBits) { const pb = padBytes[pi % 2]; for (let i = 7; i >= 0; i--) bits.push((pb >> i) & 1); pi++; }
-  // place bits zigzag
-  let bitIdx = 0;
-  let upward = true;
-  for (let col = size - 1; col > 0; col -= 2) {
-    if (col === 6) col = 5;
-    for (let row = 0; row < size; row++) {
-      const r = upward ? (size - 1 - row) : row;
-      for (let c = 0; c < 2; c++) {
-        const cc = col - c;
-        if (cc < 0 || r < 0 || r >= size || cc >= size) continue;
-        if (reserved[r][cc]) continue;
-        if (bitIdx < bits.length) { modules[r][cc] = bits[bitIdx++] === 1; }
-      }
-    }
-    upward = !upward;
-  }
-  return { size, modules };
-}
 function utilScreenshot2() { return utilScreenshotBody(); }
 // ---------- Additional utility tools (batch 4) ----------
 
@@ -18102,8 +18947,8 @@ function utilCaseBody() {
     <pre id="util-case-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
   </div></div>`;
 }
-function utilCase() {
-  const mode = (event?.target?.dataset?.mode) || 'lower';
+function utilCase(el = null) {
+  const mode = el?.dataset?.mode || 'lower';
   const raw = document.querySelector('[data-util="case-in"]')?.value || '';
   const out = document.getElementById('util-case-out');
   const words = raw.trim().split(/[\s_\-]+/).filter(Boolean);
@@ -18242,8 +19087,8 @@ function utilUrlencBody() {
     <pre id="util-url-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
   </div></div>`;
 }
-function utilUrlenc() {
-  const mode = (event?.target?.dataset?.mode) || 'enc';
+function utilUrlenc(el = null) {
+  const mode = el?.dataset?.mode || 'enc';
   const raw = document.querySelector('[data-util="url-in"]')?.value || '';
   const out = document.getElementById('util-url-out');
   try {
@@ -18265,8 +19110,8 @@ function utilHtmlentBody() {
     <pre id="util-html-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
   </div></div>`;
 }
-function utilHtmlent() {
-  const mode = (event?.target?.dataset?.mode) || 'enc';
+function utilHtmlent(el = null) {
+  const mode = el?.dataset?.mode || 'enc';
   const raw = document.querySelector('[data-util="html-in"]')?.value || '';
   const out = document.getElementById('util-html-out');
   if (mode === 'enc') {
@@ -18493,8 +19338,8 @@ function utilYamlBody() {
     <pre id="util-yaml-out" class="mono" style="margin-top:10px;white-space:pre-wrap;word-break:break-all"></pre>
   </div></div>`;
 }
-function utilYaml() {
-  const mode = (event?.target?.dataset?.mode) || 'tojson';
+function utilYaml(el = null) {
+  const mode = el?.dataset?.mode || 'tojson';
   const raw = document.querySelector('[data-util="yaml-in"]')?.value || '';
   const out = document.getElementById('util-yaml-out');
   try {
@@ -18553,28 +19398,36 @@ function utilCurl() {
 }
 
 function utilImg2PdfBody() {
-  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>Images to PDF</strong><span>Combine images into a PDF</span></div></div><div class="stage-body">
+  return `<div class="stage-card"><div class="stage-head"><div class="stage-head-copy"><strong>Images to PDF</strong><span>Combine images with page size, fit and margins</span></div></div><div class="stage-body">
     <label class="btn btn-secondary btn-sm" for="util-i2p-files">Choose images</label>
     <input id="util-i2p-files" type="file" accept="image/*" multiple data-util="i2p-files" hidden />
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:10px">
+      <div class="field"><div class="field-head"><span class="field-label">Page size</span></div><select data-util="i2p-size" class="select" style="width:100%"><option value="auto" selected>Fit each image</option><option value="a4">A4</option><option value="letter">Letter</option><option value="legal">Legal</option></select></div>
+      <div class="field"><div class="field-head"><span class="field-label">Orientation</span></div><select data-util="i2p-orient" class="select" style="width:100%"><option value="auto" selected>Auto (per image)</option><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></div>
+      <div class="field"><div class="field-head"><span class="field-label">Image fit</span></div><select data-util="i2p-fit" class="select" style="width:100%"><option value="contain" selected>Contain (letterbox)</option><option value="cover">Cover (crop)</option><option value="stretch">Stretch</option></select></div>
+      <div class="field"><div class="field-head"><span class="field-label">Margin (pt)</span></div><input type="number" min="0" max="120" value="24" data-util="i2p-margin" class="input" style="width:100%" /></div>
+    </div>
     <button class="btn btn-primary btn-sm" data-action="util-i2p" style="margin-top:10px">Generate PDF</button>
     <div id="util-i2p-out" class="util-out"></div>
   </div></div>`;
 }
 async function utilImg2Pdf() {
-  const files = document.querySelector('[data-util="i2p-files"]')?.files;
+  const files = Array.from(document.querySelector('[data-util="i2p-files"]')?.files || []);
   const out = document.getElementById('util-i2p-out');
-  if (!files || !files.length) { if (out) out.innerHTML = '<p class="muted">Choose images first.</p>'; return; }
-  // Simple: open each image in a new tab? Instead generate a minimal PDF with images as XObjects is complex.
-  // Fallback: create an HTML page and trigger print.
-  const imgs = await Promise.all([...files].map((f) => new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(f); })));
-  const w = window.open('', '_blank');
-  if (w) {
-    w.document.write('<html><body style="margin:0">' + imgs.map((src) => `<img src="${src}" style="max-width:100%;page-break-after:always" />`).join('') + '</body></html>');
-    w.document.close();
-    w.focus();
-    setTimeout(() => { w.print(); }, 500);
-  }
-  if (out) out.innerHTML = `<p class="muted">Opened print dialog for ${files.length} image(s).</p>`;
+  if (!files.length) { if (out) out.innerHTML = '<p class="muted">Choose images first.</p>'; return; }
+  const sizeKey = document.querySelector('[data-util="i2p-size"]')?.value || 'auto';
+  const orient = document.querySelector('[data-util="i2p-orient"]')?.value || 'auto';
+  const fit = document.querySelector('[data-util="i2p-fit"]')?.value || 'contain';
+  const margin = Math.max(0, Math.min(120, Number(document.querySelector('[data-util="i2p-margin"]')?.value || 24)));
+  if (out) out.innerHTML = 'Building…';
+  try {
+    const { bytes, pageCount } = await imagesToPdf(files, { sizeKey, orient, fit, margin, title: 'images' });
+    const blob = new Blob([bytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    imagesToPdfLink(out, url, 'images.pdf', pageCount, blob.size);
+    const a = document.createElement('a'); a.href = url; a.download = 'images.pdf'; a.click();
+    toast('Built', 'PDF ready.', 'success');
+  } catch (e) { if (out) out.innerHTML = ''; toast('Build failed', e?.message || 'Failed.', 'error'); }
 }
 
 function utilDocCompareBody() {
@@ -19056,7 +19909,7 @@ async function utilBgBlur() {
   fctx.drawImage(tmp, 0, 0);
   URL.revokeObjectURL(url);
   const blob = await new Promise((res) => final.toBlob(res, 'image/png'));
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'blurred.png'; a.click(); URL.revokeObjectURL(a.href);
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'blurred.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   if (out) out.innerHTML = `<p class="muted">Done · ${c.width}×${c.height}</p>`;
 }
 // ---------- AI vision tools (Transformers.js, local models) ----------
@@ -19152,7 +20005,7 @@ async function utilAiDetect() {
     }
     URL.revokeObjectURL(url);
     const blob = await new Promise((res) => c.toBlob(res, 'image/png'));
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'detected.png'; a.click(); URL.revokeObjectURL(a.href);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'detected.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     if (out) out.innerHTML = `<p class="muted">Detected ${items.length} object(s).</p>` + items.map((r) => `<div class="mono" style="margin-top:4px">${esc(r.label)} ${(r.score * 100).toFixed(1)}%</div>`).join('');
     if (status) status.textContent = 'Done.';
   } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; if (status) status.textContent = ''; }
@@ -19192,10 +20045,10 @@ async function utilAiBgRemove() {
     if (out) out.innerHTML = '<p class="muted">Background removed. Check downloads.</p>';
     if (result && result.toBlob) {
       const blob = await result.toBlob();
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'no-bg.png'; a.click(); URL.revokeObjectURL(a.href);
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'no-bg.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     } else if (result && result.canvas) {
       const blob = await new Promise((res) => result.canvas.toBlob(res, 'image/png'));
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'no-bg.png'; a.click(); URL.revokeObjectURL(a.href);
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'no-bg.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     }
     if (status) status.textContent = 'Done.';
   } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; if (status) status.textContent = ''; }
@@ -19216,7 +20069,7 @@ async function utilAiDepth() {
       const canvas = res.depth.toCanvas ? res.depth.toCanvas() : null;
       if (canvas) {
         const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
-        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'depth.png'; a.click(); URL.revokeObjectURL(a.href);
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'depth.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
       }
     }
     if (out) out.innerHTML = '<p class="muted">Depth map generated.</p>';
@@ -19300,7 +20153,7 @@ async function utilAiSuperres() {
     else if (result?.canvas) canvas = result.canvas;
     if (canvas) {
       const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'upscaled.png'; a.click(); URL.revokeObjectURL(a.href);
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'upscaled.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
       if (out) out.innerHTML = `<p class="muted">Upscaled to ${canvas.width}×${canvas.height}</p>`;
     } else {
       if (out) out.innerHTML = `<p class="muted">Result: ${JSON.stringify(result).slice(0, 200)}</p>`;
@@ -19329,7 +20182,7 @@ async function utilAiStyle() {
     else if (result?.canvas) canvas = result.canvas;
     if (canvas) {
       const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'styled.png'; a.click(); URL.revokeObjectURL(a.href);
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'styled.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
       if (out) out.innerHTML = `<p class="muted">Styled · ${canvas.width}×${canvas.height}</p>`;
     } else {
       if (out) out.innerHTML = `<p class="muted">Result: ${JSON.stringify(result).slice(0, 200)}</p>`;
@@ -19366,7 +20219,7 @@ async function utilAiObjRemove() {
     }
     URL.revokeObjectURL(url);
     const blob = await new Promise((res) => c.toBlob(res, 'image/png'));
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'cleaned.png'; a.click(); URL.revokeObjectURL(a.href);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'cleaned.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     if (out) out.innerHTML = `<p class="muted">Removed ${items.length} object(s) (basic fill).</p>`;
     if (status) status.textContent = 'Done.';
   } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; if (status) status.textContent = ''; }
@@ -19584,7 +20437,7 @@ async function utilFaceRestore() {
     const outputData = results[outputName].data;
     const canvas = tensorToImage(outputData, 512, 512);
     const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'restored.png'; a.click(); URL.revokeObjectURL(a.href);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'restored.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     if (out) out.innerHTML = '<p class="muted">Face restored. Downloaded restored.png.</p>';
     if (status) status.textContent = 'Done.';
   } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; if (status) status.textContent = ''; }
@@ -19789,7 +20642,7 @@ async function utilRealEsrgan() {
     }
     outCtx.putImageData(outImg, 0, 0);
     const blob = await new Promise((res) => outCanvas.toBlob(res, 'image/png'));
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'upscaled_4x.png'; a.click(); URL.revokeObjectURL(a.href);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'upscaled_4x.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     if (out) out.innerHTML = `<p class="muted">Upscaled to ${outW}×${outH}</p>`;
     if (status) status.textContent = 'Done.';
   } catch (e) { if (out) out.innerHTML = `<p class="muted">Failed: ${esc(e?.message || e)}</p>`; if (status) status.textContent = ''; }
@@ -19855,7 +20708,7 @@ async function utilAudio2Midi() {
     // Generate simple MIDI file
     const midiBytes = generateMidi(deduped);
     const blob = new Blob([midiBytes], { type: 'audio/midi' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'extracted.mid'; a.click(); URL.revokeObjectURL(a.href);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'extracted.mid'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     if (out) out.textContent = `Detected ${deduped.length} notes. Downloaded extracted.mid.\n` + deduped.slice(0, 20).map((n) => `MIDI ${n.midi} at ${n.time.toFixed(2)}s`).join('\n');
     if (status) status.textContent = 'Done.';
     await ctx.close();

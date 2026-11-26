@@ -23,7 +23,7 @@
 
 /* ---------- drawer / mobile shell ---------- */
 @media (max-width: 1024px) {
-  :root { --topbar-h: 60px; --adbar-h: 54px; }
+  :root { --topbar-h: 60px; }
 
   .app { display: block; position: relative; z-index: auto; }
   .sidebar {
@@ -83,7 +83,7 @@
   .settings-card { margin: 0; }
   .area-settings { margin: 0; }
 
-  .toast-stack { bottom: calc(var(--adbar-h) + 12px); }
+  .toast-stack { bottom: 12px; }
   .sidebar-foot { padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
 }
 
@@ -113,7 +113,7 @@
 }
 
 @media (max-width: 720px) {
-  :root { --topbar-h: 58px; --adbar-h: 50px; }
+  :root { --topbar-h: 58px; }
   .topbar { padding: 0 13px; gap: 7px; }
   .topbar-actions { gap: 5px; }
   .theme-switch button { width: 25px; height: 23px; }
@@ -181,7 +181,7 @@
   .settings-tabs { padding: 9px 13px 10px; }
   .settings-scroll { padding: 12px 13px 8px; }
   .settings-foot { padding: 10px 13px 12px; }
-  .format-grid { grid-template-columns: repeat(3, 1fr); }
+  .format-grid { grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
   .format-chip { padding: 6px 7px; }
 
   .trust-row { flex-wrap: wrap; gap: 7px 14px; padding-top: 10px; font-size: 10px; }
@@ -240,19 +240,7 @@
   .plan-options { grid-template-columns: 1fr; }
   .plan-option { padding: 8px 10px; }
   .engine-info-grid { grid-template-columns: 1fr; }
-  .ad-spec-grid { grid-template-columns: 1fr 1fr; }
 
-  .adbar {
-    gap: 8px;
-    padding: 0 14px calc(0px + env(safe-area-inset-bottom));
-    font-size: 11px;
-  }
-  .ad-size { display: none; }
-  .ad-copy { font-size: 11px; }
-  .ad-label { font-size: 11px; }
-  .ad-divider { height: 14px; }
-  .ad-action { font-size: 11px; padding: 4px 3px; }
-  .ad-action .icon { display: none; }
 
   .toast-stack { right: 10px; width: min(340px, calc(100vw - 20px)); }
 }
@@ -280,7 +268,7 @@
 
   .settings-summary { font-size: 10px; }
   .settings-summary .mono { display: none; }
-  .format-grid { grid-template-columns: repeat(3, 1fr); gap: 4px; }
+  .format-grid { grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 4px; }
   .format-chip strong { font-size: 11px; }
   .format-chip small { font-size: 12px; }
 
@@ -305,10 +293,6 @@
   .plans-big-price { font-size: 31px; }
   .payment-grid { grid-template-columns: 1fr 1fr; }
   .plans-ethics { gap: 4px 8px; font-size: 12px; }
-  .adbar { padding-left: 11px; padding-right: 11px; }
-  .ad-label { display: none; }
-  .ad-divider { display: none; }
-  .ad-copy { flex: 1; }
 }
 
 @media (max-height: 760px) and (min-width: 1025px) {
@@ -365,6 +349,33 @@
 @media (max-width: 480px) {
   html, body { font-size: 14px; }
   .view-title { font-size: 20px; }
+}
+
+/* ---------- mobile app (Tauri Android / iOS) ---------- */
+@media (max-width: 1024px) {
+  html[data-mobile="true"] .topbar {
+    height: calc(var(--topbar-h) + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+  }
+  html[data-mobile="true"] .workspace { padding-bottom: calc(36px + env(safe-area-inset-bottom)); }
+  /* Android 15+ forces edge-to-edge, but the WebView reports env(safe-area-inset-*) as 0,
+     so native builds reserve the system navigation bar height themselves. */
+  html[data-platform="tauri"][data-mobile="true"] { --nv-safe-bottom: max(env(safe-area-inset-bottom), 48px); }
+  html[data-platform="tauri"][data-mobile="true"] .main { padding-bottom: var(--nv-safe-bottom); }
+  html[data-platform="tauri"][data-mobile="true"] .modal-foot {
+    padding-bottom: calc(11px + var(--nv-safe-bottom));
+  }
+  html[data-mobile="true"] .sidebar {
+    height: 100dvh;
+    padding-top: env(safe-area-inset-top);
+  }
+}
+html[data-platform="tauri"][data-mobile="true"] { overscroll-behavior-y: none; }
+html[data-platform="tauri"][data-mobile="true"] body { -webkit-tap-highlight-color: transparent; }
+@media (pointer: coarse) {
+  .btn, .icon-btn, .segmented button, .nav-item, .format-chip { min-height: 40px; }
+  .switch { min-height: 30px; }
+  input[type="range"] { min-height: 32px; }
 }
 
 /* ---------- subtitle editor responsive ---------- */

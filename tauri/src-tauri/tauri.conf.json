@@ -12,6 +12,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
+        "label": "main",
         "title": "NuVerter",
         "width": 1280,
         "height": 820,
@@ -32,6 +33,9 @@
     "active": true,
     "targets": ["nsis"],
     "createUpdaterArtifacts": true,
+    "android": {
+      "minSdkVersion": 24
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -54,7 +58,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDRFQzNFRjlEMjdFNTI2NkYKUldSdkp1VW5uZS9EVGlYZGR0Y2tJM0YvVHc3TlRwRjlFa0M0bXZIZHk4amtpdzlIazFjMVJUNTgK",
       "endpoints": [
-        "https://raw.githubusercontent.com/BIltonBB/NuVerter/main/latest.json"
+        "https://github.com/BIltonBB/NuVerter/releases/latest/download/latest.json"
       ]
     }
   }

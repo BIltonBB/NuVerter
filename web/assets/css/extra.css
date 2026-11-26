@@ -1,5 +1,5 @@
 /* ==========================================================================
-   NuVerter — plans, payments, history, settings, preview, advertise
+   NuVerter — plans, payments, history, settings, preview
    ========================================================================== */
 
 /* ---------- plans & payments ---------- */
@@ -359,27 +359,6 @@
 .preview-file-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 10px; color: var(--text-3); font-size: 10px; }
 .preview-file-meta b { color: var(--text-2); font-weight: 560; }
 .preview-file-meta .mono { font-family: var(--font-mono); font-size: 10px; }
-
-/* ---------- advertise ---------- */
-.advertise-hero {
-  padding: 14px;
-  border: 1px solid var(--accent-border);
-  border-radius: 11px;
-  background: linear-gradient(130deg, var(--accent-soft), transparent 70%), var(--surface);
-}
-.advertise-hero strong { font-size: 12px; font-weight: 620; }
-.advertise-hero p { margin-top: 3px; font-size: 10px; line-height: 1.5; color: var(--text-3); }
-.ad-spec-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 11px; }
-.ad-spec {
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  background: var(--surface-2);
-}
-.ad-spec span { display: block; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-4); }
-.ad-spec strong { display: block; margin-top: 2px; font-family: var(--font-mono); font-size: 10px; font-weight: 500; color: var(--text-2); }
-.ad-principles { display: flex; flex-direction: column; gap: 5px; }
-.ad-principles .feature-item .icon { color: var(--accent-text); }
 
 /* ---------- help ---------- */
 .help-list { display: flex; flex-direction: column; }
@@ -951,3 +930,26 @@
 .wf-node-pulse { position: absolute; inset: -3px; border-radius: 9px; border: 2px solid var(--accent); animation: wfPulse 1s ease-out infinite; pointer-events: none; }
 @keyframes wfPulse { 0% { opacity: .9; transform: scale(1); } 100% { opacity: 0; transform: scale(1.08); } }
 #wf-canvas:active { cursor: grabbing; }
+
+/* Markdown preview + utility output polish */
+.md-preview { line-height: 1.6; color: var(--text); overflow-wrap: anywhere; }
+.md-preview > *:first-child { margin-top: 0; }
+.md-preview > *:last-child { margin-bottom: 0; }
+.md-preview h1, .md-preview h2, .md-preview h3, .md-preview h4 { margin: 18px 0 10px; line-height: 1.25; }
+.md-preview p { margin: 10px 0; }
+.md-preview pre { background: var(--surface-3); padding: 12px; border-radius: 8px; overflow: auto; }
+.md-preview code { background: var(--surface-3); padding: 2px 5px; border-radius: 4px; font-family: var(--font-mono); font-size: .92em; }
+.md-preview pre code { background: none; padding: 0; }
+.md-preview blockquote { margin: 12px 0; padding: 4px 0 4px 14px; border-left: 3px solid var(--accent-border); color: var(--text-2); }
+.md-preview table { border-collapse: collapse; margin: 12px 0; width: 100%; }
+.md-preview th, .md-preview td { border: 1px solid var(--border); padding: 7px 10px; text-align: left; }
+.md-preview th { background: var(--surface-3); }
+.md-preview img { max-width: 100%; border-radius: 8px; }
+.md-preview ul, .md-preview ol { margin: 10px 0; padding-left: 22px; }
+.md-preview hr { border: 0; border-top: 1px solid var(--border); margin: 18px 0; }
+
+/* ---------- video editor layout ---------- */
+@media (max-width: 900px) {
+  .ve-shell { grid-template-columns: minmax(0, 1fr) !important; }
+  .ve-inspector { max-height: none !important; }
+}
