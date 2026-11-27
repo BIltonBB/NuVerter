@@ -308,12 +308,30 @@ const QUALITY = {
   best: { crf: 18, audio: 256, image: .94, label: 'Best' }
 };
 
+const SMART_DEFAULTS = { video: 'mp4', audio: 'mp3', image: 'webp', text: 'txt' };
+
+function smartMapFor(conv = state.converter) {
+  const map = { ...SMART_DEFAULTS };
+  const saved = conv && conv.smartMap;
+  if (saved && typeof saved === 'object') {
+    Object.keys(SMART_DEFAULTS).forEach((kind) => {
+      const key = saved[kind];
+      if (FORMATS[key] && targetCompatible(kind, key)) map[kind] = key;
+    });
+  }
+  return map;
+}
+
+function smartMapSummary(conv = state.converter) {
+  const map = smartMapFor(conv);
+  const label = (kind) => (FORMATS[map[kind]] || {}).label || map[kind];
+  return `video \u2192 ${label('video')} \u00b7 audio \u2192 ${label('audio')} \u00b7 images \u2192 ${label('image')} \u00b7 text/code \u2192 ${label('text')}`;
+}
+
 function resolveFormatKey(format, kind) {
   if (format !== 'auto') return format;
-  if (kind === 'audio') return 'mp3';
-  if (kind === 'image') return 'webp';
-  if (kind === 'text') return 'txt';
-  return 'mp4';
+  const map = smartMapFor();
+  return map[kind] || SMART_DEFAULTS[kind] || 'mp4';
 }
 
 const ASPECTS = {
@@ -376,6 +394,7 @@ function planFor(item, format = state.converter.format) {
 /* ---------- app state ---------- */
 const DEFAULT_CONVERTER = {
   format: 'auto',
+  smartMap: { ...SMART_DEFAULTS },
   quality: 'balanced',
   tab: 'basics',
   resolution: 'source',
@@ -498,7 +517,7 @@ const state = {
   practical: { tab: 'diff' },
   aiTools: { tab: 'aibg' },
   docSearch: { docs: [], query: '' },
-  workflow: { source: null, nodes: [], edges: [], running: false, pan: { x: 0, y: 0 }, zoom: 1, connectFrom: null, connectTo: null, connectPreview: null, selectedNodeId: null, history: [], historyIndex: -1, settings: { gridBg: true, snapGrid: true } },
+  workflow: { source: null, sources: [], nodes: [], edges: [], running: false, pan: { x: 0, y: 0 }, zoom: 1, connectFrom: null, connectTo: null, connectPreview: null, selectedNodeId: null, history: [], historyIndex: -1, log: [], results: [], paletteCat: 'all', paletteQuery: '', settings: { gridBg: true, snapGrid: true, multiSource: true } },
   workflows: [],
   aiImage: { model: 'sd-turbo', folderName: '', status: '', busy: false, apiKey: (localStorage.getItem('NuVerter-pollinations-key') || '') },
   audioTools: { tab: 'audioclean' },
@@ -636,7 +655,10 @@ function loadLocalState() {
     applyAppearance();
     applyAudioReactiveTheme();
     state.aiImage.folderName = localStorage.getItem('NuVerter-ai-folder') || '';
-    state.workflows = [];
+    try {
+      const savedWorkflows = JSON.parse(localStorage.getItem('NuVerter-workflows') || '[]');
+      if (Array.isArray(savedWorkflows)) state.workflows = savedWorkflows.filter((w) => w && typeof w.name === 'string');
+    } catch {}
     try {
       const savedChat = JSON.parse(localStorage.getItem('NuVerter-ai-chat') || '{}');
       if (savedChat && typeof savedChat === 'object') {
@@ -648,6 +670,7 @@ function loadLocalState() {
     const conv = JSON.parse(localStorage.getItem('NuVerter-converter') || '{}');
   if (conv) { conv.subtitleFile = null; conv.subtitleCues = []; }
     state.converter = { ...DEFAULT_CONVERTER, ...conv };
+    state.converter.smartMap = { ...SMART_DEFAULTS, ...(conv.smartMap && typeof conv.smartMap === 'object' ? conv.smartMap : {}) };
     if (state.converter.format !== 'auto' && !FORMAT_GROUPS.some((g) => g.keys.includes(state.converter.format))) state.converter.format = 'auto';
     if (!['basics', 'advanced'].includes(state.converter.tab)) state.converter.tab = 'basics';
     if (!QUALITY[state.converter.quality]) state.converter.quality = 'balanced';
@@ -3568,8 +3591,30 @@ function converterPanes() {
           <div class="format-grid">${FORMAT_GROUPS[3].keys.map((key) => formatChip(key)).join('')}</div>
         </div>
         <p class="field-help">${conv.format === 'auto'
-          ? 'AUTO sends video → MP4, audio → MP3, images → WEBP and text/code → TXT so mixed batches just work.'
+          ? 'AUTO routes each queued file by its own media type: ' + smartMapSummary(conv) + '. Change any target below.'
           : 'Only files that match this media type will be processed.'}</p>
+        ${conv.format === 'auto' ? (() => {
+          const map = smartMapFor(conv);
+          const rows = [
+            ['video', 'Video files', ['mp4', 'webm', 'mov', 'mkv', 'gif']],
+            ['audio', 'Audio files', ['mp3', 'wav', 'm4a', 'flac', 'ogg']],
+            ['image', 'Images', ['png', 'jpg', 'webp', 'avif']],
+            ['text', 'Text &amp; code', FORMAT_GROUPS[3].keys]
+          ];
+          return `<div class="tp-section smart-map">
+            <div class="tp-section-head">
+              <div><strong>Smart output map</strong><p class="field-help" style="margin:2px 0 0">Pick the target for each media type. Mixed batches keep their own mapping, so one queue can output MP4, MP3, PNG and MD at once.</p></div>
+            </div>
+            <div class="smart-map-grid">
+              ${rows.map(([kind, label, keys]) => `<label class="smart-map-row"><span>${label}</span><select class="select" data-field="converter.smartMap.${kind}" aria-label="AUTO target for ${kind} files">${keys.map((key) => `<option value="${key}"${map[kind] === key ? ' selected' : ''}>${FORMATS[key].label} \u00b7 ${FORMATS[key].codec}</option>`).join('')}</select></label>`).join('')}
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px;flex-wrap:wrap">
+              <span class="field-help" style="margin:0">${smartMapSummary(conv)}</span>
+              <button class="btn btn-ghost btn-sm" data-action="smart-reset">${icon('rotate-ccw')}Reset map</button>
+            </div>
+            <p class="field-help" style="margin-top:6px">Tip: pick <span class="mono">GIF</span> for video, <span class="mono">WAV</span> for audio or <span class="mono">MD</span> for text to make the whole batch match your downstream tool.</p>
+          </div>`;
+        })() : ''}
       </div>
 
       <div class="field">
@@ -9006,7 +9051,7 @@ function imageEditorView() {
           </div>
         </div>
       </section>
-      <section class="area-queue">
+      <section class="area-settings">
         <div class="stage-card">
           <div class="stage-head"><div class="stage-head-copy"><strong>Layers</strong><span>Non-destructive overlays</span></div></div>
           <div class="stage-body">
@@ -10473,7 +10518,7 @@ function reframeView() {
           </div>
         </div>
       </section>
-      <section class="area-queue">
+      <section class="area-settings">
         <div class="stage-card">
           <div class="stage-head"><div class="stage-head-copy"><strong>Export</strong><span>Render reframed video</span></div></div>
           <div class="stage-body">
@@ -10718,376 +10763,1087 @@ async function reframeExport() {
   }
 }
 
-const WF_NODE_CATEGORIES = { input: ['branch'], process: ['trim','extractAudio','ocr','compress','convert','gif','merge','branch'], output: ['output'] };
-const WF_NODE_LABELS = { input: 'Input', trim: 'Trim', extractAudio: 'Extract audio', ocr: 'OCR text', compress: 'Compress', convert: 'Convert', gif: 'GIF', merge: 'Merge', branch: 'Branch', resize: 'Resize', mute: 'Mute audio', watermark: 'Watermark', rotate: 'Rotate', speed: 'Speed', flip: 'Flip', output: 'Output' };
-const WF_NODE_ICON = { input: 'log-in', trim: 'scissors', extractAudio: 'music', ocr: 'type', compress: 'minimize-2', convert: 'refresh-cw', gif: 'images', merge: 'link', branch: 'repeat', resize: 'maximize', mute: 'volume-x', watermark: 'star', rotate: 'rotate-3d', speed: 'zap', flip: 'repeat', output: 'download' };
-const WF_NODE_COLOR = { input: '#10b981', output: '#3b82f6' }; // processing default accent
-const WF_NODE_IO = { input: { in: null, out: 'file' }, trim: { in: 'file', out: 'file' }, extractAudio: { in: 'file', out: 'file' }, ocr: { in: 'file', out: 'text' }, compress: { in: 'file', out: 'file' }, convert: { in: 'file', out: 'file' }, gif: { in: 'file', out: 'file' }, merge: { in: 'file', out: 'file' }, branch: { in: 'file', out: 'file' }, resize: { in: 'file', out: 'file' }, mute: { in: 'file', out: 'file' }, watermark: { in: 'file', out: 'file' }, rotate: { in: 'file', out: 'file' }, speed: { in: 'file', out: 'file' }, flip: { in: 'file', out: 'file' }, output: { in: 'file', out: null } };
+/* ==========================================================================
+   Workflow builder — node registry, canvas, runner
+   ========================================================================== */
+const WF_CATS = {
+  input: { label: 'Input', color: '#10b981', icon: 'log-in' },
+  process: { label: 'Process', color: '#3b82f6', icon: 'sliders-horizontal' },
+  output: { label: 'Output', color: '#f59e0b', icon: 'download' }
+};
+const WF_GROUPS = ['Video', 'Audio', 'Image', 'Text', 'Logic'];
+
+function wfF(key, label, type, def, extra) {
+  return { key, label, type, def, ...(extra || {}) };
+}
+
+function wfVArgs(cfg) {
+  return ['-c:v', 'libx264', '-preset', cfg.preset || 'fast', '-crf', String(clamp(Number(cfg.crf ?? 23), 10, 40)), '-pix_fmt', 'yuv420p'];
+}
+function wfAArgs(cfg, codec) {
+  const br = clamp(Number(cfg.audioBitrate || 160), 32, 512);
+  if (codec === 'opus') return ['-c:a', 'libopus', '-b:a', br + 'k'];
+  if (codec === 'mp3') return ['-c:a', 'libmp3lame', '-b:a', br + 'k'];
+  if (codec === 'vorbis') return ['-c:a', 'libvorbis', '-b:a', br + 'k'];
+  if (codec === 'pcm') return ['-c:a', 'pcm_s16le'];
+  if (codec === 'flac') return ['-c:a', 'flac'];
+  return ['-c:a', 'aac', '-b:a', br + 'k'];
+}
+function wfAcodec(ext) {
+  return ext === 'mp3' ? 'mp3' : ext === 'wav' ? 'pcm' : ext === 'flac' ? 'flac' : ext === 'ogg' ? 'vorbis' : ext === 'webm' ? 'opus' : 'aac';
+}
+function wfSpeedChain(factor) {
+  return typeof veAtempoChain === 'function' ? veAtempoChain(factor) : ['atempo=' + clamp(factor, 0.5, 2).toFixed(3)];
+}
+
+async function wfFfmpeg(input, spec) {
+  const cfg = spec.cfg || {};
+  const ext = typeof spec.ext === 'function' ? spec.ext(cfg, input) : (spec.ext || extOf(input.name) || 'mp4');
+  const mime = spec.mime || FORMATS[ext]?.mime || input.file.type || 'application/octet-stream';
+  const baseName = (input.name || 'file').replace(/\.[^.]+$/, '');
+  const outName = (spec.name && spec.name(cfg, input)) || (baseName + (spec.suffix || '') + '.' + ext);
+  const pre = typeof spec.pre === 'function' ? spec.pre(cfg, input) : (spec.pre || []);
+  const args = ['-hide_banner', '-y', ...pre, '-i', '{in}', ...(spec.args || []), '{out}'];
+  const result = await Engine.run({
+    blob: input.file,
+    inputName: extOf(input.name) || 'mp4',
+    outputName: ext,
+    args,
+    mime,
+    extraFiles: spec.extraFiles || [],
+    onProgress: spec.onProgress
+  });
+  return { file: new File([result.blob], outName, { type: result.mime || mime }), name: outName, kind: kindFromFile({ name: outName, type: result.mime || mime }), text: input.text || '' };
+}
+
+async function wfTextOf(input) {
+  if (input.text) return String(input.text);
+  const kind = kindFromFile(input.file || {});
+  if (kind === 'text' || String(input.file?.type || '').startsWith('text/')) {
+    try { return await input.file.text(); } catch { return ''; }
+  }
+  return '';
+}
+
+const WF_NODES = {
+  /* ---- input ---- */
+  input: {
+    label: 'Source file', cat: 'input', group: 'Files', icon: 'log-in',
+    desc: 'Starts the pipeline from a loaded source file.',
+    ins: [], outs: ['file'],
+    fields: () => [wfF('source', 'Source file', 'select', '0', { optionsFn: () => [{ value: '0', label: 'Auto (first file)' }, ...wfSources().map((s, i) => ({ value: String(i), label: s.name }))] })],
+    run: async (input, cfg) => {
+      const list = wfSources();
+      const idx = Number(cfg.source) || 0;
+      const src = list[idx] || list[0];
+      if (!src) throw new Error('No source file loaded.');
+      return { file: src.file, name: src.name, kind: kindFromFile(src.file), text: '' };
+    }
+  },
+
+  /* ---- video ---- */
+  trim: {
+    label: 'Trim', cat: 'process', group: 'Video', icon: 'scissors',
+    desc: 'Keep a time range, then re-encode cleanly.',
+    ins: ['file'], outs: ['file'],
+    fields: [
+      wfF('start', 'Start (s)', 'number', 0, { min: 0, step: 0.1 }),
+      wfF('end', 'End (s)', 'number', 10, { min: 0, step: 0.1, help: '0 = to the end' }),
+      wfF('crf', 'CRF', 'number', 20, { min: 10, max: 40, step: 1 })
+    ],
+    run: (input, cfg) => wfFfmpeg(input, {
+      cfg,
+      suffix: '-trim',
+      pre: () => {
+        const start = Math.max(0, Number(cfg.start) || 0);
+        const end = Number(cfg.end) || 0;
+        return end > start ? ['-ss', String(start), '-to', String(end)] : ['-ss', String(start)];
+      },
+      args: [...wfVArgs(cfg), ...wfAArgs(cfg)]
+    })
+  },
+  crop: {
+    label: 'Crop', cat: 'process', group: 'Video', icon: 'crop',
+    desc: 'Cut a rectangle out of the frame.',
+    ins: ['file'], outs: ['file'],
+    fields: [
+      wfF('w', 'Width', 'number', 1280, { min: 2, step: 2 }),
+      wfF('h', 'Height', 'number', 720, { min: 2, step: 2 }),
+      wfF('x', 'X offset', 'number', 0, { min: 0, step: 2 }),
+      wfF('y', 'Y offset', 'number', 0, { min: 0, step: 2 }),
+      wfF('crf', 'CRF', 'number', 20, { min: 10, max: 40, step: 1 })
+    ],
+    run: (input, cfg) => wfFfmpeg(input, {
+      cfg, suffix: '-crop',
+      args: ['-vf', `crop=${Math.max(2, cfg.w)}:${Math.max(2, cfg.h)}:${Math.max(0, cfg.x)}:${Math.max(0, cfg.y)}`, ...wfVArgs(cfg), ...wfAArgs(cfg)]
+    })
+  },
+  resize: {
+    label: 'Resize', cat: 'process', group: 'Video', icon: 'maximize',
+    desc: 'Scale the picture to a new size.',
+    ins: ['file'], outs: ['file'],
+    fields: [
+      wfF('w', 'Width', 'number', 1280, { min: 2, step: 2 }),
+      wfF('h', 'Height', 'number', 720, { min: 2, step: 2 }),
+      wfF('mode', 'Fit', 'select', 'fit', { options: [['fit', 'Keep aspect (fit)'], ['stretch', 'Stretch exactly'], ['pad', 'Pad to exact']] }),
+      wfF('crf', 'CRF', 'number', 20, { min: 10, max: 40, step: 1 })
+    ],
+    run: (input, cfg) => {
+      const w = Math.max(2, Math.round(Number(cfg.w) || 1280));
+      const h = Math.max(2, Math.round(Number(cfg.h) || 720));
+      const vf = cfg.mode === 'stretch'
+        ? `scale=${w}:${h}`
+        : cfg.mode === 'pad'
+          ? `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=black`
+          : `scale=${w}:${h}:force_original_aspect_ratio=decrease`;
+      return wfFfmpeg(input, { cfg, suffix: '-resize', args: ['-vf', vf, ...wfVArgs(cfg), ...wfAArgs(cfg)] });
+    }
+  },
+  rotate: {
+    label: 'Rotate', cat: 'process', group: 'Video', icon: 'rotate-3d',
+    desc: 'Rotate the frame by 90°, 180° or 270°.',
+    ins: ['file'], outs: ['file'],
+    fields: [wfF('deg', 'Degrees', 'select', '90', { options: [['90', '90°'], ['180', '180°'], ['270', '270°']] }), wfF('crf', 'CRF', 'number', 20, { min: 10, max: 40, step: 1 })],
+    run: (input, cfg) => {
+      const vf = String(cfg.deg) === '90' ? 'transpose=1' : String(cfg.deg) === '270' ? 'transpose=2' : 'transpose=2,transpose=2';
+      return wfFfmpeg(input, { cfg, suffix: '-rotated', args: ['-vf', vf, ...wfVArgs(cfg), ...wfAArgs(cfg)] });
+    }
+  },
+  flip: {
+    label: 'Flip', cat: 'process', group: 'Video', icon: 'repeat',
+    desc: 'Mirror horizontally or vertically.',
+    ins: ['file'], outs: ['file'],
+    fields: [wfF('axis', 'Axis', 'select', 'h', { options: [['h', 'Horizontal'], ['v', 'Vertical']] }), wfF('crf', 'CRF', 'number', 20, { min: 10, max: 40, step: 1 })],
+    run: (input, cfg) => wfFfmpeg(input, { cfg, suffix: '-flipped', args: ['-vf', cfg.axis === 'v' ? 'vflip' : 'hflip', ...wfVArgs(cfg), ...wfAArgs(cfg)] })
+  },
+  speed: {
+    label: 'Speed', cat: 'process', group: 'Video', icon: 'zap',
+    desc: 'Change playback speed with pitch-correct audio.',
+    ins: ['file'], outs: ['file'],
+    fields: [wfF('factor', 'Speed factor', 'number', 1.5, { min: 0.25, max: 4, step: 0.05 }), wfF('crf', 'CRF', 'number', 20, { min: 10, max: 40, step: 1 })],
+    run: (input, cfg) => {
+      const factor = clamp(Number(cfg.factor) || 1, 0.25, 4);
+      return wfFfmpeg(input, {
+        cfg, suffix: '-speed',
+        args: ['-vf', `setpts=${(1 / factor).toFixed(6)}*PTS`, '-af', wfSpeedChain(factor).join(','), ...wfVArgs(cfg), ...wfAArgs(cfg)]
+      });
+    }
+  },
+  compress: {
+    label: 'Compress', cat: 'process', group: 'Video', icon: 'minimize-2',
+    desc: 'Shrink the file with H.264 and a CRF target.',
+    ins: ['file'], outs: ['file'],
+    fields: [
+      wfF('crf', 'CRF (higher = smaller)', 'number', 28, { min: 10, max: 40, step: 1 }),
+      wfF('preset', 'Encoder preset', 'select', 'fast', { options: ['ultrafast', 'veryfast', 'fast', 'medium', 'slow'].map((p) => [p, p]) }),
+      wfF('audioBitrate', 'Audio kbps', 'number', 128, { min: 32, max: 320, step: 16 })
+    ],
+    run: (input, cfg) => wfFfmpeg(input, { cfg, suffix: '-compressed', args: [...wfVArgs(cfg), ...wfAArgs(cfg)] })
+  },
+  convert: {
+    label: 'Convert', cat: 'process', group: 'Video', icon: 'refresh-cw',
+    desc: 'Change the container / codec family.',
+    ins: ['file'], outs: ['file'],
+    fields: [
+      wfF('format', 'Format', 'select', 'mp4', { options: [['mp4', 'MP4'], ['webm', 'WEBM'], ['mov', 'MOV'], ['mkv', 'MKV']] }),
+      wfF('crf', 'CRF', 'number', 23, { min: 10, max: 40, step: 1 }),
+      wfF('audioBitrate', 'Audio kbps', 'number', 160, { min: 32, max: 320, step: 16 })
+    ],
+    run: (input, cfg) => wfFfmpeg(input, {
+      cfg,
+      ext: cfg.format || 'mp4',
+      suffix: '-converted',
+      args: cfg.format === 'webm'
+        ? ['-c:v', 'libvpx', '-b:v', '0', '-crf', String(clamp(Number(cfg.crf) || 23, 10, 40)), ...wfAArgs(cfg, 'opus')]
+        : [...wfVArgs(cfg), ...wfAArgs(cfg)]
+    })
+  },
+  fade: {
+    label: 'Fade', cat: 'process', group: 'Video', icon: 'sun',
+    desc: 'Fade the picture in and out.',
+    ins: ['file'], outs: ['file'],
+    fields: [
+      wfF('in', 'Fade in (s)', 'number', 1, { min: 0, max: 30, step: 0.1 }),
+      wfF('outStart', 'Out starts at (s)', 'number', 0, { min: 0, step: 0.1, help: '0 = no fade out' }),
+      wfF('out', 'Fade out (s)', 'number', 1, { min: 0, max: 30, step: 0.1 }),
+      wfF('crf', 'CRF', 'number', 20, { min: 10, max: 40, step: 1 })
+    ],
+    run: (input, cfg) => {
+      const filters = [];
+      if (Number(cfg.in) > 0) filters.push(`fade=t=in:st=0:d=${Number(cfg.in)}`);
+      if (Number(cfg.outStart) > 0 && Number(cfg.out) > 0) filters.push(`fade=t=out:st=${Number(cfg.outStart)}:d=${Number(cfg.out)}`);
+      return wfFfmpeg(input, { cfg, suffix: '-fade', args: [...(filters.length ? ['-vf', filters.join(',')] : []), ...wfVArgs(cfg), ...wfAArgs(cfg)] });
+    }
+  },
+  watermark: {
+    label: 'Watermark', cat: 'process', group: 'Video', icon: 'star',
+    desc: 'Draw text over the picture.',
+    ins: ['file'], outs: ['file'],
+    fields: [
+      wfF('text', 'Text', 'text', 'NuVerter'),
+      wfF('size', 'Font size', 'number', 28, { min: 8, max: 200, step: 1 }),
+      wfF('color', 'Color', 'color', '#ffffff'),
+      wfF('position', 'Position', 'select', 'bottom-right', { options: [['top-left', 'Top left'], ['top-right', 'Top right'], ['bottom-left', 'Bottom left'], ['bottom-right', 'Bottom right'], ['center', 'Center']] }),
+      wfF('opacity', 'Opacity %', 'number', 80, { min: 0, max: 100, step: 5 }),
+      wfF('crf', 'CRF', 'number', 20, { min: 10, max: 40, step: 1 })
+    ],
+    run: (input, cfg) => {
+      const txt = String(cfg.text || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/:/g, '\\:');
+      const pos = { 'top-left': 'x=24:y=24', 'top-right': 'x=w-text_w-24:y=24', 'bottom-left': 'x=24:y=h-text_h-24', 'bottom-right': 'x=w-text_w-24:y=h-text_h-24', center: 'x=(w-text_w)/2:y=(h-text_h)/2' }[cfg.position] || 'x=w-text_w-24:y=h-text_h-24';
+      const alpha = (clamp(Number(cfg.opacity) || 80, 0, 100) / 100).toFixed(2);
+      const vf = `drawtext=text='${txt}':fontsize=${Math.max(8, cfg.size || 28)}:fontcolor=${cfg.color || '#ffffff'}:alpha=${alpha}:${pos}`;
+      return wfFfmpeg(input, { cfg, suffix: '-wm', args: ['-vf', vf, ...wfVArgs(cfg), ...wfAArgs(cfg)] });
+    }
+  },
+  grayscale: {
+    label: 'Grayscale', cat: 'process', group: 'Video', icon: 'eye-off',
+    desc: 'Remove all color.',
+    ins: ['file'], outs: ['file'],
+    fields: [wfF('crf', 'CRF', 'number', 20, { min: 10, max: 40, step: 1 })],
+    run: (input, cfg) => wfFfmpeg(input, { cfg, suffix: '-gray', args: ['-vf', 'hue=s=0', ...wfVArgs(cfg), ...wfAArgs(cfg)] })
+  },
+  mute: {
+    label: 'Mute', cat: 'process', group: 'Video', icon: 'volume-x',
+    desc: 'Drop the audio track without touching the picture.',
+    ins: ['file'], outs: ['file'],
+    fields: [],
+    run: (input, cfg) => wfFfmpeg(input, { cfg, suffix: '-muted', args: ['-c:v', 'copy', '-an'] })
+  },
+  gif: {
+    label: 'GIF', cat: 'process', group: 'Video', icon: 'images',
+    desc: 'Turn the clip into an animated GIF.',
+    ins: ['file'], outs: ['file'],
+    fields: [wfF('fps', 'FPS', 'number', 12, { min: 1, max: 50 }), wfF('width', 'Width px', 'number', 480, { min: 32, max: 1920, step: 2 })],
+    run: (input, cfg) => wfFfmpeg(input, {
+      cfg, ext: 'gif', mime: 'image/gif', suffix: '',
+      args: ['-vf', `fps=${clamp(Number(cfg.fps) || 12, 1, 50)},scale=${clamp(Number(cfg.width) || 480, 32, 1920)}:-1:flags=lanczos`, '-loop', '0']
+    })
+  },
+
+  /* ---- audio ---- */
+  extractAudio: {
+    label: 'Extract audio', cat: 'process', group: 'Audio', icon: 'music',
+    desc: 'Pull the soundtrack out as a standalone file.',
+    ins: ['file'], outs: ['file'],
+    fields: [
+      wfF('format', 'Format', 'select', 'mp3', { options: [['mp3', 'MP3'], ['wav', 'WAV'], ['m4a', 'M4A'], ['flac', 'FLAC'], ['ogg', 'OGG']] }),
+      wfF('audioBitrate', 'Bitrate kbps', 'number', 192, { min: 32, max: 320, step: 16 })
+    ],
+    run: (input, cfg) => {
+      const ext = cfg.format || 'mp3';
+      return wfFfmpeg(input, { cfg, ext, name: (c, i) => (i.name || 'audio').replace(/\.[^.]+$/, '') + '-audio.' + ext, args: ['-vn', ...wfAArgs(cfg, wfAcodec(ext))] });
+    }
+  },
+  volume: {
+    label: 'Volume', cat: 'process', group: 'Audio', icon: 'volume-2',
+    desc: 'Boost or lower the audio level.',
+    ins: ['file'], outs: ['file'],
+    fields: [wfF('percent', 'Level %', 'number', 150, { min: 0, max: 400, step: 5 })],
+    run: (input, cfg) => wfFfmpeg(input, {
+      cfg, suffix: '-volume',
+      args: ['-af', `volume=${(clamp(Number(cfg.percent) || 100, 0, 400) / 100).toFixed(3)}`, '-c:v', 'copy', ...wfAArgs(cfg)]
+    })
+  },
+  normalize: {
+    label: 'Normalize', cat: 'process', group: 'Audio', icon: 'activity',
+    desc: 'Even out loudness to a broadcast target.',
+    ins: ['file'], outs: ['file'],
+    fields: [wfF('lufs', 'Target LUFS', 'number', -16, { min: -30, max: -5, step: 1 })],
+    run: (input, cfg) => wfFfmpeg(input, {
+      cfg, suffix: '-normalized',
+      args: ['-af', `loudnorm=I=${clamp(Number(cfg.lufs) || -16, -30, -5)}:TP=-1.5:LRA=11`, '-c:v', 'copy', ...wfAArgs(cfg)]
+    })
+  },
+  audioConvert: {
+    label: 'Audio convert', cat: 'process', group: 'Audio', icon: 'refresh-cw',
+    desc: 'Re-encode audio into another format.',
+    ins: ['file'], outs: ['file'],
+    fields: [
+      wfF('format', 'Format', 'select', 'mp3', { options: [['mp3', 'MP3'], ['wav', 'WAV'], ['m4a', 'M4A'], ['flac', 'FLAC'], ['ogg', 'OGG']] }),
+      wfF('audioBitrate', 'Bitrate kbps', 'number', 192, { min: 32, max: 320, step: 16 })
+    ],
+    run: (input, cfg) => {
+      const ext = cfg.format || 'mp3';
+      return wfFfmpeg(input, { cfg, ext, suffix: '', args: ['-vn', ...wfAArgs(cfg, wfAcodec(ext))] });
+    }
+  },
+  audioSpeed: {
+    label: 'Audio speed', cat: 'process', group: 'Audio', icon: 'zap',
+    desc: 'Speed up or slow down audio without pitch shifts.',
+    ins: ['file'], outs: ['file'],
+    fields: [wfF('factor', 'Factor', 'number', 1.25, { min: 0.5, max: 2, step: 0.05 })],
+    run: (input, cfg) => {
+      const factor = clamp(Number(cfg.factor) || 1, 0.5, 2);
+      return wfFfmpeg(input, { cfg, suffix: '-speed', args: ['-af', wfSpeedChain(factor).join(','), '-c:v', 'copy', ...wfAArgs(cfg)] });
+    }
+  },
+  audioTrim: {
+    label: 'Audio trim', cat: 'process', group: 'Audio', icon: 'scissors',
+    desc: 'Keep a slice of the audio.',
+    ins: ['file'], outs: ['file'],
+    fields: [wfF('start', 'Start (s)', 'number', 0, { min: 0, step: 0.1 }), wfF('end', 'End (s)', 'number', 10, { min: 0, step: 0.1 }), wfF('audioBitrate', 'Bitrate kbps', 'number', 192, { min: 32, max: 320, step: 16 })],
+    run: (input, cfg) => wfFfmpeg(input, {
+      cfg, suffix: '-trim',
+      pre: () => {
+        const start = Math.max(0, Number(cfg.start) || 0);
+        const end = Number(cfg.end) || 0;
+        return end > start ? ['-ss', String(start), '-to', String(end)] : ['-ss', String(start)];
+      },
+      args: ['-vn', ...wfAArgs(cfg)]
+    })
+  },
+
+  /* ---- image ---- */
+  imgResize: {
+    label: 'Image resize', cat: 'process', group: 'Image', icon: 'maximize',
+    desc: 'Resize still images with canvas-quality scaling.',
+    ins: ['file'], outs: ['file'],
+    fields: [
+      wfF('w', 'Width px', 'number', 1280, { min: 2, max: 20000 }),
+      wfF('h', 'Height px', 'number', 0, { min: 0, max: 20000, help: '0 = keep aspect' }),
+      wfF('format', 'Output format', 'select', 'png', { options: [['png', 'PNG'], ['jpg', 'JPG'], ['webp', 'WEBP'], ['avif', 'AVIF']] })
+    ],
+    run: async (input, cfg) => {
+      if (kindFromFile(input.file) !== 'image') throw new Error('Image resize needs an image input.');
+      const out = await convertImageBlob(input.file, cfg.format || 'png', { imageQuality: .92 }, { targetWidth: Number(cfg.w) || 0, targetHeight: Number(cfg.h) || 0 });
+      const ext = cfg.format || 'png';
+      const name = (input.name || 'image').replace(/\.[^.]+$/, '') + '-resized.' + ext;
+      return { file: new File([out.blob], name, { type: out.mime }), name, kind: 'image', text: '' };
+    }
+  },
+  imgConvert: {
+    label: 'Image convert', cat: 'process', group: 'Image', icon: 'refresh-cw',
+    desc: 'Convert between PNG, JPG, WEBP and AVIF.',
+    ins: ['file'], outs: ['file'],
+    fields: [
+      wfF('format', 'Format', 'select', 'webp', { options: [['png', 'PNG'], ['jpg', 'JPG'], ['webp', 'WEBP'], ['avif', 'AVIF']] }),
+      wfF('quality', 'Quality %', 'number', 86, { min: 10, max: 100 })
+    ],
+    run: async (input, cfg) => {
+      if (kindFromFile(input.file) !== 'image') throw new Error('Image convert needs an image input.');
+      const out = await convertImageBlob(input.file, cfg.format || 'webp', { imageQuality: clamp((Number(cfg.quality) || 86) / 100, .1, 1) }, {});
+      const ext = cfg.format || 'webp';
+      const name = (input.name || 'image').replace(/\.[^.]+$/, '') + '.' + ext;
+      return { file: new File([out.blob], name, { type: out.mime }), name, kind: 'image', text: '' };
+    }
+  },
+  imgCompress: {
+    label: 'Image compress', cat: 'process', group: 'Image', icon: 'minimize-2',
+    desc: 'Lower quality and cap the longest side.',
+    ins: ['file'], outs: ['file'],
+    fields: [
+      wfF('quality', 'Quality %', 'number', 65, { min: 10, max: 100 }),
+      wfF('maxDim', 'Max dimension px', 'number', 1600, { min: 32, max: 20000, help: '0 = original' })
+    ],
+    run: async (input, cfg) => {
+      if (kindFromFile(input.file) !== 'image') throw new Error('Image compress needs an image input.');
+      const ext = extOf(input.name) === 'png' ? 'webp' : (extOf(input.name) || 'webp');
+      const target = FORMATS[ext]?.kind === 'image' ? ext : 'webp';
+      const out = await convertImageBlob(input.file, target, { imageQuality: clamp((Number(cfg.quality) || 65) / 100, .1, 1) }, { maxDim: Number(cfg.maxDim) > 0 ? Number(cfg.maxDim) : 'original' });
+      const name = (input.name || 'image').replace(/\.[^.]+$/, '') + '-small.' + target;
+      return { file: new File([out.blob], name, { type: out.mime }), name, kind: 'image', text: '' };
+    }
+  },
+
+  /* ---- text ---- */
+  ocr: {
+    label: 'OCR text', cat: 'process', group: 'Text', icon: 'type',
+    desc: 'Read text from an image with Tesseract.',
+    ins: ['file'], outs: ['text'],
+    fields: [wfF('lang', 'Language', 'select', 'eng', { options: [['eng', 'English'], ['spa', 'Spanish'], ['fra', 'French'], ['deu', 'German']] })],
+    run: async (input, cfg, node) => {
+      const data = await ocrImage(input.file, cfg.lang || 'eng', (m) => { node.progress = m?.progress || 0; });
+      return { file: input.file, name: input.name, kind: 'text', text: data?.text || '' };
+    }
+  },
+  textReplace: {
+    label: 'Find & replace', cat: 'process', group: 'Text', icon: 'terminal',
+    desc: 'Swap text with literal or regex rules.',
+    ins: ['file', 'text'], outs: ['text'],
+    fields: [
+      wfF('find', 'Find', 'text', ''),
+      wfF('replace', 'Replace with', 'text', ''),
+      wfF('regex', 'Use regex', 'checkbox', false),
+      wfF('flags', 'Regex flags', 'text', 'gi', { help: 'Used only with regex' })
+    ],
+    run: async (input, cfg) => {
+      const text = await wfTextOf(input);
+      const find = String(cfg.find || '');
+      if (!find) return { ...input, kind: 'text', text };
+      let out = text;
+      try {
+        if (cfg.regex) out = text.replace(new RegExp(find, String(cfg.flags || 'g')), String(cfg.replace ?? ''));
+        else out = text.split(find).join(String(cfg.replace ?? ''));
+      } catch (e) { throw new Error('Bad regex: ' + (e?.message || e)); }
+      return { ...input, kind: 'text', text: out };
+    }
+  },
+  textCase: {
+    label: 'Change case', cat: 'process', group: 'Text', icon: 'type',
+    desc: 'Upper, lower, title or sentence case.',
+    ins: ['file', 'text'], outs: ['text'],
+    fields: [wfF('mode', 'Mode', 'select', 'upper', { options: [['upper', 'UPPERCASE'], ['lower', 'lowercase'], ['title', 'Title Case'], ['sentence', 'Sentence case']] })],
+    run: async (input, cfg) => {
+      let text = await wfTextOf(input);
+      if (cfg.mode === 'upper') text = text.toUpperCase();
+      else if (cfg.mode === 'lower') text = text.toLowerCase();
+      else if (cfg.mode === 'title') text = text.replace(/\w\S*/g, (w) => w[0].toUpperCase() + w.slice(1).toLowerCase());
+      else text = text.toLowerCase().replace(/(^\s*\w|[.!?]\s+\w)/g, (c) => c.toUpperCase());
+      return { ...input, kind: 'text', text };
+    }
+  },
+  textPrefix: {
+    label: 'Add text', cat: 'process', group: 'Text', icon: 'plus',
+    desc: 'Prepend or append text, optionally on every line.',
+    ins: ['file', 'text'], outs: ['text'],
+    fields: [
+      wfF('text', 'Text to add', 'text', ''),
+      wfF('where', 'Where', 'select', 'start', { options: [['start', 'Start of text'], ['end', 'End of text'], ['lineStart', 'Start of every line'], ['lineEnd', 'End of every line']] })
+    ],
+    run: async (input, cfg) => {
+      const body = await wfTextOf(input);
+      const add = String(cfg.text || '');
+      let text = body;
+      if (cfg.where === 'start') text = add + body;
+      else if (cfg.where === 'end') text = body + add;
+      else if (cfg.where === 'lineStart') text = body.split('\n').map((l) => add + l).join('\n');
+      else text = body.split('\n').map((l) => l + add).join('\n');
+      return { ...input, kind: 'text', text };
+    }
+  },
+  textExtract: {
+    label: 'Extract matches', cat: 'process', group: 'Text', icon: 'list-filter',
+    desc: 'Keep only what a regex matches.',
+    ins: ['file', 'text'], outs: ['text'],
+    fields: [
+      wfF('pattern', 'Regex', 'text', '\\w+'),
+      wfF('group', 'Capture group', 'number', 0, { min: 0, max: 9 }),
+      wfF('join', 'Join with', 'text', '\n')
+    ],
+    run: async (input, cfg) => {
+      const text = await wfTextOf(input);
+      let re;
+      try { re = new RegExp(String(cfg.pattern || ''), 'g'); } catch (e) { throw new Error('Bad regex: ' + (e?.message || e)); }
+      const gi = clamp(Number(cfg.group) || 0, 0, 9);
+      const hits = [];
+      let m;
+      while ((m = re.exec(text)) !== null) {
+        hits.push(m[gi] ?? m[0]);
+        if (m.index === re.lastIndex) re.lastIndex++;
+      }
+      return { ...input, kind: 'text', text: hits.join(String(cfg.join ?? '\n')) };
+    }
+  },
+
+  /* ---- logic ---- */
+  branch: {
+    label: 'Branch', cat: 'process', group: 'Logic', icon: 'repeat',
+    desc: 'Fan the same input out to several paths.',
+    ins: ['file'], outs: ['file'],
+    fields: [],
+    run: (input) => ({ ...input })
+  },
+  filter: {
+    label: 'Filter by type', cat: 'process', group: 'Logic', icon: 'list-filter',
+    desc: 'Only continue when the file matches a media type.',
+    ins: ['file'], outs: ['file'],
+    fields: [wfF('kind', 'Continue when', 'select', 'video', { options: [['video', 'Video'], ['audio', 'Audio'], ['image', 'Image'], ['text', 'Text / code']] }), wfF('invert', 'Skip matching files instead', 'checkbox', false)],
+    run: (input, cfg) => {
+      const kind = kindFromFile(input.file);
+      const match = kind === cfg.kind;
+      if (cfg.invert ? match : !match) return { ...input, skipped: true, reason: `Needs ${cfg.kind} input` };
+      return { ...input };
+    }
+  },
+  merge: {
+    label: 'Merge files', cat: 'process', group: 'Logic', icon: 'link',
+    desc: 'Concatenate all incoming files into one.',
+    ins: ['file'], outs: ['file'],
+    fields: [wfF('reencode', 'Re-encode while merging', 'checkbox', true)],
+    run: async (input, cfg) => {
+      const files = Array.from(new Set((input.files && input.files.length ? input.files : [input.file]).filter(Boolean)));
+      if (files.length < 2) return { ...input };
+      const ext = extOf(input.name) || 'mp4';
+      const names = files.map((f, i) => 'part' + i + '.' + ((f.name || '').split('.').pop() || ext));
+      const listBlob = new Blob([names.map((nm) => `file '${nm}'`).join('\n')], { type: 'text/plain' });
+      const extraFiles = files.map((f, i) => ({ name: names[i], blob: f }));
+      extraFiles.push({ name: 'list.txt', blob: listBlob });
+      const result = await Engine.run({
+        blob: files[0],
+        inputName: ext,
+        outputName: ext,
+        args: ['-hide_banner', '-y', '-f', 'concat', '-safe', '0', '-i', 'list.txt', ...(cfg.reencode ? [...wfVArgs({ crf: 20 }), ...wfAArgs({})] : ['-c', 'copy']), '{out}'],
+        mime: input.file?.type || FORMATS[ext]?.mime || 'video/mp4',
+        extraFiles
+      });
+      const outName = (input.name || 'merged').replace(/\.[^.]+$/, '') + '-merged.' + ext;
+      return { file: new File([result.blob], outName, { type: result.mime || 'video/mp4' }), name: outName, kind: kindFromFile({ name: outName }), text: input.text || '' };
+    }
+  },
+  noop: {
+    label: 'Pass through', cat: 'process', group: 'Logic', icon: 'arrow-right',
+    desc: 'A no-op you can use as a checkpoint.',
+    ins: ['file', 'text'], outs: ['file'],
+    fields: [],
+    run: (input) => ({ ...input })
+  },
+
+  /* ---- output ---- */
+  output: {
+    label: 'Download file', cat: 'output', group: 'Results', icon: 'download',
+    desc: 'Finish the pipeline and collect the file.',
+    ins: ['file', 'text'], outs: [],
+    fields: [wfF('rename', 'Rename to', 'text', '', { help: 'Optional, keeps the extension' })],
+    run: async (input, cfg) => {
+      let name = input.name || 'workflow-output';
+      const wanted = String(cfg.rename || '').trim();
+      if (wanted) {
+        const ext = (name.split('.').pop() || 'bin');
+        const base = wanted.replace(/[\\/:*?"<>|]+/g, '-');
+        name = /\.[a-z0-9]{1,6}$/i.test(base) ? base : base + '.' + ext;
+      }
+      const file = name === input.name ? input.file : new File([input.file], name, { type: input.file?.type || 'application/octet-stream' });
+      return { ...input, file, name };
+    }
+  },
+  outputText: {
+    label: 'Save text', cat: 'output', group: 'Results', icon: 'file',
+    desc: 'Write the text result to a downloadable file.',
+    ins: ['file', 'text'], outs: [],
+    fields: [wfF('name', 'File name', 'text', 'workflow-text.txt')],
+    run: async (input, cfg) => {
+      const text = await wfTextOf(input);
+      const name = String(cfg.name || 'workflow-text.txt').replace(/[\\/:*?"<>|]+/g, '-');
+      const blob = new Blob([text], { type: 'text/plain' });
+      return { file: new File([blob], name, { type: 'text/plain' }), name, kind: 'text', text };
+    }
+  }
+};
+
+const WF_TEMPLATES = [
+  {
+    id: 'web', name: 'Compress for web', desc: 'MP4 · H.264 CRF 28', build: () => [
+      ['input', 40, 80, {}], ['compress', 260, 80, { crf: 28, audioBitrate: 128 }], ['output', 480, 80, {}]
+    ]
+  },
+  {
+    id: 'audio', name: 'Audio rip', desc: 'MP3 · 192 kbps', build: () => [
+      ['input', 40, 80, {}], ['extractAudio', 260, 80, { format: 'mp3', audioBitrate: 192 }], ['output', 480, 80, {}]
+    ]
+  },
+  {
+    id: 'gif', name: 'GIF teaser', desc: '10s · 12 fps · 480px', build: () => [
+      ['input', 40, 60, {}], ['trim', 250, 60, { start: 0, end: 10 }], ['gif', 460, 60, { fps: 12, width: 480 }], ['output', 670, 60, {}]
+    ]
+  },
+  {
+    id: 'ocr', name: 'OCR to text', desc: 'Image → TXT', build: () => [
+      ['input', 40, 80, {}], ['ocr', 260, 80, { lang: 'eng' }], ['outputText', 480, 80, { name: 'ocr-result.txt' }]
+    ]
+  }
+];
+
+function wfSources() {
+  const wf = state.workflow;
+  if (Array.isArray(wf.sources) && wf.sources.length) return wf.sources;
+  return wf.source ? [wf.source] : [];
+}
+
+function wfDef(type) {
+  return WF_NODES[type] || WF_NODES.noop;
+}
+
+function wfFields(def) {
+  return typeof def.fields === 'function' ? def.fields() : (def.fields || []);
+}
+
+function wfCfg(node, def) {
+  const out = {};
+  wfFields(def).forEach((f) => { out[f.key] = f.def; });
+  Object.assign(out, node.config || {});
+  wfFields(def).forEach((f) => {
+    if (f.type === 'number') {
+      const n = Number(out[f.key]);
+      out[f.key] = Number.isFinite(n) ? n : Number(f.def) || 0;
+    } else if (f.type === 'checkbox') {
+      out[f.key] = out[f.key] === true || out[f.key] === 'true';
+    }
+  });
+  return out;
+}
+
+function wfTime(ms) {
+  const v = Number(ms) || 0;
+  return v < 1000 ? Math.round(v) + 'ms' : (v / 1000).toFixed(v < 10000 ? 1 : 0) + 's';
+}
+
+function wfLog(level, message) {
+  const wf = state.workflow;
+  wf.log = wf.log || [];
+  wf.log.push({ level, message, at: Date.now() });
+  if (wf.log.length > 400) wf.log.shift();
+  const box = document.getElementById('wf-runlog');
+  if (box) {
+    const row = document.createElement('div');
+    row.className = 'wf-log-row is-' + level;
+    row.innerHTML = `<span class="wf-log-time">${new Date().toLocaleTimeString()}</span><span>${esc(message)}</span>`;
+    box.appendChild(row);
+    box.scrollTop = box.scrollHeight;
+  }
+}
+
+function wfTopoOrder() {
+  const nodes = state.workflow.nodes;
+  const edges = state.workflow.edges;
+  const indeg = new Map(nodes.map((n) => [n.id, 0]));
+  edges.forEach((e) => { if (indeg.has(e.to) && indeg.has(e.from)) indeg.set(e.to, (indeg.get(e.to) || 0) + 1); });
+  const queue = nodes.filter((n) => !indeg.get(n.id)).map((n) => n.id);
+  const order = [];
+  while (queue.length) {
+    const id = queue.shift();
+    order.push(id);
+    edges.filter((e) => e.from === id).forEach((e) => {
+      if (!indeg.has(e.to)) return;
+      const next = (indeg.get(e.to) || 0) - 1;
+      indeg.set(e.to, next);
+      if (next === 0) queue.push(e.to);
+    });
+  }
+  return order.length === nodes.length ? order : null;
+}
+
+function wfPortProblems() {
+  const nodes = state.workflow.nodes;
+  for (const e of state.workflow.edges) {
+    const a = nodes.find((n) => n.id === e.from);
+    const b = nodes.find((n) => n.id === e.to);
+    if (!a || !b) continue;
+    const outs = wfDef(a.type).outs || [];
+    const ins = wfDef(b.type).ins || [];
+    if (outs.length && ins.length && !ins.includes(outs[0])) {
+      return `${wfDef(a.type).label} emits ${outs[0]} but ${wfDef(b.type).label} needs ${ins.join(' / ')}.`;
+    }
+  }
+  return '';
+}
+
+function wfNodeInput(node, predOuts, sources) {
+  if (node.type === 'input') return { file: sources[0]?.file, name: sources[0]?.name || '', kind: 'file', text: '' };
+  if (predOuts.length) {
+    const primary = predOuts[0];
+    return {
+      ...primary,
+      file: primary.file,
+      name: primary.name,
+      text: predOuts.map((o) => o.text).filter(Boolean).join('\n'),
+      files: predOuts.map((o) => o.file).filter(Boolean),
+      names: predOuts.map((o) => o.name).filter(Boolean)
+    };
+  }
+  const src = sources[0];
+  return { file: src?.file, name: src?.name || '', kind: src ? kindFromFile(src.file) : '', text: '', files: src ? [src.file] : [], names: src ? [src.name] : [] };
+}
+
+function wfAddNode(type, x, y) {
+  const wf = state.workflow;
+  const id = 'n' + Math.random().toString(36).slice(2, 8);
+  const count = wf.nodes.length;
+  wf.nodes.push({
+    id, type,
+    x: x ?? (48 + (count % 4) * 210),
+    y: y ?? (60 + Math.floor(count / 4) * 118),
+    status: 'idle', config: {}, ms: 0
+  });
+  wf.selectedNodeId = id;
+  wfCommit();
+  renderView();
+}
+
+function wfApplyTemplate(id) {
+  const tpl = WF_TEMPLATES.find((t) => t.id === id);
+  if (!tpl) return;
+  const built = tpl.build();
+  const nodes = built.map(([type, x, y, config], i) => ({ id: 'n' + Math.random().toString(36).slice(2, 8), type, x, y, status: 'idle', config: { ...config }, ms: 0 }));
+  const edges = nodes.slice(1).map((n, i) => ({ from: nodes[i].id, to: n.id }));
+  state.workflow.nodes = nodes;
+  state.workflow.edges = edges;
+  state.workflow.selectedNodeId = nodes[0]?.id || null;
+  state.workflow.results = [];
+  wfCommit();
+  renderView();
+  toast('Template ready', tpl.name, 'success');
+}
+
+async function wfCollectResult(node, out) {
+  const wf = state.workflow;
+  const blob = out.file instanceof Blob ? out.file : new Blob([out.text || ''], { type: 'text/plain' });
+  const name = out.name || ('workflow-' + node.id);
+  const mime = blob.type || 'application/octet-stream';
+  let url = '';
+  try {
+    const rec = await registerOutput({ tool: 'workflow', sourceName: wfSources()[0]?.name || '', sourceSize: blob.size, blob, name, mime });
+    url = rec.url;
+  } catch {
+    url = URL.createObjectURL(blob);
+  }
+  wf.results.push({ id: node.id, name, url, size: blob.size, kind: kindFromFile({ name, type: mime }), text: out.text || '' });
+}
+
+function wfFieldHtml(f, value) {
+  const label = `<label class="wf-insp-label">${esc(f.label)}</label>`;
+  const help = f.help ? `<p class="field-help" style="margin:2px 0 0">${esc(f.help)}</p>` : '';
+  if (f.type === 'select') {
+    const opts = f.optionsFn ? f.optionsFn() : (f.options || []).map((o) => Array.isArray(o) ? { value: o[0], label: o[1] } : { value: o, label: String(o) });
+    return `<div class="wf-insp-field">${label}<select class="select" data-wfcfg="${esc(f.key)}">${opts.map((o) => `<option value="${esc(String(o.value))}"${String(value) === String(o.value) ? ' selected' : ''}>${esc(String(o.label))}</option>`).join('')}</select>${help}</div>`;
+  }
+  if (f.type === 'checkbox') {
+    return `<label class="wf-check"><input type="checkbox" data-wfcfg="${esc(f.key)}"${value ? ' checked' : ''} /><span>${esc(f.label)}</span></label>${help}`;
+  }
+  if (f.type === 'color') {
+    return `<div class="wf-insp-field">${label}<input type="color" data-wfcfg="${esc(f.key)}" value="${esc(String(value || '#ffffff'))}" />${help}</div>`;
+  }
+  if (f.type === 'number') {
+    return `<div class="wf-insp-field">${label}<input class="input" type="number" data-wfcfg="${esc(f.key)}" value="${esc(String(value ?? ''))}"${f.min !== undefined ? ` min="${f.min}"` : ''}${f.max !== undefined ? ` max="${f.max}"` : ''}${f.step !== undefined ? ` step="${f.step}"` : ''} />${help}</div>`;
+  }
+  return `<div class="wf-insp-field">${label}<input class="input" type="text" data-wfcfg="${esc(f.key)}" value="${esc(String(value ?? ''))}" />${help}</div>`;
+}
 
 function workflowNodeInspector(data) {
   const n = data.nodes.find((x) => x.id === data.selectedNodeId);
-  if (!n) return '<p class="field-help" style="margin-top:6px">Add/select a node to configure it.</p>';
-  n.config = n.config || {};
-  if (n.type === 'input') return '<p class="field-help" style="margin-top:6px">Passes the source file through.</p>';
-  if (n.type === 'trim') return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px"><label>Start (s)<input class="input" data-wfcfg="trim.start" value="' + esc(n.config.start || '') + '" /></label><label>End (s)<input class="input" data-wfcfg="trim.end" value="' + esc(n.config.end || '') + '" /></label></div>';
-  if (n.type === 'compress') return '<div style="margin-top:8px"><label>CRF (18-35)<input class="input" data-wfcfg="compress.crf" value="' + esc(n.config.crf || '28') + '" /></label></div>';
-  if (n.type === 'crop') return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px"><label>X<input class="input" data-wfcfg="crop.x" value="' + esc(n.config.x || '0') + '" /></label><label>Y<input class="input" data-wfcfg="crop.y" value="' + esc(n.config.y || '0') + '" /></label><label>W<input class="input" data-wfcfg="crop.w" value="' + esc(n.config.w || '640') + '" /></label><label>H<input class="input" data-wfcfg="crop.h" value="' + esc(n.config.h || '360') + '" /></label></div>';
-  if (n.type === 'ocr') return '<div style="margin-top:8px"><label>Language<input class="input" data-wfcfg="ocr.lang" value="' + esc(n.config.lang || 'eng') + '" /></label></div>';
-  if (n.type === 'convert') return '<div style="margin-top:8px"><label>Format<select class="select" data-wfcfg="convert.format">' + ['mp4','webm','mp3','wav','png','jpg','webp'].map((f) => '<option value="' + f + '"' + (n.config.format === f ? ' selected' : '') + '>' + f + '</option>').join('') + '</select></label></div>';
-  if (n.type === 'gif') return '<p class="field-help" style="margin-top:6px">Converts input to GIF.</p>';
-  if (n.type === 'resize') return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px"><label>Width<input class="input" data-wfcfg="resize.w" value="' + esc(n.config.w || '1280') + '" /></label><label>Height<input class="input" data-wfcfg="resize.h" value="' + esc(n.config.h || '720') + '" /></label></div>';
-  if (n.type === 'watermark') return '<div style="margin-top:8px"><label>Text<input class="input" data-wfcfg="watermark.text" value="' + esc(n.config.text || 'NuVerter') + '" /></label></div>';
-  if (n.type === 'rotate') return '<div style="margin-top:8px"><label>Degrees<select class="select" data-wfcfg="rotate.deg"><option value="90" ' + (n.config.deg === '90' ? 'selected' : '') + '>90</option><option value="180" ' + (n.config.deg === '180' ? 'selected' : '') + '>180</option><option value="270" ' + (n.config.deg === '270' ? 'selected' : '') + '>270</option></select></label></div>';
-  if (n.type === 'speed') return '<div style="margin-top:8px"><label>Factor<input class="input" data-wfcfg="speed.factor" value="' + esc(n.config.factor || '1.5') + '" /></label></div>';
-  if (n.type === 'flip') return '<div style="margin-top:8px"><label>Axis<select class="select" data-wfcfg="flip.axis"><option value="h" ' + (n.config.axis === 'h' ? 'selected' : '') + '>Horizontal</option><option value="v" ' + (n.config.axis === 'v' ? 'selected' : '') + '>Vertical</option></select></label></div>';
-  if (n.type === 'merge') return '<p class="field-help" style="margin-top:6px">Concatenates all incoming video inputs into one.</p>';
-  if (n.type === 'branch') return '<p class="field-help" style="margin-top:6px">Duplicates input to multiple downstream branches.</p>';
-  return '<p class="field-help" style="margin-top:6px">No options for this node.</p>';
+  if (!n) return `<div class="wf-insp-empty">${icon('move')}<p>Select a node on the canvas to edit its settings.</p></div>`;
+  const def = wfDef(n.type);
+  const cat = WF_CATS[def.cat] || WF_CATS.process;
+  const cfg = wfCfg(n, def);
+  const fields = wfFields(def);
+  return `
+    <div class="wf-insp-head">
+      <span class="wf-node-ic" style="background:${cat.color}22;color:${cat.color}">${icon(def.icon)}</span>
+      <div><strong>${esc(def.label)}</strong><small>${esc(def.cat)} · ${esc(def.group)}</small></div>
+      <span class="wf-status-dot is-${esc(n.status || 'idle')}"></span>
+    </div>
+    <p class="field-help" style="margin:0 0 8px">${esc(def.desc || '')}</p>
+    ${fields.length ? `<div class="wf-insp-grid">${fields.map((f) => wfFieldHtml(f, cfg[f.key])).join('')}</div>` : '<p class="field-help" style="margin:0">No settings for this node.</p>'}
+    <div class="wf-insp-actions">
+      <button class="btn btn-ghost btn-sm" data-action="wf-duplicate-node">${icon('copy')}Duplicate</button>
+      <button class="btn btn-danger btn-sm" data-action="wf-delete-node">${icon('trash-2')}Delete</button>
+    </div>`;
+}
+
+function wfEdgePath(a, b) {
+  const x1 = a.x + 176, y1 = a.y + 34;
+  const x2 = b.x, y2 = b.y + 34;
+  const dx = Math.max(36, Math.abs(x2 - x1) * 0.45);
+  return { x1, y1, x2, y2, d: `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}` };
+}
+
+function wfNodeCard(n, data) {
+  const def = wfDef(n.type);
+  const cat = WF_CATS[def.cat] || WF_CATS.process;
+  const selected = data.selectedNodeId === n.id;
+  const status = n.status || 'idle';
+  return `<div class="wf-node${selected ? ' is-selected' : ''} is-${esc(status)}" data-node="${n.id}" style="left:${n.x}px;top:${n.y}px;--wf-color:${cat.color}">
+    <div class="wf-node-head">
+      <span class="wf-node-ic" style="background:${cat.color}22;color:${cat.color}">${icon(def.icon)}</span>
+      <div class="wf-node-copy"><strong>${esc(def.label)}</strong><small>${esc(def.group)}</small></div>
+      <span class="wf-node-state" title="${esc(status)}${n.error ? ': ' + esc(n.error) : ''}"></span>
+    </div>
+    <div class="wf-node-foot">
+      <span class="wf-node-badge">${esc(def.cat)}</span>
+      <span class="wf-node-ms">${status === 'running' ? 'running…' : n.ms ? wfTime(n.ms) : (n.error ? esc(n.error).slice(0, 22) : 'ready')}</span>
+    </div>
+    ${def.ins.length ? `<span class="wf-port wf-port-in" data-port-in="${n.id}" title="Input · ${esc(def.ins.join(' / '))}"></span>` : ''}
+    ${def.outs.length ? `<span class="wf-port wf-port-out" data-port-out="${n.id}" title="Output · ${esc(def.outs.join(' / '))}"></span>` : ''}
+  </div>`;
 }
 
 function workflowView() {
   const data = state.workflow;
-  const src = data.source;
-  const pan = data.pan || { x: 0, y: 0 };
+  const sources = wfSources();
+  data.sources = sources;
+  data.log = data.log || [];
+  data.results = data.results || [];
   const zoom = data.zoom || 1;
-  // edges as svg lines
+  const pan = data.pan || { x: 0, y: 0 };
   const gridStyle = data.settings?.gridBg !== false
-    ? `background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);background-size:${Math.max(4, 24 * zoom)}px ${Math.max(4, 24 * zoom)}px;background-position:${pan.x}px ${pan.y}px;`
+    ? `background-image:radial-gradient(circle, var(--border) 1px, transparent 1px);background-size:${Math.max(6, 24 * zoom)}px ${Math.max(6, 24 * zoom)}px;background-position:${pan.x}px ${pan.y}px;`
     : '';
-  const lines = data.edges.map((e) => {
+  const edges = data.edges.map((e) => {
     const a = data.nodes.find((n) => n.id === e.from);
     const b = data.nodes.find((n) => n.id === e.to);
     if (!a || !b) return '';
-    const x1 = a.x + 160, y1 = a.y + 26;
-    const x2 = b.x, y2 = b.y + 26;
-    const cls = data.running ? ' class="wf-edge-flow"' : '';
-    return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--accent)" stroke-width="2"${cls} />`;
+    const p = wfEdgePath(a, b);
+    return `<path d="${p.d}" class="wf-edge${data.running ? ' is-live' : ''}" marker-end="url(#wf-arrow)" />`;
   }).join('');
+  const paletteQuery = String(data.paletteQuery || '').toLowerCase();
+  const paletteCat = data.paletteCat || 'all';
+  const paletteItems = Object.entries(WF_NODES)
+    .filter(([, def]) => !paletteCat || paletteCat === 'all' || def.cat === paletteCat)
+    .filter(([type, def]) => !paletteQuery || (def.label + ' ' + type + ' ' + def.group + ' ' + (def.desc || '')).toLowerCase().includes(paletteQuery));
+  const grouped = WF_GROUPS.concat(['Files', 'Results']).map((group) => ({
+    group,
+    items: paletteItems.filter(([, def]) => def.group === group)
+  })).filter((g) => g.items.length);
+  const doneCount = data.nodes.filter((n) => n.status === 'done').length;
+  const errorCount = data.nodes.filter((n) => n.status === 'error').length;
+  const selectedDef = wfDef(data.nodes.find((n) => n.id === data.selectedNodeId)?.type || '');
   return `
-    ${viewHead({ index: '18', kicker: 'Workflows', title: 'Visual <span class="accent">pipelines.</span>', sub: 'Drag nodes, connect ports, run. Single-chain execution for now.' })}
-    <div class="tool-grid">
-      <section class="area-drop">
+    ${viewHead({ index: '18', kicker: 'Workflows', title: 'Build <span class="accent">pipelines</span> visually.', sub: 'Input, process and output nodes. Drag to pan, scroll to zoom, drag a port to connect, then run locally.' })}
+    <div class="wf-stats">
+      <span class="wf-stat">${icon('layout-grid')}<b>${data.nodes.length}</b> nodes</span>
+      <span class="wf-stat">${icon('link')}<b>${data.edges.length}</b> links</span>
+      <span class="wf-stat">${icon('check')}<b>${doneCount}</b> done</span>
+      <span class="wf-stat${errorCount ? ' is-error' : ''}">${icon('triangle-alert')}<b>${errorCount}</b> errors</span>
+      <span class="wf-stat">${icon('clock-3')}<b>${data.nodes.reduce((s, n) => s + (Number(n.ms) || 0), 0) ? wfTime(data.nodes.reduce((s, n) => s + (Number(n.ms) || 0), 0)) : '0s'}</b> total</span>
+    </div>
+    <div class="tool-grid wf-layout">
+      <section class="area-drop wf-left">
         <div class="stage-card">
-          <div class="stage-head"><div class="stage-head-copy"><strong>Source</strong><span>Pick a starting file</span></div></div>
+          <div class="stage-head"><div class="stage-head-copy"><strong>Sources</strong><span>${sources.length ? sources.length + ' file' + (sources.length === 1 ? '' : 's') + ' loaded' : 'Add one or more files'}</span></div></div>
           <div class="stage-body">
-            <input type="file" id="wf-file" hidden />
-            <label class="btn btn-secondary btn-sm" for="wf-file">Choose file</label>
-            ${src ? `<p style="margin-top:8px">${esc(src.name)}</p>` : ''}
-            <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">
-              <select id="wf-add-node" class="select">
-                <optgroup label="Input">
-                  <option value="input">Input (source)</option>
-                </optgroup>
-                <optgroup label="Process">
-                  <option value="trim">Trim</option>
-                  <option value="extractAudio">Extract audio</option>
-                  <option value="ocr">OCR text</option>
-                  <option value="compress">Compress</option>
-                  <option value="crop">Crop</option>
-                  <option value="convert">Convert</option>
-                  <option value="gif">GIF</option>
-                  <option value="merge">Merge (concat)</option>
-                  <option value="branch">Branch (fan-out)</option>
-                  <option value="resize">Resize</option>
-                  <option value="mute">Mute audio</option>
-                  <option value="watermark">Watermark</option>
-                  <option value="rotate">Rotate</option>
-                  <option value="speed">Speed</option>
-                  <option value="flip">Flip</option>
-                </optgroup>
-                <optgroup label="Output">
-                  <option value="output">Output (download)</option>
-                </optgroup>
-              </select>
-              <button class="btn btn-secondary btn-sm" data-action="wf-add-node">Add node</button>
+            <input type="file" id="wf-file" multiple hidden />
+            <div class="wf-source-actions">
+              <label class="btn btn-secondary btn-sm" for="wf-file">${icon('upload')}Add files</label>
+              ${sources.length ? `<button class="btn btn-ghost btn-sm" data-action="wf-clear-sources">${icon('x')}Clear</button>` : ''}
             </div>
-            <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
-              <button class="btn btn-ghost btn-sm" data-action="wf-undo" title="Undo (Ctrl+Z)">${icon('undo-2')} Undo</button>
-              <button class="btn btn-ghost btn-sm" data-action="wf-redo" title="Redo (Ctrl+Y)">${icon('refresh-cw')} Redo</button>
-              <button class="btn btn-ghost btn-sm" data-action="wf-auto-layout" title="Auto-arrange nodes">${icon('layout-grid')} Auto-layout</button>
-              <button class="btn btn-ghost btn-sm" data-action="wf-duplicate-node" title="Duplicate selected node">${icon('copy')} Duplicate</button>
-            </div>
-            <div style="margin-top:10px;display:flex;gap:6px">
-              <button class="btn btn-primary btn-sm" data-action="wf-run" ${src && data.nodes.length && !data.running ? '' : 'disabled'}>${icon('play')}Run</button>
-              <button class="btn btn-ghost btn-sm" data-action="wf-clear">Clear</button>
-              <button class="btn btn-secondary btn-sm" data-action="wf-save">Save</button>
-              <button class="btn btn-secondary btn-sm" data-action="wf-export">Export JSON</button>
-              <button class="btn btn-secondary btn-sm" data-action="wf-import">Import JSON</button>
-              ${state.workflows.length ? `<select id="wf-saved" class="select">${state.workflows.map((w) => `<option value="${esc(w.name)}">${esc(w.name)}</option>`).join('')}</select>
-              <button class="btn btn-secondary btn-sm" data-action="wf-load-saved">Load</button>` : ''}
-            </div>
-            <div id="wf-out" class="util-out" style="margin-top:8px"></div>
-            <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px">
-              <div style="font-weight:600;font-size:12px;margin-bottom:6px">Canvas settings</div>
-              <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:4px"><input type="checkbox" id="wf-set-gridbg" ${data.settings?.gridBg !== false ? 'checked' : ''} /> Show grid background</label>
-              <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-top:4px"><input type="checkbox" id="wf-set-snap" ${data.settings?.snapGrid !== false ? 'checked' : ''} /> Snap nodes to grid</label>
-              <p class="field-help" style="margin-top:6px">Grid background follows pan and zoom.</p>
-            </div>
-            <p class="field-help" style="margin-top:8px">How to use: 1) Choose a file. 2) Add nodes. 3) Drag from an output port (right dot) to an input port (left dot) to connect. Click a port to start/end a connection. 4) Drag empty canvas to pan, scroll to zoom. 5) Run. Shortcuts: Ctrl+Z undo, Ctrl+Y redo, Delete removes the selected node, Esc cancels connection.</p>
-            <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
-              <div style="font-weight:600;font-size:12px;margin-bottom:6px">Node inspector</div>
-              <select id="wf-sel-node" class="select" style="width:100%">
-                <option value="">Select a node…</option>
-                ${data.nodes.map((n) => `<option value="${esc(n.id)}" ${data.selectedNodeId === n.id ? 'selected' : ''}>${esc(WF_NODE_LABELS[n.type] || n.type)} (${esc(n.id)})</option>`).join('')}
-              </select>
-              ${workflowNodeInspector(data)}
-              <div style="margin-top:8px;display:flex;gap:6px">
-                <button class="btn btn-danger btn-sm" data-action="wf-delete-node">Delete node</button>
-              </div>
-              ${data.edges.length ? `<div style="margin-top:10px"><strong style="font-size:11px">Connections</strong>
-                ${data.edges.map((e, i) => `<div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;margin-top:4px">
-                  <span>${esc(e.from)} ? ${esc(e.to)}</span>
-                  <button class="icon-btn is-sm is-danger" data-action="wf-delete-edge" data-edge="${i}" title="Remove connection">${icon('x')}</button>
-                </div>`).join('')}</div>` : ''}
+            <div class="wf-source-list">
+              ${sources.length ? sources.map((s, i) => `<div class="wf-source"><span class="wf-source-idx">${i + 1}</span><div class="wf-source-copy"><strong>${esc(s.name)}</strong><small>${kindFromFile(s.file) || 'file'} · ${wfSize(s.size)}</small></div><button class="icon-btn is-sm is-danger" data-action="wf-remove-source" data-index="${i}" title="Remove">${icon('x')}</button></div>`).join('') : '<p class="field-help" style="margin:0">No files yet. Each input node can pick a specific source.</p>'}
             </div>
           </div>
         </div>
+
+        <div class="stage-card" style="margin-top:12px">
+          <div class="stage-head"><div class="stage-head-copy"><strong>Node palette</strong><span>Click to drop a node on the canvas</span></div></div>
+          <div class="stage-body">
+            <div class="wf-palette-search">
+              ${icon('search')}
+              <input class="input" id="wf-search" type="text" placeholder="Search nodes…" value="${esc(data.paletteQuery || '')}" aria-label="Search workflow nodes" />
+            </div>
+            <div class="wf-cat-chips">
+              ${[['all', 'All'], ...Object.entries(WF_CATS).map(([id, c]) => [id, c.label])].map(([id, label]) => `<button class="wf-chip${(data.paletteCat || 'all') === id ? ' is-active' : ''}" data-action="wf-filter-cat" data-cat="${id}">${esc(label)}</button>`).join('')}
+            </div>
+            <div class="wf-palette">
+              ${grouped.length ? grouped.map((g) => `<div class="wf-palette-group"><span class="wf-palette-title">${esc(g.group)}</span>${g.items.map(([type, def]) => `<button class="wf-palette-item" data-action="wf-add-type" data-type="${type}" title="${esc(def.desc || '')}"><span class="wf-node-ic" style="background:${(WF_CATS[def.cat] || WF_CATS.process).color}22;color:${(WF_CATS[def.cat] || WF_CATS.process).color}">${icon(def.icon)}</span><span class="wf-palette-copy"><strong>${esc(def.label)}</strong><small>${esc(def.cat)}</small></span>${icon('plus')}</button>`).join('')}</div>`).join('') : '<p class="field-help" style="margin:0">No nodes match that search.</p>'}
+            </div>
+          </div>
+        </div>
+
+        <div class="stage-card" style="margin-top:12px">
+          <div class="stage-head"><div class="stage-head-copy"><strong>Inspector</strong><span>${selectedDef.label || 'No node selected'}</span></div></div>
+          <div class="stage-body">
+            <select id="wf-sel-node" class="select" style="width:100%;margin-bottom:8px">
+              <option value="">Select a node…</option>
+              ${data.nodes.map((n) => `<option value="${esc(n.id)}" ${data.selectedNodeId === n.id ? 'selected' : ''}>${esc(wfDef(n.type).label)} (${esc(n.id)})</option>`).join('')}
+            </select>
+            ${workflowNodeInspector(data)}
+            ${data.edges.length ? `<div class="wf-conns"><strong>Connections</strong>
+              ${data.edges.map((e, i) => `<div class="wf-conn"><span>${esc(wfDef(data.nodes.find((n) => n.id === e.from)?.type).label)} → ${esc(wfDef(data.nodes.find((n) => n.id === e.to)?.type).label)}</span><button class="icon-btn is-sm is-danger" data-action="wf-delete-edge" data-edge="${i}" title="Remove connection">${icon('x')}</button></div>`).join('')}
+            </div>` : ''}
+          </div>
+        </div>
+
+        <div class="stage-card" style="margin-top:12px">
+          <div class="stage-head"><div class="stage-head-copy"><strong>Canvas settings</strong><span>Grid and snapping</span></div></div>
+          <div class="stage-body">
+            <label class="wf-check"><input type="checkbox" id="wf-set-gridbg" ${data.settings?.gridBg !== false ? 'checked' : ''} /><span>Show grid</span></label>
+            <label class="wf-check"><input type="checkbox" id="wf-set-snap" ${data.settings?.snapGrid !== false ? 'checked' : ''} /><span>Snap to grid</span></label>
+            <label class="wf-check"><input type="checkbox" id="wf-set-multi" ${data.settings?.multiSource !== false ? 'checked' : ''} /><span>Run every source through the graph</span></label>
+          </div>
+        </div>
       </section>
-      <section class="area-queue" style="min-height:420px">
-        <div class="stage-card" style="height:100%">
-          <div class="stage-head"><div class="stage-head-copy"><strong>Canvas</strong><span>Drag to pan · scroll to zoom · drag from an output dot to an input dot to connect</span></div></div>
+
+      <section class="area-queue wf-right">
+        <div class="stage-card">
+          <div class="stage-head"><div class="stage-head-copy"><strong>Canvas</strong><span>Drag empty space to pan · scroll to zoom · drag a port to connect</span></div></div>
           <div class="stage-body" style="padding:0">
-            <div id="wf-canvas" style="position:relative;width:100%;height:460px;overflow:hidden;background:var(--surface-2);border-radius:8px;cursor:grab;touch-action:none;${gridStyle}">
-              <div id="wf-viewport" style="position:absolute;inset:0;transform-origin:0 0;transform:translate(${data.pan.x}px,${data.pan.y}px) scale(${data.zoom})">
-                <svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none" id="wf-svg">
-                  <defs><marker id="wf-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="var(--accent)" /></marker></defs>
-                  ${lines}
+            <div class="wf-toolbar">
+              <button class="btn btn-primary btn-sm" data-action="wf-run" ${sources.length && data.nodes.length && !data.running ? '' : 'disabled'}>${icon(data.running ? 'loader-circle' : 'play')}${data.running ? 'Running…' : 'Run'}</button>
+              ${data.running ? `<button class="btn btn-danger btn-sm" data-action="wf-stop">${icon('square')}Stop</button>` : ''}
+              <button class="btn btn-ghost btn-sm" data-action="wf-undo" title="Undo (Ctrl+Z)">${icon('undo-2')}</button>
+              <button class="btn btn-ghost btn-sm" data-action="wf-redo" title="Redo (Ctrl+Y)">${icon('refresh-cw')}</button>
+              <button class="btn btn-ghost btn-sm" data-action="wf-auto-layout" title="Auto-arrange">${icon('layout-grid')}Layout</button>
+              <span class="wf-toolbar-gap"></span>
+              <button class="btn btn-secondary btn-sm" data-action="wf-save">${icon('archive')}Save</button>
+              <select id="wf-saved" class="select wf-saved-select" aria-label="Saved workflows">
+                ${state.workflows.length ? state.workflows.map((w) => `<option value="${esc(w.name)}">${esc(w.name)}</option>`).join('') : '<option value="">No saved workflows</option>'}
+              </select>
+              <button class="btn btn-ghost btn-sm" data-action="wf-load-saved">${icon('folder-open')}Load</button>
+              <button class="btn btn-ghost btn-sm" data-action="wf-export" title="Export JSON">${icon('download')}</button>
+              <button class="btn btn-ghost btn-sm" data-action="wf-import" title="Import JSON">${icon('upload')}</button>
+              <button class="btn btn-ghost btn-sm" data-action="wf-clear" title="Clear canvas">${icon('trash-2')}</button>
+            </div>
+            <div class="wf-templates">
+              <span class="wf-templates-label">${icon('sparkles')}Start from</span>
+              ${WF_TEMPLATES.map((t) => `<button class="wf-template" data-action="wf-template" data-tpl="${t.id}"><strong>${esc(t.name)}</strong><small>${esc(t.desc)}</small></button>`).join('')}
+            </div>
+            <div id="wf-canvas" class="wf-canvas" style="${gridStyle}">
+              <div id="wf-viewport" class="wf-viewport" style="transform:translate(${pan.x}px,${pan.y}px) scale(${zoom})">
+                <svg class="wf-svg" id="wf-svg">
+                  <defs>
+                    <marker id="wf-arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="currentColor" /></marker>
+                  </defs>
+                  ${edges}
                 </svg>
-                ${data.nodes.map((n) => {
-                const col = WF_NODE_COLOR[n.type] || 'var(--accent)';
-                const ic = WF_NODE_ICON[n.type] ? icon(WF_NODE_ICON[n.type]) : '';
-                const isSel = data.selectedNodeId === n.id;
-                return `
-                <div class="wf-node${isSel ? ' is-selected' : ''}" data-node="${n.id}" style="position:absolute;left:${n.x}px;top:${n.y}px;width:160px;background:var(--surface);border:1px solid ${col};border-left:4px solid ${col};border-radius:8px;padding:6px 8px;user-select:none;cursor:move;touch-action:none;box-shadow:${isSel ? '0 0 0 2px ' + col + ', 0 6px 18px rgba(0,0,0,.28)' : '0 2px 8px rgba(0,0,0,.18)'}">${n.status === 'running' ? '<span class="wf-node-pulse"></span>' : ''}
-                  <div style="display:flex;align-items:center;gap:6px;font-weight:600;font-size:12px">${ic}<span>${WF_NODE_LABELS[n.type] || n.type}</span></div>
-                  <div style="display:flex;align-items:center;gap:4px;font-size:10px;color:${n.status === 'done' ? '#10b981' : n.status === 'error' ? '#ef4444' : n.status === 'running' ? 'var(--accent)' : 'var(--text-3)'};margin-top:2px"><span style="width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block;flex:none"></span><span>${esc(n.status || 'idle')}${n.error ? ' · ' + esc(n.error) : ''}</span></div>
-                  ${(WF_NODE_IO[n.type] || {}).in ? `<div class="wf-port wf-port-in" data-port-in="${n.id}" style="position:absolute;left:-9px;top:17px;width:18px;height:18px;border-radius:50%;background:var(--border);border:2px solid var(--surface);cursor:pointer;touch-action:none"></div>` : ''}
-                  ${(WF_NODE_IO[n.type] || {}).out ? `<div class="wf-port wf-port-out" data-port-out="${n.id}" style="position:absolute;right:-9px;top:17px;width:18px;height:18px;border-radius:50%;background:${col};border:2px solid var(--surface);cursor:pointer;touch-action:none"></div>` : ''}
-                </div>`; }).join('')}
-                ${data.connectPreview ? `<svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"><line x1="${data.connectPreview.fromX}" y1="${data.connectPreview.fromY}" x2="${data.connectPreview.x}" y2="${data.connectPreview.y}" stroke="var(--accent)" stroke-width="2" stroke-dasharray="4 4" /></svg>` : ''}
+                ${data.nodes.map((n) => wfNodeCard(n, data)).join('')}
               </div>
-              <div style="position:absolute;top:8px;left:8px;display:flex;gap:8px;align-items:center;font-size:11px;color:var(--text-3);background:color-mix(in srgb, var(--surface) 85%, transparent);padding:3px 8px;border-radius:6px;border:1px solid var(--border)">
-                <span>${data.nodes.length} node${data.nodes.length === 1 ? '' : 's'}</span>
-                <span>·</span>
-                <span>${data.edges.length} link${data.edges.length === 1 ? '' : 's'}</span>
-                <span>·</span>
+              ${!data.nodes.length ? `<div class="wf-empty">${icon('layout-grid')}<strong>Your canvas is empty</strong><p>Add nodes from the palette or pick a template above.</p></div>` : ''}
+              <div class="wf-hud">
+                <span>${data.nodes.length} node${data.nodes.length === 1 ? '' : 's'}</span><i>·</i>
+                <span>${data.edges.length} link${data.edges.length === 1 ? '' : 's'}</span><i>·</i>
                 <span>${Math.round(zoom * 100)}%</span>
               </div>
-              <div style="position:absolute;bottom:8px;right:8px;display:flex;gap:4px">
-                <button class="btn btn-ghost btn-sm" data-action="wf-zoom-in" title="Zoom in">+</button>
-                <button class="btn btn-ghost btn-sm" data-action="wf-zoom-out" title="Zoom out">-</button>
+              <div class="wf-zoom">
+                <button class="btn btn-ghost btn-sm" data-action="wf-zoom-in" title="Zoom in">${icon('plus')}</button>
+                <button class="btn btn-ghost btn-sm" data-action="wf-zoom-out" title="Zoom out">${icon('minus')}</button>
                 <button class="btn btn-ghost btn-sm" data-action="wf-zoom-reset" title="Reset view">1:1</button>
               </div>
               ${data.nodes.length ? (() => {
                 const minX = Math.min(...data.nodes.map((n) => n.x));
                 const minY = Math.min(...data.nodes.map((n) => n.y));
-                const maxX = Math.max(...data.nodes.map((n) => n.x + 160));
-                const maxY = Math.max(...data.nodes.map((n) => n.y + 60));
+                const maxX = Math.max(...data.nodes.map((n) => n.x + 176));
+                const maxY = Math.max(...data.nodes.map((n) => n.y + 72));
                 const spanX = Math.max(1, maxX - minX);
                 const spanY = Math.max(1, maxY - minY);
-                const scale = Math.min(116 / spanX, 66 / spanY);
-                return `<div style="position:absolute;left:8px;bottom:8px;width:124px;height:74px;background:color-mix(in srgb, var(--surface) 88%, transparent);border:1px solid var(--border);border-radius:6px;overflow:hidden;pointer-events:none">
-                  ${data.nodes.map((n) => `<div style="position:absolute;left:${4 + (n.x - minX) * scale}px;top:${4 + (n.y - minY) * scale}px;width:${Math.max(6, 160 * scale)}px;height:${Math.max(4, 24 * scale)}px;border-radius:2px;background:${WF_NODE_COLOR[n.type] || 'var(--accent)'};opacity:.85"></div>`).join('')}
+                const scale = Math.min(120 / spanX, 68 / spanY);
+                return `<div class="wf-minimap">
+                  ${data.edges.map((e) => {
+                    const a = data.nodes.find((n) => n.id === e.from);
+                    const b = data.nodes.find((n) => n.id === e.to);
+                    if (!a || !b) return '';
+                    return `<i class="wf-mini-edge" style="left:${6 + (a.x - minX) * scale + 176 * scale}px;top:${6 + (a.y - minY) * scale + 20}px;width:${Math.max(4, (b.x - a.x - 176) * scale)}px"></i>`;
+                  }).join('')}
+                  ${data.nodes.map((n) => `<div class="wf-mini-node" style="left:${6 + (n.x - minX) * scale}px;top:${6 + (n.y - minY) * scale}px;width:${Math.max(8, 176 * scale)}px;height:${Math.max(5, 44 * scale)}px;background:${(WF_CATS[wfDef(n.type).cat] || WF_CATS.process).color}"></div>`).join('')}
                 </div>`;
               })() : ''}
+            </div>
+          </div>
+        </div>
+
+        <div class="stage-card" style="margin-top:12px">
+          <div class="stage-head"><div class="stage-head-copy"><strong>Run log</strong><span>${data.log.length ? data.log.length + ' event' + (data.log.length === 1 ? '' : 's') : 'Nothing yet'}</span></div>
+            ${data.log.length ? `<button class="btn btn-ghost btn-sm" data-action="wf-clear-log">${icon('trash-2')}Clear</button>` : ''}</div>
+          <div class="stage-body" style="padding:8px">
+            <div id="wf-runlog" class="wf-runlog">
+              ${data.log.length ? data.log.map((l) => `<div class="wf-log-row is-${esc(l.level)}"><span class="wf-log-time">${new Date(l.at).toLocaleTimeString()}</span><span>${esc(l.message)}</span></div>`).join('') : '<p class="field-help" style="margin:0">Run the workflow to see per-node timing and errors.</p>'}
+            </div>
+          </div>
+        </div>
+
+        <div class="stage-card" style="margin-top:12px">
+          <div class="stage-head"><div class="stage-head-copy"><strong>Results</strong><span>${data.results.length ? data.results.length + ' output' + (data.results.length === 1 ? '' : 's') : 'Run to collect outputs'}</span></div></div>
+          <div class="stage-body">
+            <div id="wf-out" class="util-out">
+              ${data.results.length ? data.results.map((r) => `<div class="wf-result">
+                <span class="wf-result-kind">${esc(r.kind || 'file')}</span>
+                <div class="wf-result-copy"><strong>${esc(r.name)}</strong><small>${wfSize(r.size)}</small></div>
+                ${r.kind === 'text' && r.text ? `<button class="btn btn-ghost btn-sm" data-action="wf-preview-text" data-result="${esc(r.id)}">${icon('eye')}Preview</button>` : ''}
+                <a class="btn btn-secondary btn-sm" href="${r.url}" download="${esc(r.name)}">${icon('download')}Download</a>
+              </div>`).join('') : '<p class="field-help" style="margin:0">Outputs from "Download file" and "Save text" nodes appear here.</p>'}
+            </div>
           </div>
         </div>
       </section>
     </div>`;
 }
 
+function wfSize(bytes) {
+  const n = Number(bytes) || 0;
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(n < 10240 ? 1 : 0) + ' KB';
+  if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
+  return (n / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+}
+
 async function wfRun() {
   const data = state.workflow;
-  if (!data.source || !data.nodes.length || data.running) return;
-  data.running = true;
-  data.nodes.forEach((n) => { n.status = 'idle'; n.error = ''; n.result = null; n.text = ''; });
-  renderView();
-  // topological order (simple: follow edges; fallback to node order)
-  const order = [];
-  const visited = new Set();
-  const visiting = new Set();
-  function visit(id) {
-    if (visited.has(id)) return;
-    if (visiting.has(id)) return; // cycle: skip
-    visiting.add(id);
-    data.edges.filter((e) => e.from === id).forEach((e) => visit(e.to));
-    visiting.delete(id);
-    visited.add(id);
-    order.unshift(id);
-  }
-  // start from nodes with no incoming edges
-  const hasIncoming = new Set(data.edges.map((e) => e.to));
-  data.nodes.filter((n) => !hasIncoming.has(n.id)).forEach((n) => visit(n.id));
-  data.nodes.forEach((n) => { if (!visited.has(n.id)) visit(n.id); });
-  const idToNode = (id) => data.nodes.find((n) => n.id === id);
+  if (data.running) return;
+  const sources = wfSources();
+  if (!sources.length) { toast('No source', 'Add at least one file before running.', 'error'); return; }
+  if (!data.nodes.length) { toast('Empty pipeline', 'Add nodes to the canvas first.', 'info'); return; }
+  const order = wfTopoOrder();
+  if (!order) { toast('Cycle detected', 'Workflows must be acyclic. Remove the loop and try again.', 'error'); return; }
+  const portProblem = wfPortProblems();
+  if (portProblem) { toast('Port mismatch', portProblem, 'warning'); return; }
+  const outputNodes = data.nodes.filter((n) => n.type === 'output' || n.type === 'outputText');
+  if (!outputNodes.length) { toast('No output node', 'Add a "Download file" or "Save text" node so results are collected.', 'warning'); }
 
-  const outputs = new Map(); // nodeId -> { file, name }
-  // determine input for a node: first predecessor's output, else source
-  function getInput(id) {
-    const preds = data.edges.filter((e) => e.to === id).map((e) => e.from);
-    const predOuts = preds.map((p) => outputs.get(p)).filter(Boolean);
-    if (predOuts.length) {
-      const o = predOuts[0];
-      return { file: o.file, name: o.name, files: predOuts.map((x) => x.file), names: predOuts.map((x) => x.name) };
-    }
-    return { file: data.source.file, name: data.source.name, files: [data.source.file], names: [data.source.name] };
-  }
-  for (const id of order) {
-    if (!state.workflow.running) break;
-    const node = idToNode(id);
-    if (!node) continue;
-    node.status = 'running';
-    renderView();
-    const inputInfo = getInput(id);
-    const inputFile = inputInfo.file;
-    const inputName = inputInfo.name;
-    const inputFiles = inputInfo.files || [inputFile];
-    try {
-      if (node.type === 'input') {
-        outputs.set(id, { file: data.source.file, name: data.source.name });
-      } else if (node.type === 'trim') {
-        const cfg = node.config || {};
-        const start = cfg.start ? String(cfg.start) : '0';
-        const end = cfg.end ? String(cfg.end) : '';
-        const args = end
-          ? ['-hide_banner', '-y', '-ss', start, '-to', end, '-i', '{in}', '-c', 'copy', '{out}']
-          : ['-hide_banner', '-y', '-i', '{in}', '{out}'];
-        const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: extOf(inputName) || 'mp4', args, mime: inputFile.type || 'application/octet-stream' });
-        const outFile = new File([result.blob], inputName, { type: result.mime });
-        outputs.set(id, { file: outFile, name: inputName });
-      } else if (node.type === 'extractAudio') {
-        const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: 'mp3', args: ['-hide_banner', '-y', '-i', '{in}', '-vn', '-c:a', 'libmp3lame', '-b:a', '128k', '{out}'], mime: 'audio/mpeg' });
-        const outName = inputName.replace(/\\.[^.]+$/, '') + '.mp3';
-        const outFile = new File([result.blob], outName, { type: 'audio/mpeg' });
-        outputs.set(id, { file: outFile, name: outName });
-      } else if (node.type === 'ocr') {
-        const ocrData = await ocrImage(inputFile, (node.config || {}).lang || 'eng');
-        node.text = ocrData.text || '';
-        outputs.set(id, { file: inputFile, name: inputName, text: node.text });
-      } else if (node.type === 'compress') {
-        const crf = (node.config || {}).crf || '28';
-        const args = ['-hide_banner', '-y', '-i', '{in}', '-c:v', 'libx264', '-preset', 'fast', '-crf', String(crf), '-c:a', 'aac', '-b:a', '128k', '{out}'];
-        const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: extOf(inputName) || 'mp4', args, mime: inputFile.type || 'video/mp4' });
-        const outFile = new File([result.blob], inputName, { type: result.mime });
-        outputs.set(id, { file: outFile, name: inputName });
-      } else if (node.type === 'crop') {
-        const cfg = node.config || {};
-        const x = Number(cfg.x) || 0;
-        const y = Number(cfg.y) || 0;
-        const w = Number(cfg.w) || 640;
-        const h = Number(cfg.h) || 360;
-        const args = ['-hide_banner', '-y', '-i', '{in}', '-vf', `crop=${w}:${h}:${x}:${y}`, '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-c:a', 'copy', '{out}'];
-        const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: extOf(inputName) || 'mp4', args, mime: inputFile.type || 'video/mp4' });
-        const outFile = new File([result.blob], inputName, { type: result.mime });
-        outputs.set(id, { file: outFile, name: inputName });
-      } else if (node.type === 'convert') {
-        const fmt = (node.config || {}).format || 'mp4';
-        const isAudio = ['mp3', 'wav'].includes(fmt);
-        const args = isAudio
-          ? ['-hide_banner', '-y', '-i', '{in}', '-vn', '-c:a', 'libmp3lame', '-b:a', '128k', '{out}']
-          : ['-hide_banner', '-y', '-i', '{in}', '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-c:a', 'aac', '-b:a', '128k', '{out}'];
-        const mime = isAudio ? 'audio/mpeg' : 'video/mp4';
-        const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: fmt, args, mime });
-        const outName = inputName.replace(/\.[^.]+$/, '') + '.' + fmt;
-        const outFile = new File([result.blob], outName, { type: result.mime || mime });
-        outputs.set(id, { file: outFile, name: outName });
-      } else if (node.type === 'gif') {
-        const args = ['-hide_banner', '-y', '-i', '{in}', '-vf', 'fps=10,scale=320:-1:flags=lanczos', '-c:v', 'gif', '{out}'];
-        const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: 'gif', args, mime: 'image/gif' });
-        const outName = inputName.replace(/\.[^.]+$/, '') + '.gif';
-        const outFile = new File([result.blob], outName, { type: 'image/gif' });
-        outputs.set(id, { file: outFile, name: outName });
-      } else if (node.type === 'branch') {
-        outputs.set(id, { file: inputFile, name: inputName });
-      } else if (node.type === 'merge') {
-        const files = inputFiles && inputFiles.length ? inputFiles : [inputFile];
-        if (files.length <= 1) {
-          outputs.set(id, { file: inputFile, name: inputName });
-        } else {
-          const names = files.map((f, i) => 'm' + i + '.mp4');
-          const listText = names.map((nm) => "file '" + nm + "'").join('\n');
-          const listBlob = new Blob([listText], { type: 'text/plain' });
-          const extraFiles = files.map((f, i) => ({ name: names[i], blob: f }));
-          extraFiles.push({ name: 'list.txt', blob: listBlob });
-          const result = await Engine.run({ blob: files[0], inputName: 'mp4', outputName: extOf(inputName) || 'mp4', args: ['-hide_banner', '-y', '-f', 'concat', '-safe', '0', '-i', 'list.txt', '-c', 'copy', '{out}'], mime: inputFile.type || 'video/mp4', extraFiles });
-          const outName = inputName.replace(/\.[^.]+$/, '') + '-merged.' + (extOf(inputName) || 'mp4');
-          const outFile = new File([result.blob], outName, { type: result.mime });
-          outputs.set(id, { file: outFile, name: outName });
-        }
-      } else if (node.type === 'resize') {
-        const cfg = node.config || {};
-        const w = Number(cfg.w) || 1280;
-        const h = Number(cfg.h) || 720;
-        const args = ['-hide_banner', '-y', '-i', '{in}', '-vf', `scale=${w}:${h}`, '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-c:a', 'copy', '{out}'];
-        const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: extOf(inputName) || 'mp4', args, mime: inputFile.type || 'video/mp4' });
-        const outFile = new File([result.blob], inputName, { type: result.mime });
-        outputs.set(id, { file: outFile, name: inputName });
-      } else if (node.type === 'mute') {
-        const args = ['-hide_banner', '-y', '-i', '{in}', '-c:v', 'copy', '-an', '{out}'];
-        const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: extOf(inputName) || 'mp4', args, mime: inputFile.type || 'video/mp4' });
-        const outFile = new File([result.blob], inputName, { type: result.mime });
-        outputs.set(id, { file: outFile, name: inputName });
-      } else if (node.type === 'watermark') {
-        const cfg = node.config || {};
-        const txt = (cfg.text || 'NuVerter').replace(/'/g, "\\'");
-        const args = ['-hide_banner', '-y', '-i', '{in}', '-vf', `drawtext=text='${txt}':fontsize=24:fontcolor=white:x=10:y=10`, '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-c:a', 'copy', '{out}'];
-        const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: extOf(inputName) || 'mp4', args, mime: inputFile.type || 'video/mp4' });
-        const outFile = new File([result.blob], inputName, { type: result.mime });
-        outputs.set(id, { file: outFile, name: inputName });
-      } else if (node.type === 'rotate') {
-        const cfg = node.config || {};
-        const deg = cfg.deg || '90';
-        const vf = deg === '90' ? 'transpose=1' : deg === '270' ? 'transpose=2' : 'transpose=2,transpose=2';
-        const args = ['-hide_banner', '-y', '-i', '{in}', '-vf', vf, '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-c:a', 'copy', '{out}'];
-        const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: extOf(inputName) || 'mp4', args, mime: inputFile.type || 'video/mp4' });
-        const outFile = new File([result.blob], inputName, { type: result.mime });
-        outputs.set(id, { file: outFile, name: inputName });
-      } else if (node.type === 'speed') {
-        const cfg = node.config || {};
-        const factor = Number(cfg.factor) || 1.5;
-        const pts = (1 / factor).toFixed(3);
-        const args = ['-hide_banner', '-y', '-i', '{in}', '-vf', `setpts=${pts}*PTS`, '-r', String(Math.round(30 * factor)), '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-c:a', 'atempo=' + factor, '{out}'];
-        const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: extOf(inputName) || 'mp4', args, mime: inputFile.type || 'video/mp4' });
-        const outFile = new File([result.blob], inputName, { type: result.mime });
-        outputs.set(id, { file: outFile, name: inputName });
-      } else if (node.type === 'flip') {
-        const cfg = node.config || {};
-        const vf = cfg.axis === 'v' ? 'vflip' : 'hflip';
-        const args = ['-hide_banner', '-y', '-i', '{in}', '-vf', vf, '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-c:a', 'copy', '{out}'];
-        const result = await Engine.run({ blob: inputFile, inputName: extOf(inputName) || 'mp4', outputName: extOf(inputName) || 'mp4', args, mime: inputFile.type || 'video/mp4' });
-        const outFile = new File([result.blob], inputName, { type: result.mime });
-        outputs.set(id, { file: outFile, name: inputName });
-      } else if (node.type === 'output') {
-        outputs.set(id, { file: inputFile, name: inputName });
-        node.text = inputName;
-      }
-      node.status = 'done';
-    } catch (e) {
-      node.status = 'error';
-      node.error = e?.message || 'Failed.';
-      break;
-    }
-    renderView();
-  }
-  data.running = false;
+  data.running = true;
+  data.results = [];
+  data.log = [];
+  data.startedAt = Date.now();
+  data.nodes.forEach((n) => { n.status = 'idle'; n.error = ''; n.ms = 0; n.progress = 0; });
+  wfLog('info', `Run started · ${order.length} node${order.length === 1 ? '' : 's'} · ${sources.length} source${sources.length === 1 ? '' : 's'}`);
   renderView();
-  const out = document.getElementById('wf-out');
-  if (out) {
-    const ocrNodes = data.nodes.filter((n) => n.type === 'ocr');
-    const lastOcr = ocrNodes.map((n) => n.text).filter(Boolean).join('\\n');
-    if (lastOcr) out.innerHTML = `<pre style="white-space:pre-wrap">${esc(lastOcr)}</pre>`;
-    else {
-      // find terminal nodes (no outgoing edges)
-      const hasOutgoing = new Set(data.edges.map((e) => e.from));
-      const terminals = data.nodes.filter((n) => !hasOutgoing.has(n.id));
-      const lastTerminal = terminals.length ? terminals[terminals.length - 1] : data.nodes[data.nodes.length - 1];
-      const o = outputs.get(lastTerminal?.id);
-      if (o?.file) {
-        const url = URL.createObjectURL(o.file);
-        out.innerHTML = `<a class="btn btn-secondary btn-sm" href="${url}" download="${esc(o.name)}">${icon('download')}Download ${esc(o.name)}</a>`;
+  const outputs = new Map();
+  const runSources = data.settings?.multiSource !== false ? sources : [sources[0]];
+  let failures = 0;
+  let done = 0;
+  const totalRuns = runSources.length;
+  for (let srcIdx = 0; srcIdx < totalRuns; srcIdx++) {
+    const activeSource = runSources[srcIdx];
+    if (totalRuns > 1) wfLog('info', `File ${srcIdx + 1}/${totalRuns} · ${activeSource.name}`);
+    outputs.clear();
+    for (const id of order) {
+      if (!data.running) break;
+      const node = data.nodes.find((n) => n.id === id);
+      if (!node) continue;
+      const def = wfDef(node.type);
+      const preds = data.edges.filter((e) => e.to === id).map((e) => e.from);
+      const predOuts = preds.map((p) => outputs.get(p)).filter(Boolean);
+      if (preds.length && !predOuts.length) {
+        node.status = 'skipped';
+        node.error = 'Upstream skipped';
+        wfLog('warn', `${def.label} skipped · upstream unavailable`);
+        renderView();
+        continue;
       }
+      node.status = 'running';
+      node.startedAt = Date.now();
+      renderView();
+      try {
+        const cfg = wfCfg(node, def);
+        const input = wfNodeInput(node, predOuts, [activeSource]);
+        const result = await def.run(input, cfg, node, { log: (m) => wfLog('info', String(m)), source: activeSource });
+        node.ms = Date.now() - node.startedAt;
+        if (result?.skipped) {
+          node.status = 'skipped';
+          node.error = result.reason || 'Filtered out';
+          wfLog('warn', `${def.label} skipped · ${node.error}`);
+          outputs.set(id, { ...input, status: 'skipped' });
+          renderView();
+          continue;
+        }
+        const norm = { ...(result || input), status: 'done' };
+        outputs.set(id, norm);
+        node.status = 'done';
+        node.text = norm.text || '';
+        done++;
+        wfLog('ok', `${def.label} done${norm.name && norm.name !== input.name ? ' · ' + norm.name : ''}`);
+        if (node.type === 'output' || node.type === 'outputText') {
+          await wfCollectResult(node, norm);
+          wfLog('ok', `Collected ${norm.name}`);
+        }
+      } catch (e) {
+        node.status = 'error';
+        node.error = e?.message || 'Failed.';
+        node.ms = Date.now() - node.startedAt;
+        failures++;
+        wfLog('error', `${def.label} failed · ${node.error}`);
+        renderView();
+        break;
+      }
+      renderView();
     }
+    if (!data.running) break;
   }
+  data.nodes.forEach((n) => { if (n.status === 'running') { n.status = 'idle'; n.progress = 0; } });
+  data.running = false;
+  data.finishedAt = Date.now();
+  const elapsed = data.finishedAt - data.startedAt;
+  wfLog(failures ? 'error' : 'ok', `Run finished in ${wfTime(elapsed)} · ${data.results.length} output${data.results.length === 1 ? '' : 's'}${failures ? ' · ' + failures + ' failure' + (failures === 1 ? '' : 's') : ''}`);
+  renderView();
+  if (data.results.length) toast('Workflow complete', `${data.results.length} output${data.results.length === 1 ? '' : 's'} · ${wfTime(elapsed)}.`, 'success');
+  else if (failures) toast('Workflow failed', 'Open the run log for the failing node.', 'error');
+  else toast('Workflow finished', 'No output node produced a file.', 'info');
 }
 
 function wfSnap() {
@@ -11156,8 +11912,8 @@ function wfAutoLayout() {
     layer.forEach((id, ni) => {
       const node = byId.get(id);
       if (!node) return;
-      node.x = 40 + li * 220;
-      node.y = 40 + ni * 110;
+      node.x = 48 + li * 210;
+      node.y = 60 + ni * 110;
     });
   });
   wfCommit();
@@ -11167,12 +11923,28 @@ function wfAutoLayout() {
 function bindWorkflow() {
   const fileInput = document.getElementById('wf-file');
   if (fileInput) fileInput.onchange = (e) => {
-    const f = e.target.files?.[0];
-    if (f) { state.workflow.source = { file: f, name: f.name, size: f.size }; renderView(); }
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const wf = state.workflow;
+    wf.sources = wf.sources || [];
+    files.forEach((f) => wf.sources.push({ file: f, name: f.name, size: f.size }));
+    wf.source = wf.sources[0] || null;
+    renderView();
+    toast('Files added', `${files.length} file${files.length === 1 ? '' : 's'} ready for the pipeline.`, 'success');
   };
+  const search = document.getElementById('wf-search');
+  if (search) {
+    search.oninput = () => {
+      state.workflow.paletteQuery = search.value;
+      const q = search.value.toLowerCase();
+      document.querySelectorAll('.wf-palette-item').forEach((item) => {
+        item.hidden = !!q && !item.textContent.toLowerCase().includes(q);
+      });
+    };
+  }
   const canvas = document.getElementById('wf-canvas');
   if (!canvas) return;
-  if (!state.workflow.settings) state.workflow.settings = { gridBg: true, snapGrid: true };
+  if (!state.workflow.settings) state.workflow.settings = { gridBg: true, snapGrid: true, multiSource: true };
   if (!state.workflow.history?.length) {
     state.workflow.history = [wfSnap()];
     state.workflow.historyIndex = 0;
@@ -11181,6 +11953,8 @@ function bindWorkflow() {
   if (gridBgCb) gridBgCb.onchange = () => { state.workflow.settings = state.workflow.settings || {}; state.workflow.settings.gridBg = !!gridBgCb.checked; renderView(); };
   const snapCb = document.getElementById('wf-set-snap');
   if (snapCb) snapCb.onchange = () => { state.workflow.settings = state.workflow.settings || {}; state.workflow.settings.snapGrid = !!snapCb.checked; };
+  const multiCb = document.getElementById('wf-set-multi');
+  if (multiCb) multiCb.onchange = () => { state.workflow.settings = state.workflow.settings || {}; state.workflow.settings.multiSource = !!multiCb.checked; };
   canvas.tabIndex = 0;
   let draggingNode = null;
   let draggingPort = null;
@@ -11205,13 +11979,11 @@ function bindWorkflow() {
     const vp = document.getElementById('wf-viewport');
     if (!vp) return;
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('style', 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:5');
+    svg.setAttribute('class', 'wf-preview');
     const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
     line.setAttribute('x1', pt.x); line.setAttribute('y1', pt.y);
     line.setAttribute('x2', pt.x); line.setAttribute('y2', pt.y);
-    line.setAttribute('stroke', 'var(--accent)');
-    line.setAttribute('stroke-width', '2');
-    line.setAttribute('stroke-dasharray', '5 5');
+    line.setAttribute('class', 'wf-preview-line');
     svg.appendChild(line);
     vp.appendChild(svg);
     previewLine = line;
@@ -11224,10 +11996,11 @@ function bindWorkflow() {
     if (!from || !to || from === to) return;
     const fromNode = state.workflow.nodes.find((n) => n.id === from);
     const toNode = state.workflow.nodes.find((n) => n.id === to);
-    const fromType = fromNode ? (WF_NODE_IO[fromNode.type] || {}).out : null;
-    const toType = toNode ? (WF_NODE_IO[toNode.type] || {}).in : null;
-    if (fromType && toType && fromType !== toType) {
-      toast('Incompatible ports', fromType + ' cannot connect to ' + toType + '.', 'warning');
+    if (!fromNode || !toNode) return;
+    const outs = wfDef(fromNode.type).outs || [];
+    const ins = wfDef(toNode.type).ins || [];
+    if (outs.length && ins.length && !outs.some((t) => ins.includes(t))) {
+      toast('Incompatible ports', `${wfDef(fromNode.type).label} emits ${outs.join('/')} but ${wfDef(toNode.type).label} needs ${ins.join('/')}.`, 'warning');
       return;
     }
     if (state.workflow.edges.some((edge) => edge.from === from && edge.to === to)) return;
@@ -11235,10 +12008,8 @@ function bindWorkflow() {
     wfCommit();
   };
   canvas.addEventListener('pointerdown', (e) => {
-    // Ports are children of nodes, so they must be checked before starting a drag.
     const outPort = e.target.closest('[data-port-out]');
     if (outPort) {
-      // If a connection is pending from an input port, finish it now (reverse).
       if (state.workflow.connectTo) {
         finishConnection(outPort.dataset.portOut, state.workflow.connectTo);
         state.workflow.connectTo = null;
@@ -11265,7 +12036,6 @@ function bindWorkflow() {
         renderView();
         return;
       }
-      // Start a connection from an input port (finish by clicking an output port).
       state.workflow.connectTo = inPort.dataset.portIn;
       portMoved = false;
       startPreview(portCenter(inPort));
@@ -11273,7 +12043,6 @@ function bindWorkflow() {
       e.preventDefault();
       return;
     }
-    // Drag a node (works with mouse, pen and touch via pointer events).
     const nodeEl = e.target.closest('.wf-node');
     if (nodeEl) {
       const id = nodeEl.dataset.node;
@@ -11283,11 +12052,12 @@ function bindWorkflow() {
       state.workflow.selectedNodeId = id;
       const pt = canvasPoint(e);
       offset = { x: pt.x - node.x, y: pt.y - node.y };
+      canvas.querySelectorAll('.wf-node.is-selected').forEach((el) => el.classList.remove('is-selected'));
+      nodeEl.classList.add('is-selected');
       try { canvas.setPointerCapture(e.pointerId); } catch {}
       e.preventDefault();
       return;
     }
-    // Cancel a pending connection on empty-canvas click.
     if (state.workflow.connectFrom || state.workflow.connectTo) {
       state.workflow.connectFrom = null;
       state.workflow.connectTo = null;
@@ -11297,20 +12067,13 @@ function bindWorkflow() {
       e.preventDefault();
       return;
     }
-    // Empty canvas: drag to pan.
     state.workflow._panning = { startX: e.clientX, startY: e.clientY, panX: state.workflow.pan.x, panY: state.workflow.pan.y };
+    canvas.classList.add('is-panning');
     try { canvas.setPointerCapture(e.pointerId); } catch {}
     e.preventDefault();
   });
   canvas.addEventListener('pointermove', (e) => {
-    if (draggingPort && previewLine) {
-      portMoved = true;
-      const pt = canvasPoint(e);
-      previewLine.setAttribute('x2', pt.x);
-      previewLine.setAttribute('y2', pt.y);
-      return;
-    }
-    if ((state.workflow.connectFrom || state.workflow.connectTo) && previewLine) {
+    if ((draggingPort || state.workflow.connectFrom || state.workflow.connectTo) && previewLine) {
       portMoved = true;
       const pt = canvasPoint(e);
       previewLine.setAttribute('x2', pt.x);
@@ -11324,20 +12087,14 @@ function bindWorkflow() {
       draggingNode.y = Math.max(0, Math.round(pt.y - offset.y));
       const el = canvas.querySelector(`[data-node="${draggingNode.id}"]`);
       if (el) { el.style.left = draggingNode.x + 'px'; el.style.top = draggingNode.y + 'px'; }
-      // update svg lines in place (keeps defs intact and stays in sync with node movement)
       const svg = document.getElementById('wf-svg');
       if (svg) {
-        const svgLines = svg.querySelectorAll('line');
+        const paths = svg.querySelectorAll('path.wf-edge');
         state.workflow.edges.forEach((ed, idx) => {
           const a = state.workflow.nodes.find((n) => n.id === ed.from);
           const b = state.workflow.nodes.find((n) => n.id === ed.to);
-          const line = svgLines[idx];
-          if (a && b && line) {
-            line.setAttribute('x1', a.x + 160);
-            line.setAttribute('y1', a.y + 26);
-            line.setAttribute('x2', b.x);
-            line.setAttribute('y2', b.y + 26);
-          }
+          const path = paths[idx];
+          if (a && b && path) path.setAttribute('d', wfEdgePath(a, b).d);
         });
       }
       return;
@@ -11359,7 +12116,6 @@ function bindWorkflow() {
         state.workflow.connectTo = null;
         clearPreview();
       } else if (!portMoved) {
-        // Treat as a click: keep the connection pending so the user can click an input port.
         clearPreview();
         toast('Now click an input port to connect', '', 'info');
       } else {
@@ -11373,8 +12129,6 @@ function bindWorkflow() {
       renderView();
       return;
     }
-    // Finish reverse pending connection on click release over an output port handled in pointerdown;
-    // if released over empty canvas while pending, keep pending.
     if (state.workflow.connectTo && !draggingPort) {
       const outPort = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('[data-port-out]');
       if (outPort) {
@@ -11382,9 +12136,6 @@ function bindWorkflow() {
         state.workflow.connectTo = null;
         state.workflow.connectFrom = null;
         clearPreview();
-      } else if (portMoved) {
-        // keep pending on click? if moved but not over port, cancel
-        // keep pending to allow click completion
       }
       portMoved = false;
       if (canvas.hasPointerCapture?.(e.pointerId)) { try { canvas.releasePointerCapture(e.pointerId); } catch {} }
@@ -11392,11 +12143,9 @@ function bindWorkflow() {
       return;
     }
     if (draggingNode) {
-      // snap to grid (optional)
       if (state.workflow.settings?.snapGrid !== false) {
-        const snapped = { x: Math.max(0, Math.round(draggingNode.x / 24) * 24), y: Math.max(0, Math.round(draggingNode.y / 24) * 24) };
-        draggingNode.x = snapped.x;
-        draggingNode.y = snapped.y;
+        draggingNode.x = Math.max(0, Math.round(draggingNode.x / 24) * 24);
+        draggingNode.y = Math.max(0, Math.round(draggingNode.y / 24) * 24);
       }
       if (dragMoved) wfCommit();
       dragMoved = false;
@@ -11407,6 +12156,7 @@ function bindWorkflow() {
     }
     if (state.workflow._panning) {
       state.workflow._panning = null;
+      canvas.classList.remove('is-panning');
       if (canvas.hasPointerCapture?.(e.pointerId)) { try { canvas.releasePointerCapture(e.pointerId); } catch {} }
     }
   });
@@ -11418,9 +12168,8 @@ function bindWorkflow() {
     e.preventDefault();
     const rect = canvas.getBoundingClientRect();
     const oldZoom = state.workflow.zoom || 1;
-    const next = Math.max(0.4, Math.min(2, oldZoom + (e.deltaY > 0 ? -0.1 : 0.1)));
+    const next = Math.max(0.35, Math.min(2.5, oldZoom + (e.deltaY > 0 ? -0.1 : 0.1)));
     if (next === oldZoom) return;
-    // zoom around cursor
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
     const p = state.workflow.pan;
@@ -11430,7 +12179,6 @@ function bindWorkflow() {
     const vpEl = document.getElementById('wf-viewport');
     if (vpEl) vpEl.style.transform = `translate(${p.x}px,${p.y}px) scale(${next})`;
   }, { passive: false });
-  // keyboard shortcuts
   if (window.__wfKeyHandler) document.removeEventListener('keydown', window.__wfKeyHandler);
   const onWfKey = (e) => {
     if (state.tool !== 'workflow') return;
@@ -11443,28 +12191,25 @@ function bindWorkflow() {
       return;
     }
     if (mod && e.key.toLowerCase() === 'y') { e.preventDefault(); wfRedo(); return; }
+    if (mod && e.key === 'Enter') { e.preventDefault(); wfRun(); return; }
     if (mod && e.key.toLowerCase() === 'd') {
       const src = state.workflow.nodes.find((n) => n.id === state.workflow.selectedNodeId);
       if (!src) return;
       e.preventDefault();
-      const id = 'n' + Math.random().toString(36).slice(2, 8);
-      state.workflow.nodes.push({ id, type: src.type, x: src.x + 30, y: src.y + 30, status: 'idle', config: JSON.parse(JSON.stringify(src.config || {})) });
-      state.workflow.selectedNodeId = id;
-      wfCommit();
-      renderView();
+      wfAddNode(src.type, src.x + 30, src.y + 30);
       return;
     }
     if (e.key === 'Escape') {
-    if (state.workflow.connectFrom || state.workflow.connectTo) {
-      e.preventDefault();
-      state.workflow.connectFrom = null;
-      state.workflow.connectTo = null;
-      clearPreview();
-      renderView();
+      if (state.workflow.connectFrom || state.workflow.connectTo) {
+        e.preventDefault();
+        state.workflow.connectFrom = null;
+        state.workflow.connectTo = null;
+        clearPreview();
+        renderView();
+      }
       return;
     }
-  }
-  if ((e.key === 'Delete' || e.key === 'Backspace') && state.workflow.selectedNodeId) {
+    if ((e.key === 'Delete' || e.key === 'Backspace') && state.workflow.selectedNodeId) {
       const id = state.workflow.selectedNodeId;
       e.preventDefault();
       state.workflow.nodes = state.workflow.nodes.filter((n) => n.id !== id);
@@ -11477,21 +12222,19 @@ function bindWorkflow() {
   window.__wfKeyHandler = onWfKey;
   document.addEventListener('keydown', onWfKey);
   const sel = document.getElementById('wf-sel-node');
-  if (sel) {
-    sel.onchange = () => { state.workflow.selectedNodeId = sel.value || null; renderView(); };
-  }
-  // config inputs
+  if (sel) sel.onchange = () => { state.workflow.selectedNodeId = sel.value || null; renderView(); };
   document.querySelectorAll('[data-wfcfg]').forEach((inp) => {
     const key = inp.dataset.wfcfg;
-    const [type, field] = key.split('.');
     const node = state.workflow.nodes.find((n) => n.id === state.workflow.selectedNodeId);
     if (!node) return;
     node.config = node.config || {};
-    const handler = () => {
-      node.config[field] = inp.value;
+    const commitValue = () => {
+      if (inp.type === 'checkbox') node.config[key] = !!inp.checked;
+      else if (inp.type === 'number') node.config[key] = inp.value === '' ? '' : Number(inp.value);
+      else node.config[key] = inp.value;
     };
-    inp.addEventListener('input', handler);
-    inp.addEventListener('change', handler);
+    inp.addEventListener('input', commitValue);
+    inp.addEventListener('change', () => { commitValue(); wfCommit(); });
   });
 }
 
@@ -15143,6 +15886,49 @@ async function handleExtraAction(action, el) {
     case 'util-make-sheet': await utilMakeSheet(); return true;
     case 'util-text-image': utilTextImage(); return true;
     case 'util-text-paper': utilTextPaper(); return true;
+    case 'tp-rule-add': {
+      const list = document.getElementById('tp-rules');
+      if (list) {
+        list.querySelector('.tp-rules-empty')?.remove();
+        list.insertAdjacentHTML('beforeend', tpRuleRowHtml(tpRuleDefaults()));
+        tpSaveRules(tpReadRules());
+      }
+      return true;
+    }
+    case 'tp-preset': {
+      const preset = TP_PRESETS[el.dataset.preset || ''];
+      if (preset) {
+        Object.keys(preset.vals).forEach((k) => {
+          const f = document.querySelector('[data-util="' + k + '"]');
+          if (!f) return;
+          f.value = preset.vals[k];
+          if (f.tagName === 'SELECT') f.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        $$('[data-action="tp-preset"]').forEach((b) => b.classList.toggle('is-active', b === el));
+        const ta = document.querySelector('[data-util="tp-text"]');
+        if (ta && ta.value.trim()) utilTextPaper();
+        else toast('Preset applied', preset.label + ' — now add some text.', 'success');
+      }
+      return true;
+    }
+    case 'tp-sample': {
+      const ta = document.querySelector('[data-util="tp-text"]');
+      if (ta) {
+        ta.value = tpSampleText();
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+        utilTextPaper();
+      }
+      return true;
+    }
+    case 'tp-rule-remove': {
+      el.closest('[data-rule]')?.remove();
+      const list = document.getElementById('tp-rules');
+      if (list && !list.querySelector('[data-rule]')) {
+        list.insertAdjacentHTML('beforeend', '<p class="field-help tp-rules-empty">No custom rules yet. Add one to transform, hide or style any text.</p>');
+      }
+      tpSaveRules(tpReadRules());
+      return true;
+    }
     case 'util-trimmer': await utilTrimmer(); return true;
     case 'util-hash': await utilHash(); return true;
     case 'util-hash-copy': { const h = el?.dataset?.hash || ''; if (h) { try { await navigator.clipboard.writeText(h); toast('Copied', 'Hash copied.', 'success'); } catch {} } return true; }
@@ -15462,12 +16248,52 @@ async function handleExtraAction(action, el) {
       return true;
     case 'wf-add-node': {
       const type = document.getElementById('wf-add-node')?.value || 'trim';
-      const id = 'n' + Math.random().toString(36).slice(2, 8);
-      const n = state.workflow.nodes.length;
-      state.workflow.nodes.push({ id, type, x: 40 + (n % 3) * 180, y: 40 + Math.floor(n / 3) * 100, status: 'idle', config: {} });
-      state.workflow.selectedNodeId = id;
-      wfCommit();
+      wfAddNode(type);
+      return true;
+    }
+    case 'wf-add-type': {
+      wfAddNode(el?.dataset?.type || 'trim');
+      return true;
+    }
+    case 'wf-filter-cat': {
+      state.workflow.paletteCat = el?.dataset?.cat || 'all';
       renderView();
+      return true;
+    }
+    case 'wf-template': {
+      wfApplyTemplate(el?.dataset?.tpl || '');
+      return true;
+    }
+    case 'wf-stop': {
+      state.workflow.running = false;
+      wfLog('warn', 'Run stopped by user.');
+      renderView();
+      return true;
+    }
+    case 'wf-clear-log': {
+      state.workflow.log = [];
+      renderView();
+      return true;
+    }
+    case 'wf-remove-source': {
+      const idx = Number(el?.dataset?.index);
+      if (Number.isInteger(idx) && idx >= 0) {
+        state.workflow.sources = wfSources().filter((_, i) => i !== idx);
+        state.workflow.source = state.workflow.sources[0] || null;
+        renderView();
+      }
+      return true;
+    }
+    case 'wf-clear-sources': {
+      state.workflow.sources = [];
+      state.workflow.source = null;
+      state.workflow.results = [];
+      renderView();
+      return true;
+    }
+    case 'wf-preview-text': {
+      const rec = (state.workflow.results || []).find((r) => r.id === el?.dataset?.result);
+      if (rec) toast(rec.name, (rec.text || '').slice(0, 800) || 'Empty text output.', 'info');
       return true;
     }
     case 'wf-duplicate-node': {
@@ -15783,6 +16609,12 @@ async function handleAction(action, el) {
       saveConverter();
       restoreScrollAndRender();
       break;
+    case 'smart-reset':
+      state.converter.smartMap = { ...SMART_DEFAULTS };
+      saveConverter();
+      restoreScrollAndRender();
+      toast('Smart map reset', smartMapSummary(), 'info');
+      break;
     case 'set-aspect':
       state.converter.aspect = el.dataset.aspect;
       saveConverter();
@@ -16074,6 +16906,9 @@ function handleFieldEvent(event) {
   if (target && target.tagName === 'TEXTAREA') {
     target.style.height = 'auto';
     target.style.height = Math.min(240, target.scrollHeight) + 'px';
+  }
+  if (target && target.closest && target.closest('#tp-rules')) {
+    try { tpSaveRules(tpReadRules()); } catch {}
   }
   const el = event.target.closest('[data-field]');
   if (!el) return;
@@ -16639,7 +17474,13 @@ async function boot() {
   if (!state.prefs.seenWelcome) {
     state.prefs.seenWelcome = true;
     savePrefs();
+    // The launcher is the first-run onboarding; do not stack a second modal on top of it.
+    const launchVisible = () => {
+      const ov = document.getElementById('launch-overlay');
+      return !!ov && !ov.hidden;
+    };
     setTimeout(() => {
+      if (launchVisible()) return;
       openModal({
         title: 'Welcome to NuVerter',
         subtitle: 'Everything runs on this device.',
@@ -16745,19 +17586,310 @@ function utilTextImage() {
   toast('Text card ready', 'Download it below.', 'success');
 }
 
+/* ---------- Text to paper ---------- */
+const TP_RULES_KEY = 'NuVerter-textpaper-rules';
+const TP_MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+
+const TP_PRESETS = {
+  classic: {
+    label: 'Classic',
+    vals: { 'tp-font': 'Georgia, serif', 'tp-fontsize': '16', 'tp-lh': '1.6', 'tp-margin': '64', 'tp-pcolor': '#ffffff', 'tp-tcolor': '#1f2937', 'tp-hcolor': '#111827', 'tp-hstyle': 'underline', 'tp-hscale': '1', 'tp-texture': 'none', 'tp-frame': 'none', 'tp-shadow': 'soft', 'tp-linkcolor': '#2563eb', 'tp-hlcolor': '#fde68a', 'tp-divider': 'solid', 'tp-tablestyle': 'grid', 'tp-dropcap': 'off' }
+  },
+  academic: {
+    label: 'Academic',
+    vals: { 'tp-font': '"Times New Roman", Times, serif', 'tp-fontsize': '15', 'tp-lh': '1.75', 'tp-margin': '84', 'tp-pcolor': '#fffdf6', 'tp-tcolor': '#151515', 'tp-hcolor': '#000000', 'tp-hstyle': 'plain', 'tp-hscale': '0.95', 'tp-texture': 'none', 'tp-frame': 'none', 'tp-shadow': 'soft', 'tp-linkcolor': '#1d4ed8', 'tp-hlcolor': '#fef08a', 'tp-divider': 'double', 'tp-tablestyle': 'plain', 'tp-dropcap': 'on' }
+  },
+  notebook: {
+    label: 'Notebook',
+    vals: { 'tp-font': 'Inter, system-ui, sans-serif', 'tp-fontsize': '15', 'tp-lh': '1.9', 'tp-margin': '62', 'tp-pcolor': '#fffef6', 'tp-tcolor': '#1f2937', 'tp-hcolor': '#1e3a8a', 'tp-hstyle': 'bar', 'tp-hscale': '1', 'tp-texture': 'ruled', 'tp-frame': 'none', 'tp-shadow': 'soft', 'tp-linkcolor': '#2563eb', 'tp-hlcolor': '#fde68a', 'tp-divider': 'dashed', 'tp-tablestyle': 'zebra', 'tp-dropcap': 'off' }
+  },
+  typewriter: {
+    label: 'Typewriter',
+    vals: { 'tp-font': '"Courier New", ui-monospace, monospace', 'tp-fontsize': '14', 'tp-lh': '1.7', 'tp-margin': '58', 'tp-pcolor': '#fdfaf0', 'tp-tcolor': '#1c1917', 'tp-hcolor': '#1c1917', 'tp-hstyle': 'underline', 'tp-hscale': '1.05', 'tp-texture': 'grain', 'tp-frame': 'thin', 'tp-shadow': 'hard', 'tp-linkcolor': '#92400e', 'tp-hlcolor': '#fcd34d', 'tp-divider': 'dotted', 'tp-tablestyle': 'plain', 'tp-dropcap': 'off' }
+  },
+  blueprint: {
+    label: 'Blueprint',
+    vals: { 'tp-font': 'Inter, system-ui, sans-serif', 'tp-fontsize': '15', 'tp-lh': '1.65', 'tp-margin': '60', 'tp-pcolor': '#0b2545', 'tp-tcolor': '#dbeafe', 'tp-hcolor': '#93c5fd', 'tp-hstyle': 'boxed', 'tp-hscale': '1', 'tp-texture': 'graph', 'tp-frame': 'double', 'tp-shadow': 'hard', 'tp-linkcolor': '#60a5fa', 'tp-hlcolor': '#1e40af', 'tp-divider': 'dashed', 'tp-tablestyle': 'grid', 'tp-dropcap': 'off' }
+  },
+  night: {
+    label: 'Night ink',
+    vals: { 'tp-font': 'Inter, system-ui, sans-serif', 'tp-fontsize': '15', 'tp-lh': '1.7', 'tp-margin': '66', 'tp-pcolor': '#111317', 'tp-tcolor': '#e5e7eb', 'tp-hcolor': '#f9fafb', 'tp-hstyle': 'underline', 'tp-hscale': '1', 'tp-texture': 'dots', 'tp-frame': 'corners', 'tp-shadow': 'hard', 'tp-linkcolor': '#7dd3fc', 'tp-hlcolor': '#3f3f46', 'tp-divider': 'solid', 'tp-tablestyle': 'zebra', 'tp-dropcap': 'on' }
+  }
+};
+
+const TP_CALLOUT_ACCENT = {
+  note: '#3b82f6', info: '#0ea5e9', tip: '#10b981',
+  important: '#8b5cf6', warning: '#f59e0b', caution: '#ef4444'
+};
+
+function tpLum(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || ''));
+  if (!m) return 1;
+  const n = parseInt(m[1], 16);
+  return ((n >> 16 & 255) * 0.299 + (n >> 8 & 255) * 0.587 + (n & 255) * 0.114) / 255;
+}
+
+function tpRoundRect(ctx, x, y, w, h, r) {
+  const rr = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+
+function tpRuleDefaults() {
+  return { find: '', regex: false, scope: 'inline', action: 'replace', replace: '', bold: false, italic: false, color: '#e11d48', size: 100, indent: 0 };
+}
+
+function tpLoadRules() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(TP_RULES_KEY) || '[]');
+    if (!Array.isArray(raw)) return [];
+    return raw.map((r) => ({ ...tpRuleDefaults(), ...(r && typeof r === 'object' ? r : {}) }));
+  } catch { return []; }
+}
+
+function tpSaveRules(rules) {
+  try { localStorage.setItem(TP_RULES_KEY, JSON.stringify(Array.isArray(rules) ? rules : [])); } catch {}
+}
+
+function tpRuleRowHtml(rule) {
+  const r = { ...tpRuleDefaults(), ...(rule && typeof rule === 'object' ? rule : {}) };
+  const color = /^#[0-9a-f]{6}$/i.test(String(r.color || '')) ? r.color : '#e11d48';
+  return `
+    <div class="tp-rule" data-rule>
+      <div class="tp-rule-top">
+        <input class="input tp-rule-find" type="text" data-rf="find" value="${esc(r.find)}" placeholder="Find text, e.g. 1/." />
+        <label class="tp-check"><input type="checkbox" data-rf="regex" ${r.regex ? 'checked' : ''}/> regex</label>
+        <select class="select" data-rf="scope" aria-label="Where to match">
+          <option value="inline" ${r.scope !== 'line' ? 'selected' : ''}>anywhere</option>
+          <option value="line" ${r.scope === 'line' ? 'selected' : ''}>line start</option>
+        </select>
+        <select class="select" data-rf="action" aria-label="Action">
+          <option value="replace" ${r.action === 'replace' ? 'selected' : ''}>replace</option>
+          <option value="hide" ${r.action === 'hide' ? 'selected' : ''}>hide</option>
+          <option value="style" ${r.action === 'style' ? 'selected' : ''}>style</option>
+        </select>
+        <button type="button" class="icon-btn is-sm" data-action="tp-rule-remove" title="Remove rule" aria-label="Remove rule">×</button>
+      </div>
+      <div class="tp-rule-bottom">
+        <input class="input" type="text" data-rf="replace" value="${esc(r.replace)}" placeholder="replace with (empty = invisible)" />
+        <label class="tp-check"><input type="checkbox" data-rf="bold" ${r.bold ? 'checked' : ''}/> bold</label>
+        <label class="tp-check"><input type="checkbox" data-rf="italic" ${r.italic ? 'checked' : ''}/> italic</label>
+        <label class="tp-check tp-check-color">color <input type="color" data-rf="color" value="${color}" /></label>
+        <label class="tp-check">size % <input class="input tp-rule-num" type="number" min="50" max="400" step="5" data-rf="size" value="${Number(r.size) || 100}" /></label>
+        <label class="tp-check">indent px <input class="input tp-rule-num" type="number" min="0" max="400" step="4" data-rf="indent" value="${Number(r.indent) || 0}" /></label>
+      </div>
+    </div>`;
+}
+
+function tpRulesHtml() {
+  const rules = tpLoadRules();
+  return (rules.length ? rules.map(tpRuleRowHtml).join('') : '<p class="field-help tp-rules-empty">No custom rules yet. Add one to transform, hide or style any text.</p>');
+}
+
+function tpReadRules() {
+  return $$('#tp-rules [data-rule]').map((row) => {
+    const get = (k) => row.querySelector('[data-rf="' + k + '"]');
+    const findEl = get('find');
+    const replaceEl = get('replace');
+    const colorEl = get('color');
+    const sizeEl = get('size');
+    const indentEl = get('indent');
+    return {
+      find: findEl ? findEl.value : '',
+      regex: !!(get('regex') && get('regex').checked),
+      scope: get('scope') ? get('scope').value : 'inline',
+      action: get('action') ? get('action').value : 'replace',
+      replace: replaceEl ? replaceEl.value : '',
+      bold: !!(get('bold') && get('bold').checked),
+      italic: !!(get('italic') && get('italic').checked),
+      color: colorEl ? colorEl.value : '#e11d48',
+      size: sizeEl ? Number(sizeEl.value) || 100 : 100,
+      indent: indentEl ? Number(indentEl.value) || 0 : 0
+    };
+  });
+}
+
+function tpRegex(pattern, flags) {
+  try { return new RegExp(pattern, flags); } catch { return null; }
+}
+
+function tpApplyTextRules(text, rules) {
+  let lines = String(text || '').split(/\r?\n/).map((line) => ({ text: line, style: null }));
+  rules.forEach((rule) => {
+    if (!rule || !rule.find) return;
+    if (rule.scope === 'line') {
+      const out = [];
+      lines.forEach((ln) => {
+        const lead = (ln.text.match(/^\s*/) || [''])[0];
+        const body = ln.text.slice(lead.length);
+        let hit = false;
+        let rest = body;
+        if (rule.regex) {
+          const re = tpRegex(rule.find, 'i');
+          const m = re ? body.match(re) : null;
+          if (m && m.index === 0) { hit = true; rest = body.slice(m[0].length); }
+        } else if (body.startsWith(rule.find)) {
+          hit = true;
+          rest = body.slice(rule.find.length);
+        }
+        if (!hit) { out.push(ln); return; }
+        if (rule.action === 'hide') return;
+        if (rule.action === 'replace') {
+          out.push({ ...ln, text: lead + rule.replace + rest });
+          return;
+        }
+        const style = { ...(ln.style || {}) };
+        if (rule.bold) style.bold = true;
+        if (rule.italic) style.italic = true;
+        if (rule.color) style.color = rule.color;
+        if (Number(rule.size) && Number(rule.size) !== 100) style.size = Number(rule.size) / 100;
+        if (Number(rule.indent)) style.indent = (style.indent || 0) + Number(rule.indent);
+        out.push({ ...ln, text: lead + rest.replace(/^[ \t]+/, ''), style });
+      });
+      lines = out;
+      return;
+    }
+    if (rule.action === 'style') return;
+    const replacement = rule.action === 'hide' ? '' : rule.replace;
+    lines.forEach((ln) => {
+      if (rule.regex) {
+        const re = tpRegex(rule.find, 'gi');
+        if (re) ln.text = ln.text.replace(re, replacement);
+      } else {
+        ln.text = ln.text.split(rule.find).join(replacement);
+      }
+    });
+  });
+  return lines;
+}
+
+function tpInlineRanges(str, rules) {
+  const ranges = [];
+  rules.forEach((rule) => {
+    if (!rule || rule.scope === 'line' || rule.action !== 'style' || !rule.find) return;
+    const push = (start, end) => {
+      if (end <= start) return;
+      ranges.push({
+        start, end,
+        style: {
+          bold: !!rule.bold,
+          italic: !!rule.italic,
+          color: rule.color || '',
+          size: (Number(rule.size) || 100) / 100
+        }
+      });
+    };
+    if (rule.regex) {
+      const re = tpRegex(rule.find, 'gi');
+      if (!re) return;
+      let m, guard = 0;
+      while ((m = re.exec(str)) !== null && guard++ < 500) {
+        if (!m[0]) { re.lastIndex++; continue; }
+        push(m.index, m.index + m[0].length);
+      }
+    } else {
+      let idx = str.indexOf(rule.find), guard = 0;
+      while (idx !== -1 && guard++ < 500) {
+        push(idx, idx + rule.find.length);
+        idx = str.indexOf(rule.find, idx + rule.find.length);
+      }
+    }
+  });
+  return ranges;
+}
+
+function tpInlineBuiltin(chunk, base, linkColor) {
+  const segs = [];
+  if (!chunk) return segs;
+  const push = (t, extra) => { if (t) segs.push({ t, ...base, ...(extra || {}) }); };
+  const re = /(\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|`[^`]+`|==[^=]+==|\[[^\]]+\]\([^)]+\)|\*[^*]+\*|_[^_]+_)/g;
+  let last = 0, m;
+  while ((m = re.exec(chunk)) !== null) {
+    if (m.index > last) push(chunk.slice(last, m.index));
+    const tok = m[0];
+    if (tok.startsWith('**') || tok.startsWith('__')) push(tok.slice(2, -2), { bold: true });
+    else if (tok.startsWith('~~')) push(tok.slice(2, -2), { strike: true });
+    else if (tok.startsWith('`')) push(tok.slice(1, -1), { code: true });
+    else if (tok.startsWith('==')) push(tok.slice(2, -2), { hl: true });
+    else if (tok.startsWith('[')) {
+      const lm = tok.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+      if (lm) push(lm[1], { underline: true, link: lm[2], color: linkColor });
+      else push(tok);
+    } else push(tok.slice(1, -1), { italic: true });
+    last = m.index + tok.length;
+  }
+  if (last < chunk.length) push(chunk.slice(last));
+  if (!segs.length) push(chunk);
+  return segs;
+}
+
+function tpParseInline(str, rules, base, useMd, linkColor) {
+  const text = String(str || '');
+  const ranges = tpInlineRanges(text, rules);
+  const bounds = new Set([0, text.length]);
+  ranges.forEach((r) => { bounds.add(r.start); bounds.add(r.end); });
+  const stops = Array.from(bounds).filter((n) => n >= 0 && n <= text.length).sort((a, b) => a - b);
+  const segs = [];
+  for (let i = 0; i < stops.length - 1; i++) {
+    const start = stops[i];
+    const end = stops[i + 1];
+    if (end <= start) continue;
+    const style = { ...(base || {}) };
+    ranges.forEach((r) => {
+      if (r.start <= start && r.end >= end) {
+        if (r.style.bold) style.bold = true;
+        if (r.style.italic) style.italic = true;
+        if (r.style.color) style.color = r.style.color;
+        if (r.style.size && r.style.size !== 1) style.size = (style.size || 1) * r.style.size;
+      }
+    });
+    const chunk = text.slice(start, end);
+    if (useMd) tpInlineBuiltin(chunk, style, linkColor).forEach((s) => segs.push(s));
+    else segs.push({ t: chunk, ...style });
+  }
+  if (!segs.length) segs.push({ t: text, ...(base || {}) });
+  return segs;
+}
+
+function tpParseTableAt(styled, si) {
+  const line = String(styled[si]?.text || '').replace(/\s+$/, '');
+  if (!/^\s*\|.*\|/.test(line) || si + 1 >= styled.length) return null;
+  const sep = String(styled[si + 1].text || '').trim();
+  if (!/^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?$/.test(sep) || !sep.includes('-')) return null;
+  const cells = (l) => String(l).trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+  const header = cells(line);
+  const aligns = cells(sep).map((c) => (/^:-+:$/.test(c) ? 'center' : /^-+:$/.test(c) ? 'right' : 'left'));
+  const rows = [];
+  let ti = si + 2;
+  while (ti < styled.length) {
+    const rowLine = String(styled[ti].text || '').trim();
+    if (!rowLine || !/^\|.*\|?$/.test(rowLine)) break;
+    rows.push(cells(rowLine));
+    ti++;
+  }
+  return { item: { type: 'table', header, rows, aligns }, next: ti - 1 };
+}
+
 function utilTextPaper() {
   const val = (k, d) => { const el = document.querySelector('[data-util="' + k + '"]'); return el ? el.value : d; };
   const text = val('tp-text', '');
   if (!text.trim()) { toast('No text', 'Type something first.', 'error'); return; }
+  const rules = tpReadRules();
+  tpSaveRules(rules);
+
   const sizeSel = val('tp-size', 'a4');
   let W = 794, H = 1123;
   if (sizeSel === 'a4') { W = 794; H = 1123; }
   else if (sizeSel === 'letter') { W = 816; H = 1056; }
   else if (sizeSel === 'a5') { W = 559; H = 794; }
-  else { W = Number(val('tp-cw', 794)); H = Number(val('tp-ch', 1123)); }
-  const margin = Number(val('tp-margin', 64));
-  const gap = Number(val('tp-gap', 6));
-  const pg = Number(val('tp-pg', 8));
+  else { W = Number(val('tp-cw', 794)) || 794; H = Number(val('tp-ch', 1123)) || 1123; }
+  const margin = Number(val('tp-margin', 64)) || 0;
+  const pg = Number(val('tp-pg', 8)) || 0;
   const font = val('tp-font', 'Georgia, serif');
   const fontSize = Number(val('tp-fontsize', 16)) || 16;
   const lh = Number(val('tp-lh', 1.6)) || 1.6;
@@ -16768,314 +17900,834 @@ function utilTextPaper() {
   const shadow = val('tp-shadow', 'soft');
   const watermark = val('tp-watermark', '');
 
-  // Parse into blocks
-  const lines = text.split(/\n/);
-  const blocks = []; // each: { type: 'h1'|'h2'|'h3'|'p'|'li'|'hr', text }
-  lines.forEach((raw) => {
-    const line = raw.trimEnd();
-    if (md && /^#{1,3}\s/.test(line)) {
-      const level = (line.match(/^#+/) || [''])[0].length;
-      blocks.push({ type: 'h' + level, text: line.replace(/^#+\s*/, '') });
-    } else if (md && /^(-{3,}|\*{3,})$/.test(line.trim())) {
-      blocks.push({ type: 'hr', text: '' });
-    } else if (md && /^[-*]\s/.test(line)) {
-      blocks.push({ type: 'li', text: line.replace(/^[-*]\s+/, '') });
-    } else if (line.trim() === '') {
-      blocks.push({ type: 'br', text: '' });
-    } else {
-      blocks.push({ type: 'p', text: line });
-    }
-  });
+  const headingStyle = val('tp-hstyle', 'plain');
+  const headingScale = Number(val('tp-hscale', 1)) || 1;
+  const headingColor = val('tp-hcolor', '#111827') || '#111827';
+  const bulletChar = val('tp-bullet', '•') || '•';
+  const numSuffix = val('tp-numsuffix', '.');
+  const highlightColor = val('tp-hlcolor', '#fde68a') || '#fde68a';
+  const linkColor = val('tp-linkcolor', '#2563eb') || '#2563eb';
+  const texture = val('tp-texture', 'none');
+  const frame = val('tp-frame', 'none');
+  const divider = val('tp-divider', 'solid');
+  const tableStyle = val('tp-tablestyle', 'grid');
+  const dropCap = val('tp-dropcap', 'off') === 'on';
+  const headerText = val('tp-header', '');
+  const footerText = val('tp-footer', '');
+  const pageNums = val('tp-pagenums', 'none');
 
-  const lineH = fontSize * lh;
-  const maxW = W - margin * 2;
+  const maxW = Math.max(80, W - margin * 2);
+  const styled = tpApplyTextRules(text, rules);
 
-  function inlineSegments(str) {
-    // split into bold/italic segments
-    const segs = [];
-    const regex = /(\*\*[^*]+\*\*|\*[^*]+\*|_[^_]+_)/g;
-    let last = 0;
-    let m;
-    while ((m = regex.exec(str)) !== null) {
-      if (m.index > last) segs.push({ t: str.slice(last, m.index), b: false, i: false });
-      const tok = m[0];
-      if (tok.startsWith('**')) segs.push({ t: tok.slice(2, -2), b: true, i: false });
-      else segs.push({ t: tok.slice(1, -1), b: false, i: true });
-      last = m.index + tok.length;
+  /* ---- parse blocks ---- */
+  const items = [];
+  let inCode = false, codeLines = [], codeBlockStyle = null;
+  const flushCode = () => {
+    if (!inCode) return;
+    items.push({ type: 'code', lines: codeLines, style: codeBlockStyle });
+    inCode = false; codeLines = []; codeBlockStyle = null;
+  };
+
+  for (let si = 0; si < styled.length; si++) {
+    const { text: raw, style } = styled[si];
+    const line = String(raw || '').replace(/\s+$/, '');
+    if (md && /^\s*```/.test(line)) {
+      if (inCode) flushCode();
+      else { inCode = true; codeLines = []; codeBlockStyle = style; }
+      continue;
     }
-    if (last < str.length) segs.push({ t: str.slice(last), b: false, i: false });
-    if (!segs.length) segs.push({ t: str, b: false, i: false });
-    return segs;
+    if (inCode) { codeLines.push(line); continue; }
+    if (!line.trim()) { items.push({ type: 'space' }); continue; }
+
+    const lead = (line.match(/^\s*/) || [''])[0];
+    const depth = Math.min(6, Math.floor(lead.replace(/\t/g, '  ').length / 2));
+    const body = line.slice(lead.length);
+    const indent = depth * fontSize * 0.85;
+
+    if (md) {
+      const table = tpParseTableAt(styled, si);
+      if (table) {
+        items.push(table.item);
+        si = table.next;
+        continue;
+      }
+      const hm = body.match(/^(#{1,6})\s+(.*)$/);
+      if (hm) { items.push({ type: 'heading', level: Math.min(6, hm[1].length), text: hm[2], indent, style }); continue; }
+      if (/^(-{3,}|\*{3,}|_{3,})$/.test(body.trim())) { items.push({ type: 'hr' }); continue; }
+      const callout = body.match(/^>\s*\[!(note|tip|important|warning|caution|info)\]\s*(.*)$/i);
+      if (callout) {
+        const kind = callout[1].toLowerCase();
+        const bodyLines = [];
+        let stopAt = si;
+        for (let ci = si + 1; ci < styled.length; ci++) {
+          const qm = String(styled[ci].text || '').replace(/\s+$/, '').match(/^\s*>\s?(.*)$/);
+          if (!qm) break;
+          if (qm[1].trim()) bodyLines.push(qm[1]);
+          stopAt = ci;
+        }
+        items.push({ type: 'callout', kind, title: callout[2] || kind.charAt(0).toUpperCase() + kind.slice(1), lines: bodyLines, indent, style });
+        si = stopAt;
+        continue;
+      }
+      const task = body.match(/^[-*+]\s+\[([ xX])\]\s+(.*)$/);
+      if (task) { items.push({ type: 'list', marker: task[1].trim() ? '☑' : '☐', text: task[2], indent, style }); continue; }
+      const ord = body.match(/^(\d+)(?:[.)]|\/\.)\s+(.*)$/);
+      if (ord) { items.push({ type: 'list', marker: ord[1] + numSuffix, text: ord[2], indent, style, ordered: true }); continue; }
+      const bul = body.match(/^[-*+]\s+(.*)$/);
+      if (bul) { items.push({ type: 'list', marker: bulletChar, text: bul[1], indent, style }); continue; }
+      const quote = body.match(/^>\s?(.*)$/);
+      if (quote) { items.push({ type: 'quote', text: quote[1], indent, style }); continue; }
+    }
+    items.push({ type: 'p', text: body, indent, style });
   }
+  flushCode();
 
-  function measureSegs(ctx, segs, size, bold) {
+  /* ---- measurement + wrapping ---- */
+  const tmp = document.createElement('canvas').getContext('2d');
+  const segSize = (seg, base) => base * (Number(seg.size) || 1);
+  const segFont = (seg, base, bold) => {
+    const bits = ((seg.bold || bold) ? 'bold ' : '') + (seg.italic ? 'italic ' : '');
+    return bits + segSize(seg, base) + 'px ' + (seg.code ? TP_MONO : font);
+  };
+  const measureSegs = (segs, base, bold) => {
     let w = 0;
-    segs.forEach((s) => {
-      ctx.font = (s.b || bold ? 'bold ' : '') + (s.i ? 'italic ' : '') + size + 'px ' + font;
-      w += ctx.measureText(s.t).width;
-    });
+    segs.forEach((s) => { tmp.font = segFont(s, base, bold); w += tmp.measureText(s.t).width; });
     return w;
-  }
-
-  function wrapSegments(ctx, segs, size, bold, maxWidth) {
-    // returns array of lines, each line is array of {t,b,i}
-    const linesOut = [];
-    let current = [];
-    let currentW = 0;
-    // flatten words
+  };
+  const wrapSegs = (segs, base, bold, maxWidth) => {
+    const out = [];
     const words = [];
+    let cur = [], curW = 0;
     segs.forEach((s) => {
-      s.t.split(/(\s+)/).forEach((part) => {
+      String(s.t).split(/(\s+)/).forEach((part) => {
         if (part === '') return;
-        words.push({ t: part, b: s.b, i: s.i, space: /^\s+$/.test(part) });
+        words.push({ ...s, t: part, space: /^\s+$/.test(part) });
       });
     });
+    const widthOf = (w) => { tmp.font = segFont(w, base, bold); return tmp.measureText(w.t).width; };
     words.forEach((w) => {
-      ctx.font = (w.b || bold ? 'bold ' : '') + (w.i ? 'italic ' : '') + size + 'px ' + font;
-      let ww = ctx.measureText(w.t).width;
+      const mw = typeof maxWidth === 'function' ? maxWidth(out.length) : maxWidth;
+      const ww = widthOf(w);
       if (w.space) {
-        if (current.length && currentW + ww > maxWidth) {
-          linesOut.push(current); current = []; currentW = 0;
-        } else {
-          if (current.length) { current.push(w); currentW += ww; }
-        }
+        if (!cur.length) return;
+        if (curW + ww > mw) { out.push(cur); cur = []; curW = 0; }
+        else { cur.push(w); curW += ww; }
         return;
       }
-      if (ww > maxWidth) {
+      if (ww > mw) {
+        let chunk = '', chunkW = 0;
         const chunks = [];
-        let chunk = '';
-        let chunkW = 0;
         for (const ch of w.t) {
-          ctx.font = (w.b || bold ? 'bold ' : '') + (w.i ? 'italic ' : '') + size + 'px ' + font;
-          const cw = ctx.measureText(ch).width;
-          if (chunk && chunkW + cw > maxWidth) {
-            chunks.push({ t: chunk, b: w.b, i: w.i, space: false });
-            chunk = ch; chunkW = cw;
-          } else {
-            chunk += ch; chunkW += cw;
-          }
+          const cw = widthOf({ ...w, t: ch });
+          if (chunk && chunkW + cw > mw) { chunks.push({ ...w, t: chunk }); chunk = ch; chunkW = cw; }
+          else { chunk += ch; chunkW += cw; }
         }
-        if (chunk) chunks.push({ t: chunk, b: w.b, i: w.i, space: false });
+        if (chunk) chunks.push({ ...w, t: chunk });
         chunks.forEach((ch) => {
-          ctx.font = (ch.b || bold ? 'bold ' : '') + (ch.i ? 'italic ' : '') + size + 'px ' + font;
-          const cw = ctx.measureText(ch.t).width;
-          if (current.length && currentW + cw > maxWidth) {
-            linesOut.push(current); current = [ch]; currentW = cw;
-          } else {
-            current.push(ch); currentW += cw;
-          }
+          const cw = widthOf(ch);
+          if (cur.length && curW + cw > mw) { out.push(cur); cur = [ch]; curW = cw; }
+          else { cur.push(ch); curW += cw; }
         });
         return;
       }
-      if (current.length && currentW + ww > maxWidth) {
-        linesOut.push(current); current = [w]; currentW = ww;
-      } else {
-        current.push(w); currentW += ww;
-      }
+      if (cur.length && curW + ww > mw) { out.push(cur); cur = [w]; curW = ww; }
+      else { cur.push(w); curW += ww; }
     });
-    if (current.length) linesOut.push(current);
-    if (!linesOut.length) linesOut.push([]);
-    return linesOut;
-  }
+    if (cur.length) out.push(cur);
+    if (!out.length) out.push([]);
+    return out;
+  };
+  const baseSegStyle = (style) => {
+    const base = {};
+    if (style && style.bold) base.bold = true;
+    if (style && style.italic) base.italic = true;
+    if (style && style.color) base.color = style.color;
+    return base;
+  };
 
-  // Build render instructions: list of "items" each with size, bold, type, and text segments
-  const items = [];
-  blocks.forEach((b) => {
-    if (b.type === 'br') { items.push({ type: 'br' }); return; }
-    if (b.type === 'hr') { items.push({ type: 'hr' }); return; }
-    let size = fontSize;
-    let bold = false;
-    let indent = 0;
-    if (b.type === 'h1') { size = fontSize * 2; bold = true; }
-    else if (b.type === 'h2') { size = fontSize * 1.5; bold = true; }
-    else if (b.type === 'h3') { size = fontSize * 1.25; bold = true; }
-    else if (b.type === 'li') { indent = fontSize * 1.2; }
-    const segs = inlineSegments(b.text);
-    items.push({ type: b.type, size, bold, indent, segs });
-  });
-
-  // Paginate
-  const pages = []; // each: array of draw ops
-  let currentOps = [];
-  let y = margin;
-  function newPage() { if (currentOps.length) pages.push(currentOps); currentOps = []; y = margin; }
-  function ensureSpace(h) { if (y + h > H - margin) newPage(); }
-
-  // We need ctx for measureText; create temp
-  const tmp = document.createElement('canvas').getContext('2d');
-  // Redo pagination with tmp ctx
-  const pages2 = [];
+  /* ---- paginate ---- */
+  const pages = [];
   let ops = [];
-  let yy = margin;
-  function newPage2() { if (ops.length) pages2.push(ops); ops = []; yy = margin; }
-  function ensure2(h) { if (yy + h > H - margin) newPage2(); }
+  let y = margin;
+  let dropDone = false;
+  const pageBottom = H - margin;
+  const newPage = () => { if (ops.length) { pages.push(ops); ops = []; } y = margin; };
+  const ensure = (h) => { if (y + h > pageBottom && y > margin + 1) newPage(); };
 
   items.forEach((it) => {
-    if (it.type === 'br') { yy += (fontSize * 0.6); return; }
-    if (it.type === 'hr') { ensure2(fontSize); ops.push({ type: 'hr', y: yy, indent: 0 }); yy += fontSize * 0.8; return; }
-    const size = it.size;
-    const lh2 = size * lh;
-    const indent = it.indent || 0;
-    const maxW2 = maxW - indent;
-    const wrapped = wrapSegments(tmp, it.segs, size, it.bold, maxW2);
-    wrapped.forEach((wline, wi) => {
-      ensure2(lh2);
-      ops.push({ type: 'text', y: yy, size, bold: it.bold, indent, segs: wline });
-      yy += lh2;
-    });
-    // paragraph spacing after p
-    if (it.type === 'p' || it.type === 'li') yy += pg;
-  });
-  if (ops.length) pages2.push(ops);
+    if (it.type === 'space') { y += fontSize * 0.65; return; }
+    if (it.type === 'hr') { ensure(fontSize); ops.push({ type: 'hr', y, style: divider }); y += fontSize * 0.9; return; }
 
-  // Render each page
-  const out = document.getElementById('util-tp-out');
-  if (out) {
-    out.innerHTML = '';
-    const shadowCss = shadow === 'hard' ? '8px 8px 0 rgba(0,0,0,.35)' : shadow === 'soft' ? '0 10px 30px rgba(0,0,0,.25)' : 'none';
-    pages2.forEach((pageOps, pi) => {
-      const canvas = document.createElement('canvas');
-      canvas.width = W; canvas.height = H;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = pcolor;
-      ctx.fillRect(0, 0, W, H);
-      // texture
-      ctx.fillStyle = 'rgba(0,0,0,0.02)';
-      for (let i = 0; i < 2000; i++) ctx.fillRect(Math.random() * W, Math.random() * H, 1, 1);
-      // watermark
-      if (watermark) {
-        ctx.save();
-        ctx.globalAlpha = 0.08;
-        ctx.font = (fontSize * 2) + 'px ' + font;
-        ctx.fillStyle = tcolor;
-        ctx.translate(W / 2, H / 2);
-        ctx.rotate(-Math.PI / 6);
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(watermark, 0, 0);
-        ctx.restore();
-      }
-      pageOps.forEach((op) => {
-        if (op.type === 'hr') {
-          ctx.strokeStyle = tcolor;
-          ctx.globalAlpha = 0.3;
-          ctx.beginPath();
-          ctx.moveTo(margin, op.y + fontSize * 0.4);
-          ctx.lineTo(W - margin, op.y + fontSize * 0.4);
-          ctx.stroke();
-          ctx.globalAlpha = 1;
-          return;
-        }
-        ctx.textBaseline = 'top';
-        const x0 = margin + op.indent;
-        const maxW2 = maxW - op.indent;
-        // measure line width
-        let lineW = 0;
-        op.segs.forEach((s) => {
-          ctx.font = (s.b || op.bold ? 'bold ' : '') + (s.i ? 'italic ' : '') + op.size + 'px ' + font;
-          lineW += ctx.measureText(s.t).width;
-        });
-        let x = x0;
-        if (align === 'center') x = margin + (maxW - lineW) / 2 + op.indent / 2;
-        else if (align === 'right') x = W - margin - lineW;
-        // justify: add spacing between words
-        let extra = 0;
-        const words = op.segs.filter((s) => !/^\s+$/.test(s.t));
-        const spaces = op.segs.filter((s) => /^\s+$/.test(s.t)).length;
-        if (align === 'justify' && spaces > 0) extra = (maxW2 - lineW) / spaces;
-        ctx.fillStyle = tcolor;
-        op.segs.forEach((s) => {
-          ctx.font = (s.b || op.bold ? 'bold ' : '') + (s.i ? 'italic ' : '') + op.size + 'px ' + font;
-          if (/^\s+$/.test(s.t)) {
-            x += ctx.measureText(s.t).width + extra;
-          } else {
-            ctx.fillText(s.t, x, op.y);
-            x += ctx.measureText(s.t).width;
-          }
+    if (it.type === 'code') {
+      const cSize = Math.max(8, fontSize * 0.9);
+      const cH = cSize * 1.55;
+      y += cSize * 0.5;
+      (it.lines.length ? it.lines : ['']).forEach((codeLine) => {
+        const wrapped = wrapSegs([{ t: codeLine || ' ', code: true }], cSize, false, Math.max(40, maxW - 16));
+        wrapped.forEach((segLine) => {
+          ensure(cH);
+          ops.push({ type: 'code', y, size: cSize, indent: 0, segs: segLine });
+          y += cH;
         });
       });
-      const url = canvas.toDataURL('image/png');
-      const wrap = document.createElement('div');
-      wrap.style.cssText = 'display:inline-block;margin:8px;padding:16px;background:repeating-conic-gradient(#d1d5db 0% 25%, #f9fafb 0% 50%) 50% / 20px 20px;border-radius:8px;';
-      const img = document.createElement('img');
-      img.src = url;
-      img.style.cssText = 'max-width:100%;box-shadow:' + shadowCss + ';';
-      wrap.appendChild(img);
-      const label = document.createElement('div');
-      label.textContent = 'Page ' + (pi + 1) + ' of ' + pages2.length;
-      label.style.cssText = 'text-align:center;font-size:11px;color:#666;margin-top:4px;';
-      wrap.appendChild(label);
-      const a = document.createElement('a');
-      a.href = url; a.download = 'text-to-paper-' + (pi + 1) + '.png'; a.className = 'btn btn-secondary btn-sm'; a.textContent = 'Download page ' + (pi + 1);
-      a.style.cssText = 'margin:8px auto 0;display:inline-flex;';
-      wrap.appendChild(a);
-      out.appendChild(wrap);
-    });
-    if (pages2.length > 1) {
-      const note = document.createElement('p');
-      note.className = 'field-help';
-      note.style.marginTop = '8px';
-      note.textContent = pages2.length + ' pages generated. Download each page separately.';
-      out.appendChild(note);
+      y += cSize * 0.5 + pg * 0.5;
+      return;
     }
+
+    if (it.type === 'table') {
+      const tSize = Math.max(8, fontSize * 0.92);
+      const cols = Math.max(1, it.header.length, ...it.rows.map((r) => r.length));
+      const allRows = [it.header, ...it.rows].map((r) => Array.from({ length: cols }, (_, i) => String(r[i] || '')));
+      const padX = 6, padY = 4;
+      const natural = Array(cols).fill(24);
+      allRows.forEach((r, ri) => {
+        r.forEach((c, ci) => {
+          tmp.font = (ri === 0 ? 'bold ' : '') + tSize + 'px ' + font;
+          natural[ci] = Math.max(natural[ci], Math.min(maxW * .55, tmp.measureText(c).width + padX * 2));
+        });
+      });
+      const totalNat = natural.reduce((a, b) => a + b, 0);
+      const scale = totalNat > maxW ? maxW / totalNat : 1;
+      const colW = natural.map((w) => Math.max(48, w * scale));
+      const totalW = colW.reduce((a, b) => a + b, 0);
+      if (totalW > maxW) { const k = maxW / totalW; for (let ci = 0; ci < cols; ci++) colW[ci] = Math.max(36, colW[ci] * k); }
+      const rowSegs = allRows.map((r, ri) => r.map((c) => tpParseInline(c, rules, ri === 0 ? { bold: true } : {}, md, linkColor)));
+      const rowLines = rowSegs.map((cells, ri) => cells.map((segs, ci) => wrapSegs(segs, tSize, ri === 0, Math.max(20, colW[ci] - padX * 2))));
+      const rowH = rowLines.map((lines) => Math.max(1, ...lines.map((l) => l.length)) * tSize * 1.35 + padY * 2);
+      y += tSize * 0.4;
+      ensure(rowH[0] + (rowH[1] || 0));
+      rowLines.forEach((cells, ri) => {
+        ensure(rowH[ri]);
+        ops.push({ type: 'table-row', y, x: margin, colW: [...colW], aligns: it.aligns, header: ri === 0, cells, height: rowH[ri], size: tSize, style: tableStyle, zebra: ri % 2 === 1 });
+        y += rowH[ri];
+      });
+      y += pg;
+      return;
+    }
+
+    if (it.type === 'heading') {
+      const scales = [2, 1.55, 1.3, 1.15, 1.06, 1];
+      const custom = it.style && it.style.size ? it.style.size : 1;
+      const size = fontSize * scales[it.level - 1] * headingScale * custom;
+      const h = size * Math.max(1.15, lh);
+      const segs = tpParseInline(it.text, rules, baseSegStyle(it.style), md, linkColor);
+      const wrapped = wrapSegs(segs, size, true, Math.max(40, maxW - it.indent));
+      wrapped.forEach((segLine, wi) => {
+        ensure(h + fontSize * 0.2);
+        ops.push({
+          type: 'text', y, size, indent: it.indent, segs: segLine, bold: true,
+          align: 'left', heading: headingStyle,
+          color: (it.style && it.style.color) || headingColor,
+          lastLine: wi === wrapped.length - 1
+        });
+        y += h;
+      });
+      y += fontSize * 0.45;
+      return;
+    }
+
+    if (it.type === 'callout') {
+      const cSize = fontSize * 0.96;
+      const cLh = cSize * lh;
+      const cPadX = 14, cPadY = 9;
+      const titleSize = Math.max(8, cSize * 0.8);
+      const innerW = Math.max(60, maxW - cPadX - 22);
+      const lineSets = it.lines.map((ln) => wrapSegs(tpParseInline(ln, rules, baseSegStyle(it.style), md, linkColor), cSize, false, innerW));
+      let boxH = cPadY + titleSize * 1.7 + 4 + cPadY * 0.5;
+      lineSets.forEach((ls) => { boxH += ls.length * cLh; });
+      boxH += cPadY;
+      y += fontSize * 0.35;
+      ensure(boxH);
+      const topY = y;
+      ops.push({ type: 'callout-head', y: topY, height: boxH, kind: it.kind, title: it.title, size: titleSize });
+      let ty = topY + cPadY + titleSize * 1.7;
+      lineSets.forEach((ls) => {
+        ls.forEach((segLine, li) => {
+          ops.push({
+            type: 'text', y: ty, size: cSize, indent: cPadX + 4, quote: false,
+            segs: segLine, bold: false, align: 'left',
+            prefix: '', prefixW: 0, lastLine: li === ls.length - 1
+          });
+          ty += cLh;
+        });
+      });
+      y = topY + boxH + pg;
+      return;
+    }
+
+    const size = fontSize * (it.style && it.style.size ? it.style.size : 1);
+    const lineH = size * lh;
+    const baseBold = !!(it.style && it.style.bold);
+    let paraText = String(it.text || '');
+    let capCh = '';
+    if (dropCap && !dropDone && it.type === 'p' && /^[A-Za-z0-9\u00C0-\u024F]/.test(paraText) && paraText.length > 2) {
+      capCh = paraText[0];
+      paraText = paraText.slice(1);
+      dropDone = true;
+    }
+    const segs = tpParseInline(paraText, rules, baseSegStyle(it.style), md, linkColor);
+    const isQuote = it.type === 'quote';
+    const quoteIndent = isQuote ? 14 : 0;
+    const prefix = it.type === 'list' ? String(it.marker || '') + ' ' : '';
+    tmp.font = (baseBold ? 'bold ' : '') + size + 'px ' + font;
+    const prefixW = prefix ? tmp.measureText(prefix).width : 0;
+    const baseIndent = it.indent || 0;
+    let capSize = 0, capW = 0, capLines = 0;
+    if (capCh) {
+      capSize = size * 2.9;
+      capLines = Math.max(1, Math.round(capSize / lineH));
+      tmp.font = 'bold ' + capSize + 'px ' + font;
+      capW = tmp.measureText(capCh).width + size * 0.3;
+    }
+    const avail = maxW - baseIndent - quoteIndent - prefixW;
+    const wrapped = wrapSegs(segs, size, baseBold, (li) => Math.max(30, avail - (li < capLines ? capW : 0)));
+    wrapped.forEach((segLine, wi) => {
+      ensure(wi === 0 ? Math.max(lineH, capCh ? capSize + size * 0.15 : lineH) : lineH);
+      if (wi === 0 && capCh) {
+        ops.push({ type: 'dropcap', ch: capCh, y, size: capSize, color: headingColor });
+      }
+      ops.push({
+        type: 'text', y, size, indent: baseIndent + (capCh && wi < capLines ? capW : 0), quote: isQuote,
+        segs: segLine, bold: baseBold, color: it.style && it.style.color,
+        prefix: wi === 0 ? prefix : '', prefixW, align,
+        lastLine: wi === wrapped.length - 1
+      });
+      y += lineH;
+    });
+    y += it.type === 'list' ? pg * 0.55 : pg;
+  });
+  if (ops.length) pages.push(ops);
+  if (!pages.length) pages.push([]);
+
+  /* ---- draw ---- */
+  const out = document.getElementById('util-tp-out');
+  if (!out) return;
+  out.innerHTML = '';
+  const shadowCss = shadow === 'hard' ? '8px 8px 0 rgba(0,0,0,.35)' : shadow === 'soft' ? '0 10px 30px rgba(0,0,0,.25)' : 'none';
+
+  const todayStr = new Date().toLocaleDateString();
+  const darkPaper = tpLum(pcolor) < 0.5;
+
+  pages.forEach((pageOps, pi) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = pcolor;
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = darkPaper ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)';
+    for (let i = 0; i < 2000; i++) ctx.fillRect(Math.random() * W, Math.random() * H, 1, 1);
+
+    const gridCol = darkPaper ? 'rgba(255,255,255,.09)' : 'rgba(0,0,0,.065)';
+    const gridColStrong = darkPaper ? 'rgba(255,255,255,.18)' : 'rgba(0,0,0,.13)';
+    const innerTop = margin * 0.55, innerBot = H - margin * 0.55;
+    if (texture === 'ruled' || texture === 'graph' || texture === 'dots' || texture === 'grain') {
+      ctx.save();
+      ctx.lineWidth = 1;
+      if (texture === 'ruled') {
+        const step = Math.max(16, Math.round(fontSize * lh));
+        ctx.strokeStyle = gridCol;
+        for (let ly = Math.round(margin); ly <= innerBot; ly += step) {
+          ctx.beginPath(); ctx.moveTo(margin * 0.55, ly + .5); ctx.lineTo(W - margin * 0.55, ly + .5); ctx.stroke();
+        }
+      } else if (texture === 'graph') {
+        const step = 22;
+        for (let k = 0, lx = margin * 0.55; lx <= W - margin * 0.55; lx += step, k++) {
+          ctx.strokeStyle = k % 5 === 0 ? gridColStrong : gridCol;
+          ctx.beginPath(); ctx.moveTo(lx + .5, innerTop); ctx.lineTo(lx + .5, innerBot); ctx.stroke();
+        }
+        for (let k = 0, ly = innerTop; ly <= innerBot; ly += step, k++) {
+          ctx.strokeStyle = k % 5 === 0 ? gridColStrong : gridCol;
+          ctx.beginPath(); ctx.moveTo(margin * 0.55, ly + .5); ctx.lineTo(W - margin * 0.55, ly + .5); ctx.stroke();
+        }
+      } else if (texture === 'dots') {
+        const step = 24;
+        ctx.fillStyle = gridColStrong;
+        for (let ly = innerTop; ly <= innerBot; ly += step) {
+          for (let lx = margin * 0.55; lx <= W - margin * 0.55; lx += step) ctx.fillRect(lx, ly, 1.6, 1.6);
+        }
+      } else {
+        ctx.fillStyle = darkPaper ? 'rgba(255,255,255,.05)' : 'rgba(0,0,0,.045)';
+        for (let i = 0; i < 14000; i++) ctx.fillRect(Math.random() * W, Math.random() * H, 1, 1);
+      }
+      ctx.restore();
+    }
+
+    if (frame !== 'none') {
+      const inset = Math.max(12, margin * 0.36);
+      ctx.save();
+      ctx.strokeStyle = tcolor;
+      ctx.globalAlpha = 0.42;
+      ctx.lineWidth = 1;
+      if (frame === 'thin' || frame === 'double') {
+        ctx.strokeRect(inset + .5, inset + .5, W - inset * 2 - 1, H - inset * 2 - 1);
+      }
+      if (frame === 'double') {
+        ctx.strokeRect(inset + 3.5, inset + 3.5, W - inset * 2 - 7, H - inset * 2 - 7);
+      }
+      if (frame === 'corners') {
+        const len = Math.min(46, Math.max(24, margin * 0.6));
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(inset, inset + len); ctx.lineTo(inset, inset); ctx.lineTo(inset + len, inset);
+        ctx.moveTo(W - inset - len, inset); ctx.lineTo(W - inset, inset); ctx.lineTo(W - inset, inset + len);
+        ctx.moveTo(inset, H - inset - len); ctx.lineTo(inset, H - inset); ctx.lineTo(inset + len, H - inset);
+        ctx.moveTo(W - inset - len, H - inset); ctx.lineTo(W - inset, H - inset); ctx.lineTo(W - inset, H - inset - len);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    const hfSize = Math.max(8, Math.round(fontSize * 0.72));
+    const hfSub = (s) => String(s || '')
+      .replace(/\{page\}/gi, String(pi + 1))
+      .replace(/\{pages\}/gi, String(pages.length))
+      .replace(/\{date\}/gi, todayStr);
+    ctx.save();
+    ctx.font = hfSize + 'px ' + font;
+    ctx.fillStyle = tcolor;
+    ctx.globalAlpha = 0.6;
+    const hfPad = Math.max(11, margin * 0.42);
+    if (String(headerText).trim()) {
+      ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      ctx.fillText(hfSub(headerText), margin, hfPad);
+    }
+    if (String(footerText).trim()) {
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.fillText(hfSub(footerText), margin, H - hfPad);
+    }
+    if (pageNums !== 'none') {
+      const label = pageNums === 'x-of-y' ? (pi + 1) + ' / ' + pages.length : 'Page ' + (pi + 1) + ' of ' + pages.length;
+      ctx.globalAlpha = 0.7;
+      if (pageNums === 'top-right') {
+        ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+        ctx.fillText(label, W - margin, hfPad);
+      } else if (pageNums === 'bottom-right') {
+        ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic';
+        ctx.fillText(label, W - margin, H - hfPad);
+      } else if (pageNums === 'bottom-left') {
+        ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+        ctx.fillText(label, margin, H - hfPad);
+      } else {
+        ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+        ctx.fillText(label, W / 2, H - hfPad);
+      }
+    }
+    ctx.restore();
+
+    if (watermark) {
+      ctx.save();
+      ctx.globalAlpha = 0.08;
+      ctx.font = (fontSize * 2) + 'px ' + font;
+      ctx.fillStyle = tcolor;
+      ctx.translate(W / 2, H / 2);
+      ctx.rotate(-Math.PI / 6);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(watermark, 0, 0);
+      ctx.restore();
+    }
+
+    pageOps.forEach((op) => {
+      if (op.type === 'dropcap') {
+        ctx.save();
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = op.color || headingColor;
+        ctx.font = 'bold ' + op.size + 'px ' + font;
+        ctx.fillText(op.ch, margin, op.y - op.size * 0.04);
+        ctx.restore();
+        return;
+      }
+
+      if (op.type === 'callout-head') {
+        const accent = TP_CALLOUT_ACCENT[op.kind] || '#3b82f6';
+        ctx.save();
+        tpRoundRect(ctx, margin, op.y, maxW, op.height, 7);
+        ctx.globalAlpha = 0.11;
+        ctx.fillStyle = accent;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = accent;
+        ctx.fillRect(margin, op.y + 1.5, 3.5, op.height - 3);
+        ctx.globalAlpha = 0.92;
+        ctx.textBaseline = 'top';
+        ctx.font = 'bold ' + op.size + 'px ' + font;
+        ctx.fillText(String(op.title || '').toUpperCase(), margin + 14, op.y + 9);
+        ctx.restore();
+        return;
+      }
+
+      if (op.type === 'hr') {
+        const st = op.style || 'solid';
+        ctx.save();
+        ctx.strokeStyle = tcolor;
+        ctx.globalAlpha = 0.32;
+        ctx.lineWidth = st === 'thick' ? 3 : 1;
+        if (st === 'dashed') ctx.setLineDash([9, 5]);
+        else if (st === 'dotted') ctx.setLineDash([2, 5]);
+        ctx.beginPath();
+        const ly = Math.round(op.y + fontSize * 0.4);
+        if (st === 'double') {
+          ctx.moveTo(margin, ly + .5); ctx.lineTo(W - margin, ly + .5);
+          ctx.moveTo(margin, ly + 4.5); ctx.lineTo(W - margin, ly + 4.5);
+        } else {
+          ctx.moveTo(margin, ly + .5);
+          ctx.lineTo(W - margin, ly + .5);
+        }
+        ctx.stroke();
+        ctx.restore();
+        return;
+      }
+
+      if (op.type === 'table-row') {
+        const totalW = op.colW.reduce((a, b) => a + b, 0);
+        ctx.save();
+        ctx.textBaseline = 'top';
+        const tStyle = op.style || 'grid';
+        ctx.fillStyle = op.header ? 'rgba(127,127,127,.16)'
+          : tStyle === 'zebra' && op.zebra ? 'rgba(127,127,127,.07)'
+          : tStyle === 'grid' ? 'rgba(127,127,127,.04)' : 'rgba(127,127,127,0)';
+        ctx.fillRect(op.x, op.y, totalW, op.height);
+        ctx.lineWidth = 1;
+        let cx = op.x;
+        op.colW.forEach((w, ci) => {
+          if (tStyle === 'grid') {
+            ctx.strokeStyle = 'rgba(127,127,127,.32)';
+            ctx.beginPath(); ctx.moveTo(cx + .5, op.y); ctx.lineTo(cx + .5, op.y + op.height); ctx.stroke();
+          }
+          (op.cells[ci] || []).forEach((segs, li) => {
+            const lineW = measureSegs(segs, op.size, op.header);
+            const avail = w - 12;
+            let tx = cx + 6;
+            if (op.aligns[ci] === 'center') tx = cx + 6 + Math.max(0, (avail - lineW) / 2);
+            else if (op.aligns[ci] === 'right') tx = cx + 6 + Math.max(0, avail - lineW);
+            let lx = tx;
+            const ty = op.y + 4 + li * op.size * 1.35;
+            segs.forEach((s) => {
+              ctx.font = segFont(s, op.size, op.header);
+              const sw = ctx.measureText(s.t).width;
+              if (s.hl) { ctx.fillStyle = highlightColor; ctx.fillRect(lx - 1, ty + op.size * 0.02, sw + 2, op.size * 1.12); }
+              ctx.fillStyle = s.color || (op.header ? headingColor : tcolor);
+              ctx.fillText(s.t, lx, ty);
+              lx += sw;
+            });
+          });
+          cx += w;
+        });
+        ctx.strokeStyle = tStyle === 'plain' ? 'rgba(127,127,127,.26)' : 'rgba(127,127,127,.36)';
+        ctx.beginPath();
+        if (op.header || tStyle === 'grid') { ctx.moveTo(op.x, op.y + .5); ctx.lineTo(op.x + totalW, op.y + .5); }
+        ctx.moveTo(op.x, op.y + op.height - .5); ctx.lineTo(op.x + totalW, op.y + op.height - .5);
+        ctx.stroke();
+        ctx.restore();
+        return;
+      }
+
+      if (op.type === 'code') {
+        const cH = op.size * 1.55;
+        ctx.fillStyle = 'rgba(127,127,127,.14)';
+        ctx.fillRect(margin - 5, op.y - 2, maxW + 10, cH);
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = tcolor;
+        ctx.font = op.size + 'px ' + TP_MONO;
+        let cx = margin + 4;
+        op.segs.forEach((s) => { ctx.fillText(s.t, cx, op.y + 2); cx += ctx.measureText(s.t).width; });
+        return;
+      }
+
+      ctx.textBaseline = 'top';
+      const lineH = op.size * lh;
+      const x0 = margin + (op.indent || 0) + (op.quote ? 14 : 0);
+      const prefixW = op.prefixW || 0;
+      const lineW = measureSegs(op.segs, op.size, op.bold);
+      const avail = maxW - (op.indent || 0) - (op.quote ? 14 : 0) - prefixW;
+
+      if (op.quote) {
+        ctx.save();
+        ctx.globalAlpha = 0.25;
+        ctx.fillStyle = op.color || tcolor;
+        ctx.fillRect(x0 - 10, op.y + 2, 3, Math.max(4, lineH - 4));
+        ctx.restore();
+      }
+
+      let textX = x0 + prefixW;
+      if (op.align === 'center') textX = x0 + prefixW + Math.max(0, (avail - lineW) / 2);
+      else if (op.align === 'right') textX = x0 + prefixW + Math.max(0, avail - lineW);
+
+      if (op.heading === 'underline') {
+        ctx.save();
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = op.color || headingColor;
+        ctx.fillRect(textX, op.y + op.size * 1.08, lineW, Math.max(1, op.size * 0.06));
+        ctx.restore();
+      } else if (op.heading === 'bar') {
+        ctx.fillStyle = op.color || headingColor;
+        ctx.fillRect(x0 - 9, op.y + op.size * 0.08, Math.max(2, op.size * 0.12), op.size * 0.92);
+      } else if (op.heading === 'boxed') {
+        const pad = op.size * 0.18;
+        tpRoundRect(ctx, textX - pad, op.y - pad * 0.5, lineW + pad * 2, op.size * 1.1 + pad, 4);
+        ctx.fillStyle = 'rgba(127,127,127,.1)';
+        ctx.fill();
+        ctx.save();
+        ctx.globalAlpha = 0.35;
+        ctx.strokeStyle = op.color || headingColor;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      if (op.prefix) {
+        ctx.font = (op.bold ? 'bold ' : '') + op.size + 'px ' + font;
+        ctx.fillStyle = op.color || tcolor;
+        ctx.fillText(op.prefix, x0, op.y);
+      }
+
+      const spaces = op.segs.filter((s) => /^\s+$/.test(s.t)).length;
+      let extra = 0;
+      if (op.align === 'justify' && !op.lastLine && spaces > 0) extra = Math.max(0, (avail - lineW) / spaces);
+
+      let bx = textX;
+      op.segs.forEach((s) => {
+        tmp.font = segFont(s, op.size, op.bold);
+        const w = tmp.measureText(s.t).width;
+        const sz = segSize(s, op.size);
+        if (s.hl) { ctx.fillStyle = highlightColor; ctx.fillRect(bx - 1, op.y + sz * 0.02, w + 2, sz * 1.12); }
+        if (s.code) { ctx.fillStyle = 'rgba(127,127,127,.18)'; ctx.fillRect(bx - 2, op.y + sz * 0.02, w + 4, sz * 1.12); }
+        bx += w + (/^\s+$/.test(s.t) ? extra : 0);
+      });
+
+      let x = textX;
+      const placed = [];
+      op.segs.forEach((s) => {
+        tmp.font = segFont(s, op.size, op.bold);
+        const w = tmp.measureText(s.t).width;
+        if (/^\s+$/.test(s.t)) { x += w + extra; return; }
+        ctx.font = segFont(s, op.size, op.bold);
+        ctx.fillStyle = s.color || op.color || tcolor;
+        ctx.fillText(s.t, x, op.y);
+        placed.push({ x, w, s, sz: segSize(s, op.size) });
+        x += w;
+      });
+
+      placed.forEach(({ x: dx, w, s, sz }) => {
+        if (s.strike) {
+          ctx.fillStyle = s.color || op.color || tcolor;
+          ctx.fillRect(dx, op.y + sz * 0.56, w, Math.max(1, sz * 0.07));
+        }
+        if (s.underline) {
+          ctx.fillStyle = linkColor;
+          ctx.fillRect(dx, op.y + sz * 1.0, w, Math.max(1, sz * 0.06));
+        }
+      });
+    });
+
+    const url = canvas.toDataURL('image/png');
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:inline-block;margin:8px;padding:16px;background:repeating-conic-gradient(#d1d5db 0% 25%, #f9fafb 0% 50%) 50% / 20px 20px;border-radius:8px;';
+    const img = document.createElement('img');
+    img.src = url;
+    img.style.cssText = 'max-width:100%;box-shadow:' + shadowCss + ';';
+    wrap.appendChild(img);
+    const label = document.createElement('div');
+    label.textContent = 'Page ' + (pi + 1) + ' of ' + pages.length;
+    label.style.cssText = 'text-align:center;font-size:11px;color:#666;margin-top:4px;';
+    wrap.appendChild(label);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'text-to-paper-' + (pi + 1) + '.png'; a.className = 'btn btn-secondary btn-sm'; a.textContent = 'Download page ' + (pi + 1);
+    a.style.cssText = 'margin:8px auto 0;display:inline-flex;';
+    wrap.appendChild(a);
+    out.appendChild(wrap);
+  });
+
+  if (pages.length > 1) {
+    const note = document.createElement('p');
+    note.className = 'field-help';
+    note.style.marginTop = '8px';
+    note.textContent = pages.length + ' pages generated. Download each page separately.';
+    out.appendChild(note);
   }
-  toast('Paper ready', pages2.length + ' page(s).', 'success');
+  toast('Paper ready', pages.length + ' page(s).', 'success');
+}
+
+function tpSampleText() {
+  return [
+    '# Product Brief',
+    '',
+    'A page rendered **straight from markdown**: ==highlights==, *italics*, ~~strike~~, `inline code` and [links](https://example.com).',
+    '',
+    '> [!note] Callouts',
+    '> Callouts render as tinted boxes with an accent bar.',
+    '> Try note, tip, important, warning or caution.',
+    '',
+    '## Why it matters',
+    '',
+    '- Everything runs locally',
+    '- No uploads, no accounts',
+    '',
+    '1. Drop in text',
+    '2. Pick a preset',
+    '3. Export a PNG',
+    '',
+    '| Plan | Price | Seats |',
+    '| --- | :--: | --: |',
+    '| Free | $0 | 1 |',
+    '| Pro | $9 | 5 |',
+    '| Team | $29 | 25 |',
+    '',
+    '> Quotes get an accent bar and a softer tone.',
+    '',
+    '```',
+    'const paper = render(text, { preset: "classic" });',
+    '```',
+    '',
+    '---',
+    '',
+    'Footers understand {page}, {pages} and {date}.'
+  ].join('\n');
 }
 
 function utilTextPaperBody() {
+  const presets = Object.keys(TP_PRESETS).map((k) => `<button type="button" class="tp-preset" data-action="tp-preset" data-preset="${k}">${TP_PRESETS[k].label}</button>`).join('');
   return `
     <div class="stage-card">
-      <div class="stage-head"><div class="stage-head-copy"><strong>Text to paper</strong><span>Render text on a paper page with margins, fonts and colors</span></div></div>
+      <div class="stage-head"><div class="stage-head-copy"><strong>Text to paper</strong><span>Render text on a paper page with presets, textures, frames, headers and markdown visuals</span></div></div>
       <div class="stage-body">
-        <textarea data-util="tp-text" class="input aichat-textarea" rows="1" placeholder="Your text here" style="width:100%"></textarea>
-        <div class="field" style="margin-top:10px">
-          <div class="field-head"><span class="field-label">Paper size</span></div>
-          <select data-util="tp-size" class="select">
-            <option value="a4">A4 (210×297mm)</option>
-            <option value="letter">Letter (8.5×11in)</option>
-            <option value="a5">A5</option>
-            <option value="custom">Custom px</option>
-          </select>
+        <textarea data-util="tp-text" class="input aichat-textarea" rows="1" placeholder="Markdown or plain text: # heading, **bold**, - list, 1. item, > quote, > [!note] callout, | table |, \`\`\` code" style="width:100%"></textarea>
+        <div class="tp-presets">${presets}<button type="button" class="tp-preset is-ghost" data-action="tp-sample">Load sample</button></div>
+
+        <div class="tp-section">
+          <div class="tp-section-head"><div><strong>Page</strong><p class="field-help" style="margin:2px 0 0">Size, finish and running header/footer.</p></div></div>
+          <div class="tp-fields">
+            <div class="field"><div class="field-head"><span class="field-label">Paper size</span></div>
+              <select data-util="tp-size" class="select">
+                <option value="a4">A4 (210×297mm)</option>
+                <option value="letter">Letter (8.5×11in)</option>
+                <option value="a5">A5</option>
+                <option value="custom">Custom px</option>
+              </select>
+            </div>
+            <div class="field"><div class="field-head"><span class="field-label">Custom width (px)</span></div><input type="number" min="200" max="2000" value="794" data-util="tp-cw" class="input" /></div>
+            <div class="field"><div class="field-head"><span class="field-label">Custom height (px)</span></div><input type="number" min="200" max="3000" value="1123" data-util="tp-ch" class="input" /></div>
+            <div class="field"><div class="field-head"><span class="field-label">Margin (px)</span></div><input type="number" min="0" max="200" value="64" data-util="tp-margin" class="input" /></div>
+            <div class="field"><div class="field-head"><span class="field-label">Paper texture</span></div>
+              <select data-util="tp-texture" class="select">
+                <option value="none" selected>None</option>
+                <option value="ruled">Ruled lines</option>
+                <option value="dots">Dot grid</option>
+                <option value="graph">Graph paper</option>
+                <option value="grain">Paper grain</option>
+              </select>
+            </div>
+            <div class="field"><div class="field-head"><span class="field-label">Page frame</span></div>
+              <select data-util="tp-frame" class="select">
+                <option value="none" selected>None</option>
+                <option value="thin">Thin border</option>
+                <option value="double">Double border</option>
+                <option value="corners">Corner marks</option>
+              </select>
+            </div>
+            <div class="field"><div class="field-head"><span class="field-label">Page numbers</span></div>
+              <select data-util="tp-pagenums" class="select">
+                <option value="none" selected>None</option>
+                <option value="bottom-center">Bottom center</option>
+                <option value="bottom-left">Bottom left</option>
+                <option value="bottom-right">Bottom right</option>
+                <option value="top-right">Top right</option>
+                <option value="x-of-y">Bottom center (1 / 3)</option>
+              </select>
+            </div>
+            <div class="field"><div class="field-head"><span class="field-label">Shadow</span></div>
+              <select data-util="tp-shadow" class="select">
+                <option value="soft" selected>Soft</option>
+                <option value="hard">Hard</option>
+                <option value="none">None</option>
+              </select>
+            </div>
+            <div class="field"><div class="field-head"><span class="field-label">Paper color</span></div><input type="color" value="#ffffff" data-util="tp-pcolor" /></div>
+            <div class="field tp-field-wide"><div class="field-head"><span class="field-label">Header ({page} {pages} {date})</span></div><input type="text" value="" data-util="tp-header" class="input" placeholder="e.g. Draft · {date}" /></div>
+            <div class="field tp-field-wide"><div class="field-head"><span class="field-label">Footer</span></div><input type="text" value="" data-util="tp-footer" class="input" placeholder="e.g. Confidential · {page} of {pages}" /></div>
+          </div>
         </div>
-        <div class="field"><div class="field-head"><span class="field-label">Custom width (px)</span></div><input type="number" min="200" max="2000" value="794" data-util="tp-cw" class="input" style="width:80px" /></div>
-        <div class="field"><div class="field-head"><span class="field-label">Custom height (px)</span></div><input type="number" min="200" max="3000" value="1123" data-util="tp-ch" class="input" style="width:80px" /></div>
-        <div class="field"><div class="field-head"><span class="field-label">Margin (px)</span></div><input type="number" min="0" max="200" value="64" data-util="tp-margin" class="input" style="width:80px" /></div>
-        <div class="field"><div class="field-head"><span class="field-label">Line gap (px)</span></div><input type="number" min="0" max="60" value="6" data-util="tp-gap" class="input" style="width:80px" /></div>
-        <div class="field"><div class="field-head"><span class="field-label">Font family</span></div>
-          <select data-util="tp-font" class="select">
-            <option value="Inter, sans-serif">Inter</option>
-            <option value="Georgia, serif">Serif</option>
-            <option value="monospace">Monospace</option>
-            <option value="system-ui, sans-serif">System</option>
-          </select>
+
+        <div class="tp-section">
+          <div class="tp-section-head"><div><strong>Type &amp; colour</strong><p class="field-help" style="margin:2px 0 0">Font stack, rhythm and colours.</p></div></div>
+          <div class="tp-fields">
+            <div class="field tp-field-wide"><div class="field-head"><span class="field-label">Font family</span></div><input type="text" value="Georgia, serif" data-util="tp-font" class="input" placeholder="Any CSS font stack" /></div>
+            <div class="field"><div class="field-head"><span class="field-label">Font size</span></div><input type="number" min="8" max="72" value="16" data-util="tp-fontsize" class="input" /></div>
+            <div class="field"><div class="field-head"><span class="field-label">Line height</span></div><input type="number" min="1" max="3" step="0.1" value="1.6" data-util="tp-lh" class="input" /></div>
+            <div class="field"><div class="field-head"><span class="field-label">Paragraph spacing (px)</span></div><input type="number" min="0" max="60" value="8" data-util="tp-pg" class="input" /></div>
+            <div class="field"><div class="field-head"><span class="field-label">Alignment</span></div>
+              <select data-util="tp-align" class="select">
+                <option value="left" selected>Left</option>
+                <option value="center">Center</option>
+                <option value="right">Right</option>
+                <option value="justify">Justify</option>
+              </select>
+            </div>
+            <div class="field"><div class="field-head"><span class="field-label">Text color</span></div><input type="color" value="#1f2937" data-util="tp-tcolor" /></div>
+            <div class="field"><div class="field-head"><span class="field-label">Heading color</span></div><input type="color" value="#111827" data-util="tp-hcolor" /></div>
+            <div class="field"><div class="field-head"><span class="field-label">Link color</span></div><input type="color" value="#2563eb" data-util="tp-linkcolor" /></div>
+            <div class="field"><div class="field-head"><span class="field-label">Highlight color (==text==)</span></div><input type="color" value="#fde68a" data-util="tp-hlcolor" /></div>
+            <div class="field"><div class="field-head"><span class="field-label">Watermark</span></div><input type="text" value="" data-util="tp-watermark" class="input" placeholder="Optional" /></div>
+          </div>
         </div>
-        <div class="field"><div class="field-head"><span class="field-label">Font size</span></div><input type="number" min="8" max="72" value="16" data-util="tp-fontsize" class="input" style="width:80px" /></div>
-        <div class="field"><div class="field-head"><span class="field-label">Line height</span></div><input type="number" min="1" max="3" step="0.1" value="1.6" data-util="tp-lh" class="input" style="width:80px" /></div>
-        <div class="field"><div class="field-head"><span class="field-label">Paragraph spacing (px)</span></div><input type="number" min="0" max="60" value="8" data-util="tp-pg" class="input" style="width:80px" /></div>
-        <div class="field"><div class="field-head"><span class="field-label">Alignment</span></div>
-          <select data-util="tp-align" class="select">
-            <option value="left" selected>Left</option>
-            <option value="center">Center</option>
-            <option value="right">Right</option>
-            <option value="justify">Justify</option>
-          </select>
+
+        <div class="tp-section">
+          <div class="tp-section-head"><div><strong>Markdown extras</strong><p class="field-help" style="margin:2px 0 0">Callouts, drop caps, dividers and table styling.</p></div></div>
+          <div class="tp-fields">
+            <div class="field tp-field-wide"><div class="field-head"><span class="field-label">Markdown formatting</span></div>
+              <select data-util="tp-md" class="select">
+                <option value="on" selected>On (headings, **bold**, lists, quotes, code, | tables |)</option>
+                <option value="off">Off (plain text)</option>
+              </select>
+            </div>
+            <div class="field"><div class="field-head"><span class="field-label">Heading style</span></div>
+              <select data-util="tp-hstyle" class="select">
+                <option value="plain" selected>Plain</option>
+                <option value="underline">Underline</option>
+                <option value="bar">Accent bar</option>
+                <option value="boxed">Boxed</option>
+              </select>
+            </div>
+            <div class="field"><div class="field-head"><span class="field-label">Heading scale</span></div><input type="number" min="0.6" max="2.5" step="0.05" value="1" data-util="tp-hscale" class="input" /></div>
+            <div class="field"><div class="field-head"><span class="field-label">Divider style (---)</span></div>
+              <select data-util="tp-divider" class="select">
+                <option value="solid" selected>Solid</option>
+                <option value="dashed">Dashed</option>
+                <option value="dotted">Dotted</option>
+                <option value="double">Double</option>
+                <option value="thick">Thick</option>
+              </select>
+            </div>
+            <div class="field"><div class="field-head"><span class="field-label">Table style</span></div>
+              <select data-util="tp-tablestyle" class="select">
+                <option value="grid" selected>Full grid</option>
+                <option value="zebra">Zebra rows</option>
+                <option value="plain">Rules only</option>
+              </select>
+            </div>
+            <div class="field"><div class="field-head"><span class="field-label">Drop cap</span></div>
+              <select data-util="tp-dropcap" class="select">
+                <option value="off" selected>Off</option>
+                <option value="on">On first paragraph</option>
+              </select>
+            </div>
+            <div class="field"><div class="field-head"><span class="field-label">Bullet character</span></div><input type="text" maxlength="4" value="•" data-util="tp-bullet" class="input" placeholder="•" /></div>
+            <div class="field"><div class="field-head"><span class="field-label">Numbered suffix</span></div><input type="text" maxlength="6" value="." data-util="tp-numsuffix" class="input" placeholder="." /></div>
+          </div>
+          <p class="field-help" style="margin:6px 0 0">Inline: **bold**, *italic*, ~~strike~~, ==highlight==, \`code\`, [text](url). Blocks: # h1–h6, - list, 1. list, - [ ] task, &gt; quote, &gt; [!note] callout, --- divider, | pipe table |, \`\`\` code fence.</p>
         </div>
-        <div class="field"><div class="field-head"><span class="field-label">Markdown formatting</span></div>
-          <select data-util="tp-md" class="select">
-            <option value="on" selected>On (# headings, **bold**, *italic*, - lists)</option>
-            <option value="off">Off (plain text)</option>
-          </select>
+
+        <div class="tp-section">
+          <div class="tp-section-head">
+            <div>
+              <strong>Custom rules</strong>
+              <p class="field-help" style="margin:2px 0 0">Freeform find → transform rules, applied before markdown. Try <span class="mono">1/.</span> → <span class="mono">1.</span>, empty replace to hide, or style a line prefix like <span class="mono">!!!</span>.</p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" data-action="tp-rule-add">Add rule</button>
+          </div>
+          <div id="tp-rules" class="tp-rules">${tpRulesHtml()}</div>
         </div>
-        <div class="field"><div class="field-head"><span class="field-label">Text color</span></div><input type="color" value="#1f2937" data-util="tp-tcolor" /></div>
-        <div class="field"><div class="field-head"><span class="field-label">Paper color</span></div><input type="color" value="#ffffff" data-util="tp-pcolor" /></div>
-        <div class="field"><div class="field-head"><span class="field-label">Shadow</span></div>
-          <select data-util="tp-shadow" class="select">
-            <option value="soft" selected>Soft</option>
-            <option value="hard">Hard</option>
-            <option value="none">None</option>
-          </select>
-        </div>
-        <div class="field"><div class="field-head"><span class="field-label">Watermark</span></div><input type="text" value="" data-util="tp-watermark" class="input" style="width:180px" placeholder="Optional" /></div>
+
         <div style="margin-top:12px"><button class="btn btn-primary btn-sm" data-action="util-text-paper">Render paper</button></div>
         <div id="util-tp-out" class="util-out" style="margin-top:10px"></div>
       </div>
