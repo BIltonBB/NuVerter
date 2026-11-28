@@ -1,0 +1,53 @@
+function scanImageMetadata(blob) {
+  const found = [];
+  return blob.arrayBuffer().then((ab) => {
+    const bytes = new Uint8Array(ab);
+    const mime = (blob.type || '').toLowerCase();
+    if (mime.includes('jpeg') || mime.includes('jpg')) {
+      // JPEG: scan markers
+      let i = 0;
+      while (i < bytes.length - 1) {
+        if (bytes[i] === 0xFF) {
+          const marker = bytes[i + 1];
+          if (marker === 0xD9) break; // EOI
+          if (marker === 0xDA) break; // SOS, rest is entropy
+          if (marker === 0xE1) found.push('EXIF/XMP (APP1)');
+          if (marker === 0xED) found.push('Photoshop (APP13)');
+          // segment length
+          if (i + 3 < bytes.length) {
+            const len = (bytes[i + 2] << 8) | bytes[i + 3];
+            if (len >= 2) { i += 2 + len; continue; }
+          }
+          i++;
+        } else {
+          i++;
+        }
+      }
+    } else if (mime.includes('png')) {
+      // PNG: parse chunks
+      // signature 8 bytes
+      let i = 8;
+      while (i + 12 <= bytes.length) {
+        const len = (bytes[i] << 24) | (bytes[i+1] << 16) | (bytes[i+2] << 8) | bytes[i+3];
+        const type = String.fromCharCode(bytes[i+4], bytes[i+5], bytes[i+6], bytes[i+7]);
+        if (type === 'tEXt' || type === 'iTXt' || type === 'zTXt' || type === 'eXIf' || type === 'caBX') {
+          found.push(type);
+        }
+        if (type === 'IEND') break;
+        i += 12 + len;
+      }
+    } else if (mime.includes('webp')) {
+      // RIFF WebP: check chunks
+      // RIFF header 12 bytes, then chunks
+      let i = 12;
+      while (i + 8 <= bytes.length) {
+        const type = String.fromCharCode(bytes[i], bytes[i+1], bytes[i+2], bytes[i+3]);
+        const size = (bytes[i+4] | (bytes[i+5] << 8) | (bytes[i+6] << 16) | (bytes[i+7] << 24)) >>> 0;
+        if (type === 'EXIF' || type === 'XMP ') found.push(type.trim());
+        if (size === 0) break;
+        i += 8 + size + (size % 2);
+      }
+    }
+    return { ok: found.length === 0, found };
+  });
+}

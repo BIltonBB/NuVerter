@@ -6,6 +6,17 @@ bin/
 obj/
 *.user
 
+# Local build logs
+/build*.log
+/tauri_build*.log
+/cargo_check.log
+
+# Scratch scripts and agent working folders (one-off, not part of the app)
+/patch_*.py
+/patch_*.cjs
+/gen_images.ps1
+.freebuff/
+
 # OS
 .DS_Store
 Thumbs.db
