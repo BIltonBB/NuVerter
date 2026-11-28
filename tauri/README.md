@@ -83,23 +83,53 @@ Debug APKs are large (the unstripped library is ~147 MB); release builds strip
 it. Enabling Windows Developer Mode removes the manual step. The release
 workflow runs on Linux and does not need it.
 
-### Release signing
+### Signing keys and GitHub secrets
 
-Tauri's generated Gradle project does not sign release APKs by default. The
-release workflow signs them when these repository secrets exist:
+Two unrelated keys are involved. Desktop updates are verified with the Tauri
+updater key; Android builds are signed with a JKS keystore. Neither key is in
+git (`tauri/src-tauri/.tauri/` is ignored).
 
-| Secret | Value |
-| --- | --- |
-| `ANDROID_KEY_BASE64` | `base64 -i upload-keystore.jks` (one line) |
-| `ANDROID_KEY_ALIAS` | the keytool alias (for example `upload`) |
-| `ANDROID_KEY_PASSWORD` | the keystore/key password |
+| Secret | Used by | Value |
+| --- | --- | --- |
+| `TAURI_SIGNING_PRIVATE_KEY` | desktop updater | contents of `tauri/src-tauri/.tauri/updater.key` |
+| `ANDROID_KEY_BASE64` | Android APK | `base64 -w0 tauri/src-tauri/.tauri/android-upload.jks` (one line) |
+| `ANDROID_KEY_ALIAS` | Android APK | `nuverter` |
+| `ANDROID_KEY_PASSWORD` | Android APK | the keystore password |
 
-Without them the workflow still publishes a **debug-signed** APK. It installs
-fine, but Android refuses to update over an install signed by a different key,
-so set the secrets before distributing builds users will update.
+Set them from the repository root, on the machine that holds the key files:
 
-Keep the keystore backed up. Losing it means future APKs cannot update the
-installed app.
+```bash
+gh secret set TAURI_SIGNING_PRIVATE_KEY -R BIltonBB/NuVerter \
+  < tauri/src-tauri/.tauri/updater.key
+gh secret set ANDROID_KEY_BASE64 -R BIltonBB/NuVerter \
+  < <(base64 -w0 tauri/src-tauri/.tauri/android-upload.jks)
+gh secret set ANDROID_KEY_ALIAS -R BIltonBB/NuVerter --body nuverter
+gh secret set ANDROID_KEY_PASSWORD -R BIltonBB/NuVerter \
+  < tauri/src-tauri/.tauri/android-keystore-password.txt
+```
+
+Without the Android secrets the workflow still publishes a **debug-signed**
+APK. It installs fine, but Android refuses to update over an install signed by
+a different key, so set them before distributing builds users will update.
+
+Key rotation (done 2026-11-28):
+
+```bash
+# desktop updater key (blank password, matching the workflow)
+npx @tauri-apps/cli signer generate -w tauri/src-tauri/.tauri/updater.key -p "" --ci --force
+# copy the new public key into plugins.updater.pubkey in tauri.conf.json
+
+# Android keystore
+keytool -genkeypair -keystore tauri/src-tauri/.tauri/android-upload.jks \
+  -alias nuverter -keyalg RSA -keysize 3072 -validity 10000 \
+  -storepass <password> -keypass <password> \
+  -dname "CN=NuVerter, OU=Mobile, O=BiltonB, C=US"
+```
+
+Keep both keys backed up. Losing the updater key means no further signed
+updates; losing the keystore means future APKs cannot update the installed app.
+After any rotation, installed clients still trust the previous key, so one
+release has to be downloaded and installed by hand.
 
 ### Publishing and updates
 
@@ -118,6 +148,13 @@ The desktop app uses the signed updater manifest that `tauri-action` attaches
 to each GitHub release (`releases/latest/download/latest.json`) plus the same
 GitHub release check as a fallback. Publishing a tag is therefore enough to
 roll both desktop and Android clients forward; no manifest commit is needed.
+
+Releases up to `1.1.36` shipped the previous updater public key, and their
+APKs were debug-signed because the Android secrets did not exist yet. Those
+installs reject manifests signed with the current key, and Android refuses the
+new release-signed APK over the old debug one, so each device has to install
+the first post-rotation release by hand; that means uninstalling the old APK,
+which also clears its app data. Later versions update normally.
 
 ## Notes
 - Frontend is loaded from `../web` (same UI as the web/Electron builds).
