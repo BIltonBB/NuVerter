@@ -128,8 +128,15 @@ keytool -genkeypair -keystore tauri/src-tauri/.tauri/android-upload.jks \
 
 Keep both keys backed up. Losing the updater key means no further signed
 updates; losing the keystore means future APKs cannot update the installed app.
-After any rotation, installed clients still trust the previous key, so one
-release has to be downloaded and installed by hand.
+
+Desktop installs can be migrated without a manual reinstall: tag one release
+while `TAURI_SIGNING_PRIVATE_KEY` still holds the *retired* key. Clients verify
+that manifest against the key they embedded, install the new build, and from
+then on trust the new key in `tauri.conf.json`. So the order is: publish the
+transition release with the old secret, then point the secret at
+`updater.key`. Phones get no such path, because Android compares the APK
+signing certificate, not a manifest: each device installs the first
+post-rotation APK by hand.
 
 ### Publishing and updates
 
