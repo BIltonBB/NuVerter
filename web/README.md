@@ -3,7 +3,7 @@
 Source: https://github.com/BIltonBB/NuVerter
 
 A 100% client-side multimedia utility dashboard. Everything runs in your browser on
-`localhost` - no uploads, no accounts, no tracking, no backend. Convert, compress,
+`localhost` - no uploads, no cloud account, no tracking, no backend. Convert, compress,
 crop, extract audio, make GIFs and record your screen privately.
 
 ## Quick start
@@ -12,6 +12,16 @@ crop, extract audio, make GIFs and record your screen privately.
 2. Open this folder.
 3. Double-click **`start.cmd`** (Windows) - or run `node server.cjs` in a terminal.
 4. Your browser opens at `http://localhost:4173/`.
+
+## Tests
+
+```bash
+npm test           # server/SSRF tests, then Playwright opens every sidebar view
+npm run test:e2e   # Playwright only
+```
+
+The first local e2e run needs `npx playwright install chromium`. CI uses the
+runner's Chrome so it does not download a browser.
 
 The server only serves files and sets the `Cross-Origin-Opener-Policy` /
 `Cross-Origin-Embedder-Policy` headers that the bundled FFmpeg engine needs.
@@ -48,12 +58,15 @@ The server only serves files and sets the `Cross-Origin-Opener-Policy` /
   pause/resume.
 - **Session History** - IndexedDB output store (max 24 items / 320 MB), preview,
   download, reuse, delete.
-- **Queue** - sequential processing, retry, per-file progress, ZIP batch export.
-- **Ethical ghost slots** - slots 4+ stay queued and process automatically; a
-  non-blocking upsell offers Lifetime Premium for $1.
-- **Pricing** - Lifetime Premium $1 USD / Rp 15.000, Team License (5 users)
-  $5 USD / Rp 75.000. Payments are demo placeholders; "Unlock" stores a local
-  flag only.
+- **Queue** - every queued file processes automatically, with retry, per-file
+  progress and ZIP batch export. No slot limits.
+- **Support license (optional)** - Lifetime Premium $1 USD / Rp 15.000 and a
+  Team license (5 users) for $5 USD / Rp 75.000. Nothing is gated: every tool
+  and every queue slot already works without it; the license only changes the
+  badge and styling.
+- **Local profile (optional)** - a name/email/password hash kept only in this
+  browser. It is a convenience, not security, and never required. "Unlock" is
+  an honor-system local flag because this static build has no payment backend.
 - **AI Text → Image** - three choices in AI Tools: **SD-Turbo** runs locally
   with WebGPU (2.5 GB of ONNX files you download once and pick from a folder;
   ~4–6 GB RAM), plus **FLUX** and **GPT Image** online models. Local generation

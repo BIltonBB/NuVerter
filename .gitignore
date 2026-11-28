@@ -17,10 +17,17 @@ obj/
 /gen_images.ps1
 .freebuff/
 
+# Dependencies
+node_modules/
+
 # OS + sync client temp folders
 .DS_Store
 Thumbs.db
 .tmp.driveupload/
+
+# Test output
+playwright-report/
+test-results/
 
 # Rust/Tauri build
 tauri/src-tauri/target/

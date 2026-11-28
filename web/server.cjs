@@ -1,10 +1,8 @@
-// NuVerter — Copyright (C) 2026 BiltonB
-// Licensed under the GNU GPL v3 or later. See LICENSE and THIRD-PARTY.md.
-//
 // Zero-dependency local server for the Universal Converter studio.
 // Usage: node server.js [port]
 const http = require('http');
 const https = require('https');
+const dns = require('dns');
 const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
@@ -15,7 +13,6 @@ const PORT = Number(process.argv[2] || process.env.PORT || 4173);
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
@@ -49,6 +46,42 @@ const AI_PROXY_MODEL_MAP = {
   sdxl: 'stability-ai/sdxl-turbo',
   flux2: 'black-forest-labs/flux.2-klein-4b'
 };
+
+// Reject loopback / private / link-local targets so /api/fetch cannot be used
+// as an SSRF probe against the local machine or LAN.
+function isBlockedAddress(address) {
+  const family = address.includes(':') ? 6 : 4;
+  if (family === 6) {
+    const a = address.toLowerCase();
+    if (a === '::1' || a === '::' || a.startsWith('fe80:') || a.startsWith('fc') || a.startsWith('fd')) return true;
+    const mapped = a.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+    if (!mapped) return false;
+    return isBlockedAddress(mapped[1]);
+  }
+  const [a, b] = address.split('.').map(Number);
+  if (a === 0 || a === 10 || a === 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
+  return a >= 224;
+}
+
+function resolvePublicHost(hostname) {
+  return new Promise((resolve, reject) => {
+    dns.lookup(hostname, { all: true }, (err, addresses) => {
+      if (err || !addresses || !addresses.length) {
+        reject(new Error('Host did not resolve'));
+        return;
+      }
+      if (addresses.some((entry) => isBlockedAddress(entry.address))) {
+        reject(new Error('Forbidden host'));
+        return;
+      }
+      resolve(addresses[0].address);
+    });
+  });
+}
 
 // Simple per-IP token bucket for /api/ai-image (prevents quota burn).
 const AI_RATE = new Map();
@@ -180,12 +213,30 @@ const server = http.createServer((req, res) => {
     if (!aiRateLimit(ip)) { res.writeHead(429).end('Too many requests'); return; }
     const url = String(new URL(req.url, 'http://localhost').searchParams.get('url') || '').trim();
     if (!/^https?:\/\//i.test(url)) { res.writeHead(400).end('Invalid url'); return; }
-    https.get(url, { headers: { 'User-Agent': 'NuVerter/1.0' } }, (upstream) => {
-      let data = '';
-      upstream.setEncoding('utf8');
-      upstream.on('data', (c) => { if (data.length < 20000) data += c; });
-      upstream.on('end', () => { res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end(data.slice(0, 20000)); });
-    }).on('error', (e) => { if (!res.headersSent) res.writeHead(502); res.end('Fetch failed: ' + (e?.message || 'unknown')); });
+    let target;
+    try { target = new URL(url); } catch { res.writeHead(400).end('Invalid url'); return; }
+    if (target.username || target.password) { res.writeHead(400).end('Invalid url'); return; }
+    resolvePublicHost(target.hostname.replace(/^\[|\]$/g, '')).then(() => {
+      const client = target.protocol === 'http:' ? http : https;
+      const request = client.get(target, { headers: { 'User-Agent': 'NuVerter/1.0' } }, (upstream) => {
+        if (upstream.statusCode && (upstream.statusCode < 200 || upstream.statusCode >= 300)) {
+          upstream.resume();
+          res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Fetch failed');
+          return;
+        }
+        let data = '';
+        upstream.setEncoding('utf8');
+        upstream.on('data', (c) => { if (data.length < 20000) data += c; });
+        upstream.on('end', () => { res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end(data.slice(0, 20000)); });
+      });
+      // Slow-drip upstreams must not pin the local server request forever.
+      request.setTimeout(10000, () => request.destroy(new Error('Fetch timed out')));
+      request.on('error', (e) => { if (!res.headersSent) res.writeHead(502); res.end('Fetch failed: ' + (e?.message || 'unknown')); });
+    }).catch((e) => {
+      const blocked = e?.message === 'Forbidden host';
+      if (!res.headersSent) res.writeHead(blocked ? 403 : 502, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end(blocked ? 'Forbidden host' : 'Fetch failed');
+    });
     return;
   }
 
@@ -213,6 +264,13 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // PHP sources are executed by the real host, never served by this preview
+  // server; returning them would leak the proxy source.
+  if (path.extname(target).toLowerCase() === '.php') {
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Not found');
+    return;
+  }
+
   fs.stat(target, (err, stat) => {
     if (err || !stat.isFile()) {
       res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Not found');
@@ -220,7 +278,6 @@ const server = http.createServer((req, res) => {
     }
     const headers = {
       'Content-Type': MIME[path.extname(target).toLowerCase()] || 'application/octet-stream',
-      'Content-Length': stat.size,
       'Cache-Control': 'no-cache',
       // Required if the multi-threaded ffmpeg core is ever swapped in.
       'Cross-Origin-Opener-Policy': 'same-origin',
