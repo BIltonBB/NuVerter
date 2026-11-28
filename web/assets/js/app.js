@@ -11884,6 +11884,7 @@ function workflowView() {
 }
 
 const WF_RESULT_TYPES = new Set(['output', 'outputText', 'outputZip']);
+const WF_TERMINAL_TYPES = new Set([...WF_RESULT_TYPES, 'outputClipboard']);
 
 function wfNameFromUrl(url, mime) {
   let base = 'download';
@@ -11928,8 +11929,8 @@ async function wfRun() {
   if (!order) { toast('Cycle detected', 'Workflows must be acyclic. Remove the loop and try again.', 'error'); return; }
   const portProblem = wfPortProblems();
   if (portProblem) { toast('Port mismatch', portProblem, 'warning'); return; }
-  const outputNodes = data.nodes.filter((n) => WF_RESULT_TYPES.has(n.type));
-  if (!outputNodes.length) { toast('No output node', 'Add a "Download file" or "Save text" node so results are collected.', 'warning'); }
+  const outputNodes = data.nodes.filter((n) => WF_TERMINAL_TYPES.has(n.type));
+  if (!outputNodes.length) { toast('No output node', 'Add a "Download file", "Save text", "Download ZIP" or "Copy to clipboard" node so results are collected.', 'warning'); }
 
   data.running = true;
   data.results = [];
