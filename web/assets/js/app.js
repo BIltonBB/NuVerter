@@ -10841,6 +10841,72 @@ const WF_NODES = {
     }
   },
 
+  linkInput: {
+    label: 'Fetch link', cat: 'input', group: 'Files', icon: 'link',
+    desc: 'Pull a file straight from a URL. Direct file links only — sites that block browser downloads (YouTube, most stream hosts) will not work.',
+    ins: [], outs: ['file'],
+    fields: () => [wfF('url', 'File URL', 'text', '', { wide: true, placeholder: 'https://example.com/clip.mp4' })],
+    run: async (input, cfg, node, ctx) => {
+      const url = String(cfg.url || '').trim();
+      if (!url) throw new Error('Paste a link first.');
+      if (!/^(https?:|data:|blob:)/i.test(url)) throw new Error('Only http://, https://, data: and blob: links work.');
+      ctx?.log?.('Fetching ' + url.slice(0, 90));
+      let res;
+      try {
+        res = await fetch(url);
+      } catch {
+        throw new Error('The host refused the request (CORS or offline). Download the file and add it under Sources.');
+      }
+      if (!res.ok) throw new Error('The host answered ' + res.status + '. Check the link is public.');
+      const blob = await res.blob();
+      if (!blob.size) throw new Error('The link returned an empty file.');
+      const name = wfNameFromUrl(url, blob.type || res.headers.get('content-type') || '');
+      const file = new File([blob], name, { type: blob.type || 'application/octet-stream' });
+      ctx?.log?.('Fetched ' + wfSize(blob.size) + ' · ' + name);
+      return { file, name, kind: kindFromFile(file), text: '' };
+    }
+  },
+  textInput: {
+    label: 'Text snippet', cat: 'input', group: 'Files', icon: 'type',
+    desc: 'Start the pipeline from text you paste here instead of a file.',
+    ins: [], outs: ['text'],
+    fields: () => [wfF('text', 'Text', 'textarea', '', { rows: 5, wide: true, placeholder: 'Paste or type text…' })],
+    run: async (input, cfg) => {
+      const text = String(cfg.text || '');
+      if (!text.trim()) throw new Error('The text snippet is empty.');
+      const name = 'snippet.txt';
+      const file = new File([text], name, { type: 'text/plain' });
+      return { file, name, kind: 'text', text };
+    }
+  },
+  clipboardInput: {
+    label: 'From clipboard', cat: 'input', group: 'Files', icon: 'clipboard',
+    desc: 'Use whatever text or image is on your clipboard right now. Stays on this device.',
+    ins: [], outs: ['file', 'text'],
+    fields: [],
+    run: async (input, cfg, node, ctx) => {
+      if (!navigator.clipboard?.read) throw new Error('This browser does not expose the clipboard. Paste the text into a Text snippet node instead.');
+      let items = [];
+      try { items = await navigator.clipboard.read(); } catch { throw new Error('Clipboard access was blocked. Allow it for this site and try again.'); }
+      for (const item of items) {
+        const imageType = (item.types || []).find((t) => t.startsWith('image/'));
+        if (imageType) {
+          const blob = await item.getType(imageType);
+          const name = 'clipboard.' + (imageType.split('/')[1] || 'png').replace('jpeg', 'jpg');
+          const file = new File([blob], name, { type: imageType });
+          ctx?.log?.('Picked image from clipboard');
+          return { file, name, kind: kindFromFile(file), text: '' };
+        }
+      }
+      let text = '';
+      try { text = await navigator.clipboard.readText(); } catch {}
+      if (!text.trim()) throw new Error('The clipboard is empty or has no text or image in it.');
+      const file = new File([text], 'clipboard.txt', { type: 'text/plain' });
+      ctx?.log?.('Picked ' + text.length + ' characters from clipboard');
+      return { file, name: 'clipboard.txt', kind: 'text', text };
+    }
+  },
+
   /* ---- video ---- */
   trim: {
     label: 'Trim', cat: 'process', group: 'Video', icon: 'scissors',
@@ -11317,6 +11383,51 @@ const WF_NODES = {
       const blob = new Blob([text], { type: 'text/plain' });
       return { file: new File([blob], name, { type: 'text/plain' }), name, kind: 'text', text };
     }
+  },
+  outputZip: {
+    label: 'Download ZIP', cat: 'output', group: 'Results', icon: 'archive',
+    desc: 'Bundle every file that reaches this node into a single ZIP.',
+    ins: ['file', 'text'], outs: [],
+    fields: [wfF('name', 'ZIP name', 'text', 'workflow-bundle.zip')],
+    run: async (input, cfg, node, ctx) => {
+      if (!window.fflate?.zipSync) throw new Error('The ZIP engine is not loaded.');
+      const files = (Array.isArray(input.files) && input.files.length ? input.files : [input.file]).filter(Boolean);
+      if (!files.length) throw new Error('Nothing to bundle.');
+      const entries = {};
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        const key = wfUniqueName(entries, f.name || ('file-' + (i + 1)));
+        entries[key] = new Uint8Array(await f.arrayBuffer());
+      }
+      ctx?.log?.('Zipping ' + files.length + ' file' + (files.length === 1 ? '' : 's'));
+      const bytes = window.fflate.zipSync(entries, { level: 6 });
+      const name = String(cfg.name || 'workflow-bundle.zip').replace(/[\\/:*?"<>|]+/g, '-');
+      const blob = new Blob([bytes], { type: 'application/zip' });
+      return { file: new File([blob], name, { type: 'application/zip' }), name, kind: 'archive', text: input.text || '' };
+    }
+  },
+  outputClipboard: {
+    label: 'Copy to clipboard', cat: 'output', group: 'Results', icon: 'copy',
+    desc: 'Put the text or image result on your clipboard instead of downloading it.',
+    ins: ['file', 'text'], outs: [],
+    fields: [],
+    run: async (input, cfg, node, ctx) => {
+      const type = String(input.file?.type || '');
+      if (type.startsWith('image/') && navigator.clipboard?.write && window.ClipboardItem) {
+        try {
+          await navigator.clipboard.write([new ClipboardItem({ [type]: input.file })]);
+          ctx?.log?.('Image copied to clipboard');
+          return { ...input };
+        } catch {}
+      }
+      const text = await wfTextOf(input);
+      if (!text) throw new Error('Only text and images can be copied to the clipboard.');
+      if (!navigator.clipboard?.writeText) throw new Error('This browser blocks clipboard writes.');
+      try { await navigator.clipboard.writeText(text); }
+      catch { throw new Error('Clipboard write was blocked. Allow it for this site and try again.'); }
+      ctx?.log?.('Copied ' + text.length + ' characters');
+      return { ...input };
+    }
   }
 };
 
@@ -11347,6 +11458,10 @@ function wfSources() {
   const wf = state.workflow;
   if (Array.isArray(wf.sources) && wf.sources.length) return wf.sources;
   return wf.source ? [wf.source] : [];
+}
+
+function wfHasDetachedInput(nodes) {
+  return (nodes || []).some((n) => n.type === 'linkInput' || n.type === 'textInput' || n.type === 'clipboardInput');
 }
 
 function wfDef(type) {
@@ -11441,17 +11556,27 @@ function wfNodeInput(node, predOuts, sources) {
     };
   }
   const src = sources[0];
-  return { file: src?.file, name: src?.name || '', kind: src ? kindFromFile(src.file) : '', text: '', files: src ? [src.file] : [], names: src ? [src.name] : [] };
+  const srcFile = src?.file || null;
+  return {
+    file: srcFile,
+    name: src?.name || '',
+    kind: srcFile ? kindFromFile(srcFile) : '',
+    text: '',
+    files: srcFile ? [srcFile] : [],
+    names: src?.name ? [src.name] : []
+  };
 }
 
 function wfAddNode(type, x, y) {
   const wf = state.workflow;
   const id = 'n' + Math.random().toString(36).slice(2, 8);
   const count = wf.nodes.length;
+  const stageW = document.getElementById('wf-canvas')?.clientWidth || 520;
+  const perRow = Math.max(1, Math.floor((stageW - 32) / 196));
   wf.nodes.push({
     id, type,
-    x: x ?? (48 + (count % 4) * 210),
-    y: y ?? (60 + Math.floor(count / 4) * 118),
+    x: x ?? (24 + (count % perRow) * 196),
+    y: y ?? (40 + Math.floor(count / perRow) * 110),
     status: 'idle', config: {}, ms: 0
   });
   wf.selectedNodeId = id;
@@ -11505,7 +11630,10 @@ function wfFieldHtml(f, value) {
   if (f.type === 'number') {
     return `<div class="wf-insp-field">${label}<input class="input" type="number" data-wfcfg="${esc(f.key)}" value="${esc(String(value ?? ''))}"${f.min !== undefined ? ` min="${f.min}"` : ''}${f.max !== undefined ? ` max="${f.max}"` : ''}${f.step !== undefined ? ` step="${f.step}"` : ''} />${help}</div>`;
   }
-  return `<div class="wf-insp-field">${label}<input class="input" type="text" data-wfcfg="${esc(f.key)}" value="${esc(String(value ?? ''))}" />${help}</div>`;
+  if (f.type === 'textarea') {
+    return `<div class="wf-insp-field${f.wide ? ' wf-insp-wide' : ''}">${label}<textarea class="input wf-insp-textarea" rows="${Number(f.rows) || 4}" data-wfcfg="${esc(f.key)}" placeholder="${esc(f.placeholder || '')}">${esc(String(value ?? ''))}</textarea>${help}</div>`;
+  }
+  return `<div class="wf-insp-field${f.wide ? ' wf-insp-wide' : ''}">${label}<input class="input" type="text" data-wfcfg="${esc(f.key)}" value="${esc(String(value ?? ''))}" placeholder="${esc(f.placeholder || '')}" />${help}</div>`;
 }
 
 function workflowNodeInspector(data) {
@@ -11627,36 +11755,16 @@ function workflowView() {
           </div>
         </div>
 
-        <div class="stage-card" style="margin-top:12px">
-          <div class="stage-head"><div class="stage-head-copy"><strong>Inspector</strong><span>${selectedDef.label || 'No node selected'}</span></div></div>
-          <div class="stage-body">
-            <select id="wf-sel-node" class="select" style="width:100%;margin-bottom:8px">
-              <option value="">Select a node…</option>
-              ${data.nodes.map((n) => `<option value="${esc(n.id)}" ${data.selectedNodeId === n.id ? 'selected' : ''}>${esc(wfDef(n.type).label)} (${esc(n.id)})</option>`).join('')}
-            </select>
-            ${workflowNodeInspector(data)}
-            ${data.edges.length ? `<div class="wf-conns"><strong>Connections</strong>
-              ${data.edges.map((e, i) => `<div class="wf-conn"><span>${esc(wfDef(data.nodes.find((n) => n.id === e.from)?.type).label)} → ${esc(wfDef(data.nodes.find((n) => n.id === e.to)?.type).label)}</span><button class="icon-btn is-sm is-danger" data-action="wf-delete-edge" data-edge="${i}" title="Remove connection">${icon('x')}</button></div>`).join('')}
-            </div>` : ''}
-          </div>
-        </div>
-
-        <div class="stage-card" style="margin-top:12px">
-          <div class="stage-head"><div class="stage-head-copy"><strong>Canvas settings</strong><span>Grid and snapping</span></div></div>
-          <div class="stage-body">
-            <label class="wf-check"><input type="checkbox" id="wf-set-gridbg" ${data.settings?.gridBg !== false ? 'checked' : ''} /><span>Show grid</span></label>
-            <label class="wf-check"><input type="checkbox" id="wf-set-snap" ${data.settings?.snapGrid !== false ? 'checked' : ''} /><span>Snap to grid</span></label>
-            <label class="wf-check"><input type="checkbox" id="wf-set-multi" ${data.settings?.multiSource !== false ? 'checked' : ''} /><span>Run every source through the graph</span></label>
-          </div>
-        </div>
       </section>
 
       <section class="area-queue wf-right">
+        <div class="wf-stage">
+        <div class="wf-stage-main">
         <div class="stage-card">
           <div class="stage-head"><div class="stage-head-copy"><strong>Canvas</strong><span>Drag empty space to pan · scroll to zoom · drag a port to connect</span></div></div>
           <div class="stage-body" style="padding:0">
             <div class="wf-toolbar">
-              <button class="btn btn-primary btn-sm" data-action="wf-run" ${sources.length && data.nodes.length && !data.running ? '' : 'disabled'}>${icon(data.running ? 'loader-circle' : 'play')}${data.running ? 'Running…' : 'Run'}</button>
+              <button class="btn btn-primary btn-sm" data-action="wf-run" ${(sources.length || wfHasDetachedInput(data.nodes)) && data.nodes.length && !data.running ? '' : 'disabled'}>${icon(data.running ? 'loader-circle' : 'play')}${data.running ? 'Running…' : 'Run'}</button>
               ${data.running ? `<button class="btn btn-danger btn-sm" data-action="wf-stop">${icon('square')}Stop</button>` : ''}
               <button class="btn btn-ghost btn-sm" data-action="wf-undo" title="Undo (Ctrl+Z)">${icon('undo-2')}</button>
               <button class="btn btn-ghost btn-sm" data-action="wf-redo" title="Redo (Ctrl+Y)">${icon('refresh-cw')}</button>
@@ -11718,7 +11826,35 @@ function workflowView() {
           </div>
         </div>
 
-        <div class="stage-card" style="margin-top:12px">
+        </div>
+
+        <aside class="wf-stage-rail">
+          <div class="stage-card">
+            <div class="stage-head"><div class="stage-head-copy"><strong>Inspector</strong><span>${selectedDef.label || 'No node selected'}</span></div></div>
+            <div class="stage-body">
+              <select id="wf-sel-node" class="select" style="width:100%;margin-bottom:8px">
+                <option value="">Select a node…</option>
+                ${data.nodes.map((n) => `<option value="${esc(n.id)}" ${data.selectedNodeId === n.id ? 'selected' : ''}>${esc(wfDef(n.type).label)} (${esc(n.id)})</option>`).join('')}
+              </select>
+              ${workflowNodeInspector(data)}
+              ${data.edges.length ? `<div class="wf-conns"><strong>Connections</strong>
+                ${data.edges.map((e, i) => `<div class="wf-conn"><span>${esc(wfDef(data.nodes.find((n) => n.id === e.from)?.type).label)} → ${esc(wfDef(data.nodes.find((n) => n.id === e.to)?.type).label)}</span><button class="icon-btn is-sm is-danger" data-action="wf-delete-edge" data-edge="${i}" title="Remove connection">${icon('x')}</button></div>`).join('')}
+              </div>` : ''}
+            </div>
+          </div>
+
+          <div class="stage-card" style="margin-top:12px">
+            <div class="stage-head"><div class="stage-head-copy"><strong>Canvas settings</strong><span>Grid and snapping</span></div></div>
+            <div class="stage-body">
+              <label class="wf-check"><input type="checkbox" id="wf-set-gridbg" ${data.settings?.gridBg !== false ? 'checked' : ''} /><span>Show grid</span></label>
+              <label class="wf-check"><input type="checkbox" id="wf-set-snap" ${data.settings?.snapGrid !== false ? 'checked' : ''} /><span>Snap to grid</span></label>
+              <label class="wf-check"><input type="checkbox" id="wf-set-multi" ${data.settings?.multiSource !== false ? 'checked' : ''} /><span>Run every source through the graph</span></label>
+            </div>
+          </div>
+        </aside>
+
+        <div class="wf-stage-foot">
+        <div class="stage-card">
           <div class="stage-head"><div class="stage-head-copy"><strong>Run log</strong><span>${data.log.length ? data.log.length + ' event' + (data.log.length === 1 ? '' : 's') : 'Nothing yet'}</span></div>
             ${data.log.length ? `<button class="btn btn-ghost btn-sm" data-action="wf-clear-log">${icon('trash-2')}Clear</button>` : ''}</div>
           <div class="stage-body" style="padding:8px">
@@ -11737,12 +11873,38 @@ function workflowView() {
                 <div class="wf-result-copy"><strong>${esc(r.name)}</strong><small>${wfSize(r.size)}</small></div>
                 ${r.kind === 'text' && r.text ? `<button class="btn btn-ghost btn-sm" data-action="wf-preview-text" data-result="${esc(r.id)}">${icon('eye')}Preview</button>` : ''}
                 <a class="btn btn-secondary btn-sm" href="${r.url}" download="${esc(r.name)}">${icon('download')}Download</a>
-              </div>`).join('') : '<p class="field-help" style="margin:0">Outputs from "Download file" and "Save text" nodes appear here.</p>'}
+              </div>`).join('') : '<p class="field-help" style="margin:0">Outputs from result nodes (download, save text, ZIP, clipboard) appear here.</p>'}
             </div>
           </div>
         </div>
+        </div>
+        </div>
       </section>
     </div>`;
+}
+
+const WF_RESULT_TYPES = new Set(['output', 'outputText', 'outputZip']);
+
+function wfNameFromUrl(url, mime) {
+  let base = 'download';
+  try {
+    const u = new URL(url, location.href);
+    const last = decodeURIComponent(u.pathname.split('/').filter(Boolean).pop() || '');
+    if (last) base = last.replace(/[\\/:*?"<>|]+/g, '-');
+  } catch {}
+  if (/\.[a-z0-9]{2,5}$/i.test(base)) return base;
+  const ext = (FORMATS && Object.keys(FORMATS).find((k) => FORMATS[k]?.mime === String(mime).split(';')[0])) || '';
+  return ext ? base + '.' + ext : base;
+}
+
+function wfUniqueName(existing, name) {
+  if (!existing[name]) return name;
+  const dot = name.lastIndexOf('.');
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : '';
+  let i = 2;
+  while (existing[stem + '-' + i + ext]) i++;
+  return stem + '-' + i + ext;
 }
 
 function wfSize(bytes) {
@@ -11757,13 +11919,16 @@ async function wfRun() {
   const data = state.workflow;
   if (data.running) return;
   const sources = wfSources();
-  if (!sources.length) { toast('No source', 'Add at least one file before running.', 'error'); return; }
+  if (!sources.length && !wfHasDetachedInput(data.nodes)) {
+    toast('No source', 'Add a file, or use a Fetch link, Text snippet or From clipboard node.', 'error');
+    return;
+  }
   if (!data.nodes.length) { toast('Empty pipeline', 'Add nodes to the canvas first.', 'info'); return; }
   const order = wfTopoOrder();
   if (!order) { toast('Cycle detected', 'Workflows must be acyclic. Remove the loop and try again.', 'error'); return; }
   const portProblem = wfPortProblems();
   if (portProblem) { toast('Port mismatch', portProblem, 'warning'); return; }
-  const outputNodes = data.nodes.filter((n) => n.type === 'output' || n.type === 'outputText');
+  const outputNodes = data.nodes.filter((n) => WF_RESULT_TYPES.has(n.type));
   if (!outputNodes.length) { toast('No output node', 'Add a "Download file" or "Save text" node so results are collected.', 'warning'); }
 
   data.running = true;
@@ -11774,7 +11939,9 @@ async function wfRun() {
   wfLog('info', `Run started · ${order.length} node${order.length === 1 ? '' : 's'} · ${sources.length} source${sources.length === 1 ? '' : 's'}`);
   renderView();
   const outputs = new Map();
-  const runSources = data.settings?.multiSource !== false ? sources : [sources[0]];
+  const runSources = sources.length
+    ? (data.settings?.multiSource !== false ? sources : [sources[0]])
+    : [{ file: null, name: '', size: 0 }];
   let failures = 0;
   let done = 0;
   const totalRuns = runSources.length;
@@ -11818,7 +11985,7 @@ async function wfRun() {
         node.text = norm.text || '';
         done++;
         wfLog('ok', `${def.label} done${norm.name && norm.name !== input.name ? ' · ' + norm.name : ''}`);
-        if (node.type === 'output' || node.type === 'outputText') {
+        if (WF_RESULT_TYPES.has(node.type)) {
           await wfCollectResult(node, norm);
           wfLog('ok', `Collected ${norm.name}`);
         }
@@ -18204,6 +18371,7 @@ function utilTextPaper() {
   if (!out) return;
   out.innerHTML = '';
   const shadowCss = shadow === 'hard' ? '8px 8px 0 rgba(0,0,0,.35)' : shadow === 'soft' ? '0 10px 30px rgba(0,0,0,.25)' : 'none';
+  const canvases = [];
 
   const todayStr = new Date().toLocaleDateString();
   const darkPaper = tpLum(pcolor) < 0.5;
@@ -18520,6 +18688,7 @@ function utilTextPaper() {
       });
     });
 
+    canvases.push(canvas);
     const url = canvas.toDataURL('image/png');
     const wrap = document.createElement('div');
     wrap.style.cssText = 'display:inline-block;margin:8px;padding:16px;background:repeating-conic-gradient(#d1d5db 0% 25%, #f9fafb 0% 50%) 50% / 20px 20px;border-radius:8px;';
@@ -18538,14 +18707,66 @@ function utilTextPaper() {
     out.appendChild(wrap);
   });
 
+  const exportBar = document.createElement('div');
+  exportBar.className = 'tp-export-bar';
+  const pdfBtn = document.createElement('button');
+  pdfBtn.type = 'button';
+  pdfBtn.className = 'btn btn-primary btn-sm';
+  pdfBtn.innerHTML = icon('file') + 'Download PDF' + (pages.length > 1 ? ' (' + pages.length + ' pages)' : '');
+  pdfBtn.addEventListener('click', async () => {
+    const idle = pdfBtn.innerHTML;
+    pdfBtn.disabled = true;
+    pdfBtn.textContent = 'Building PDF…';
+    try {
+      await tpExportPdf(canvases);
+      toast('PDF ready', 'text-to-paper.pdf · ' + pages.length + ' page' + (pages.length === 1 ? '' : 's') + '.', 'success');
+    } catch (e) {
+      toast('PDF failed', e?.message || 'Could not build the PDF.', 'error');
+    } finally {
+      pdfBtn.disabled = false;
+      pdfBtn.innerHTML = idle;
+    }
+  });
+  exportBar.appendChild(pdfBtn);
   if (pages.length > 1) {
     const note = document.createElement('p');
     note.className = 'field-help';
-    note.style.marginTop = '8px';
-    note.textContent = pages.length + ' pages generated. Download each page separately.';
-    out.appendChild(note);
+    note.style.margin = '0';
+    note.textContent = pages.length + ' pages — the PDF keeps them in one file, or grab any page as PNG.';
+    exportBar.appendChild(note);
   }
+  out.insertBefore(exportBar, out.firstChild);
   toast('Paper ready', pages.length + ' page(s).', 'success');
+}
+
+async function tpExportPdf(canvases) {
+  if (!canvases.length) throw new Error('Render the paper first.');
+  const { PDFDocument } = await getPdfLib();
+  const doc = await PDFDocument.create();
+  doc.setTitle('Text to paper');
+  doc.setCreator('NuVerter');
+  for (const canvas of canvases) {
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.94);
+    const bin = atob(dataUrl.slice(dataUrl.indexOf(',') + 1));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const img = await doc.embedJpg(bytes);
+    const w = canvas.width * 0.75, h = canvas.height * 0.75;
+    doc.addPage([w, h]).drawImage(img, { x: 0, y: 0, width: w, height: h });
+  }
+  const pdf = await doc.save();
+  const blob = new Blob([pdf], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'text-to-paper.pdf';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+  try {
+    await registerOutput({ tool: 'textpaper', sourceName: 'text', blob, name: 'text-to-paper.pdf', mime: 'application/pdf' });
+  } catch {}
 }
 
 function tpSampleText() {

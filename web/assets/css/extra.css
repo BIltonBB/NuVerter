@@ -970,6 +970,9 @@
 .tp-preset:active { transform: translateY(1px); }
 .tp-preset.is-active { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-text); }
 .tp-preset.is-ghost { border-style: dashed; color: var(--text-3); }
+.tp-export-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 2px; }
+.tp-export-bar .btn { display: inline-flex; align-items: center; gap: 6px; }
+.tp-export-bar .btn svg { width: 14px; height: 14px; }
 .tp-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 10px 12px; align-items: end; }
 .tp-fields .field { margin-bottom: 0; min-width: 0; }
 .tp-fields .input, .tp-fields .select { width: 100%; box-sizing: border-box; }
@@ -994,8 +997,19 @@
 /* Wide screens: the left rail and the canvas sit side by side, not stacked. */
 @media (min-width: 901px) {
   .wf-layout {
-    grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+    grid-template-columns: minmax(272px, 316px) minmax(0, 1fr);
     grid-template-areas: "drop queue";
+  }
+}
+/* Stage (canvas) with the node inspector rail pinned beside it. */
+.wf-stage { display: grid; gap: 12px; align-items: start; grid-template-areas: "main" "rail" "foot"; }
+.wf-stage-main { grid-area: main; min-width: 0; }
+.wf-stage-rail { grid-area: rail; min-width: 0; }
+.wf-stage-foot { grid-area: foot; min-width: 0; }
+@media (min-width: 1180px) {
+  .wf-stage {
+    grid-template-columns: minmax(0, 1fr) 272px;
+    grid-template-areas: "main rail" "foot rail";
   }
 }
 .wf-source-actions { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -1034,6 +1048,8 @@
 .wf-status-dot.is-running { background: var(--accent); animation: wfPulse 1s ease-in-out infinite; }
 .wf-status-dot.is-skipped { background: #f59e0b; }
 .wf-insp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.wf-insp-wide { grid-column: 1 / -1; }
+.wf-insp-field .wf-insp-textarea { height: auto; min-height: 78px; resize: vertical; padding: 7px 8px; font: inherit; font-size: 11px; line-height: 1.45; }
 .wf-insp-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .wf-insp-label { font-size: 10px; font-weight: 600; color: var(--text-3); letter-spacing: .02em; }
 .wf-insp-field .input, .wf-insp-field .select { height: 29px; font-size: 11px; }
