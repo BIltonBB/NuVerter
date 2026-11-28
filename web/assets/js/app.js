@@ -2230,17 +2230,6 @@ function queueItemIcon(kind) {
   return kind === 'audio' ? 'file-audio' : kind === 'image' ? 'file-image' : 'file-video';
 }
 
-function pendingOrdinal(item) {
-  const active = state.queue.filter((entry) => entry.status === 'queued' || entry.status === 'processing');
-  return active.indexOf(item);
-}
-
-function isGhostItem(item) {
-  if (state.premium) return false;
-  if (item.status !== 'queued') return false;
-  return pendingOrdinal(item) >= 3;
-}
-
 function queueStats() {
   const done = state.queue.filter((item) => item.status === 'done');
   const failed = state.queue.filter((item) => item.status === 'error' || item.status === 'skipped');
@@ -3382,7 +3371,7 @@ function renderUpgradeCard() {
     card.innerHTML = `
       <div class="upgrade-eyebrow">${icon('crown')}Lifetime premium</div>
       <div class="premium-check">${icon('badge-check')}All features unlocked</div>
-      <p class="upgrade-copy">Parallel-style queue, no ghost slots, and every tool without limits. Stored on this device.</p>
+      <p class="upgrade-copy">Support badge and the premium presentation. Every tool and every queue slot already work without it.</p>
       <button class="btn btn-secondary" data-action="open-plans">${icon('settings')}Manage license</button>`;
     return;
   }
@@ -3393,7 +3382,7 @@ function renderUpgradeCard() {
       <span class="upgrade-price">$1<small>USD</small></span>
       <span class="upgrade-idr">Rp 15.000</span>
     </div>
-    <p class="upgrade-copy"><strong>I have paid - unlock parallel batches.</strong> One payment, your files, forever.</p>
+    <p class="upgrade-copy"><strong>Optional $1 support license.</strong> Nothing is gated: every tool and every queue slot already work. Premium only changes the badge and styling.</p>
     <button class="btn btn-primary" data-action="open-plans">${icon('zap')}Upgrade for $1</button>
     <div class="upgrade-team"><span>Team license - up to 5</span><b>$5 / Rp 75k</b></div>
     <div class="upgrade-pay" aria-label="Accepted payment methods">
@@ -3895,7 +3884,7 @@ function converterView() {
               <button class="btn btn-ghost btn-sm" data-action="queue-undo" ${state.queueUndo?.length ? '' : 'disabled'}>${icon('undo-2')}Undo</button>
               <button class="btn btn-ghost btn-sm" data-action="queue-redo" ${state.queueRedo?.length ? '' : 'disabled'}>${icon('repeat')}Redo</button>
             </div>
-            <p class="process-hint" id="conv-hint">${icon('cpu')}${state.premium ? 'Premium · every slot active' : 'Free · slots 4+ continue after the first three'}</p>
+            <p class="process-hint" id="conv-hint">${icon('cpu')}Every queued file runs automatically, in order.</p>
           </div>
         </div>
       </aside>
@@ -3915,7 +3904,7 @@ function queueStatusText(item) {
   if (item.status === 'done') return 'Done';
   if (item.status === 'error') return 'Failed';
   if (item.status === 'skipped') return 'Skipped';
-  return isGhostItem(item) ? 'Later' : 'Queued';
+  return 'Queued';
 }
 
 function queuePlan(item) {
@@ -3924,7 +3913,6 @@ function queuePlan(item) {
 }
 
 function queueRow(item, index) {
-  const ghost = isGhostItem(item);
   const done = item.status === 'done';
   const failed = item.status === 'error' || item.status === 'skipped';
   const processing = item.status === 'processing';
@@ -3935,16 +3923,14 @@ function queueRow(item, index) {
     `<span>${formatBytes(item.size)}</span>`,
     item.duration ? `<span>${formatDuration(item.duration)}</span>` : '',
     item.width ? `<span>${item.width}×${item.height}</span>` : '',
-    (plan && plan.compatible) ? `<span class="faint" title="Estimated output size">≈ ${formatBytes(estimateOutputSize(item, plan))}</span>` : '',
-    ghost ? '<span class="faint">slot ' + (index + 1) + '</span>' : ''
+    (plan && plan.compatible) ? `<span class="faint" title="Estimated output size">≈ ${formatBytes(estimateOutputSize(item, plan))}</span>` : ''
   ].filter(Boolean).join('<span class="sep"></span>');
   return `
-    <div class="queue-row${processing ? ' is-processing' : ''}${done ? ' is-done' : ''}${failed ? ' is-error' : ''}${ghost ? ' is-ghost' : ''}${item.status === 'skipped' ? ' is-skipped' : ''}" data-id="${esc(item.id)}">
+    <div class="queue-row${processing ? ' is-processing' : ''}${done ? ' is-done' : ''}${failed ? ' is-error' : ''}${item.status === 'skipped' ? ' is-skipped' : ''}" data-id="${esc(item.id)}">
       <span class="file-ico kind-${esc(item.kind)}">${icon(queueItemIcon(item.kind))}</span>
       <div class="queue-main">
         <div class="queue-title-row">
           <span class="queue-name" title="${esc(item.name)}">${esc(item.name)}</span>
-          ${ghost ? `<span class="pill is-mono" title="Free plan runs these automatically after the first three">Slot ${index + 1}</span>` : ''}
         </div>
         <div class="queue-meta">${meta}<span class="sep"></span><span class="plan">${plan.compatible ? `to <strong>${plan.target.label}</strong>` : '<strong>needs another format</strong>'}</span>${state.converter.renameTemplate ? `<span class="sep"></span><span class="faint" title="Planned output name">${esc(previewQueueOutputName(item, plan, state.queue))}</span>` : ''}</div>
         ${processing ? `
@@ -3977,7 +3963,6 @@ function renderQueue() {
   const total = state.queue.length;
   const hasQueue = total > 0;
   const rows = state.queue.map((item, index) => queueRow(item, index)).join('');
-  const ghostCount = pending.filter(isGhostItem).length;
   const upsell = ''; // upsell removed (no fake scarcity); processing is free and automatic.
 
   slot.innerHTML = `
@@ -3986,7 +3971,6 @@ function renderQueue() {
         <div class="queue-card-title">
           <strong>Queue</strong>
           <span class="queue-count">${total}</span>
-          ${ghostCount ? `<span class="pill is-mono">${ghostCount} ghost${ghostCount === 1 ? '' : 's'}</span>` : ''}
         </div>
         <div class="queue-card-actions">
           ${pending.length ? `<button class="btn btn-primary btn-sm queue-run" data-action="start-queue" title="${state.queueRunning ? 'Processing queue' : 'Process queue'}" aria-label="${state.queueRunning ? 'Processing queue' : 'Process queue'}" ${state.queueRunning ? 'disabled' : ''}>${icon('play')}<span>${state.queueRunning ? 'Running' : 'Process'}</span></button>` : ''}
@@ -14789,7 +14773,7 @@ function plansBody() {
         <div class="modal-section-title">${icon('badge-check')}What is unlocked</div>
         <div class="feature-list">
           ${[
-            'All queue slots run in parallel style — no ghost rows',
+            'Every tool and every queue slot, no per-file limits',
             'Every tool, every format, no per-file limits',
             'Session history stays available while you work',
             'Support an independent, offline-first tool'
@@ -14808,7 +14792,7 @@ function plansBody() {
         <div class="plans-big-price"><sup>${price[0]}</sup>${price.slice(1)}</div>
         <div class="plans-idr"><b>${idr}</b><br>${per}</div>
       </div>
-      <p class="plans-hero-copy">One payment. No subscription, no account, no uploads. <strong>Slots 4+ keep processing either way</strong> — premium removes the wait and the ghost styling.</p>
+      <p class="plans-hero-copy">One payment, no subscription, no account, no uploads. <strong>Nothing is gated.</strong> Every tool and every queue slot already work; the license only changes the badge and styling.</p>
       <div class="plan-options">
         <button class="plan-option${!team ? ' is-active' : ''}" data-action="plans-plan" data-plan="lifetime">
           <span class="plan-radio"></span>
@@ -14829,7 +14813,7 @@ function plansBody() {
       <div class="modal-section-title">${icon('sparkles')}What changes</div>
       <div class="feature-list">
         ${[
-          '<b>Parallel-style batch queue</b> — no ghost slots, no waiting for the first three',
+          '<b>Nothing is gated</b> - every tool and queue slot works without a license',
           '<b>Every tool unlocked</b> — converter, compressor, cropper, extractor, GIF, recorder',
           '<b>No artificial limits</b> — process as many local files as your machine can handle',
           '<b>Yours forever</b> — no account, no recurring charge, no telemetry',
@@ -15402,7 +15386,7 @@ function openHelp() {
       </div>
       <div class="modal-section">
         <div class="modal-section-title">${icon('sparkles')}Good to know</div>
-        <div class="help-tip">${icon('info')}<span><strong>Slots 4+ are never blocked.</strong> The free queue processes them sequentially right after the first three — premium only changes the presentation and batch pacing.</span></div>
+        <div class="help-tip">${icon('info')}<span><strong>Nothing is gated by payment.</strong> Every tool and every queue slot works for free; the optional $1 license only changes the badge and styling.</span></div>
         <div class="help-tip" style="margin-top:6px">${icon('cpu')}<span>The first conversion loads a ~32&nbsp;MB WebAssembly engine. It is cached by the browser, so later runs start faster.</span></div>
         <div class="help-tip" style="margin-top:6px">${icon('shield-check')}<span>Your originals are read-only inputs. Results are separate blobs in IndexedDB and can be deleted from history.</span></div>
       </div>
@@ -17104,7 +17088,7 @@ function handleClick(event) {
     if (action === 'launch-pick') {
       const t = actionEl.dataset.tool;
       const cat = actionEl.dataset.launchGroup;
-      if (cat) applyCategoryFilter(cat);
+      if (cat) window.applyCategoryFilter?.(cat);
       // land on the app dashboard instead of a single tool
       const appKey = cat === 'media' ? 'mediaapp' : cat === 'documents' ? 'docsapp' : cat === 'ai' ? 'aiapp' : cat === 'developer' ? 'devapp' : null;
       if (appKey && TOOLS[appKey]) setTool(appKey);
@@ -17120,7 +17104,7 @@ function handleClick(event) {
       return;
     }
     if (action === 'launch-all') {
-      applyCategoryFilter(null);
+      window.applyCategoryFilter?.(null);
       // Restore classic unified UI: leave any app workspace for the converter landing.
       if (state.tool === 'mediaapp' || state.tool === 'docsapp' || state.tool === 'aiapp' || state.tool === 'devapp') {
         setTool('converter');

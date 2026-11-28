@@ -2,6 +2,11 @@
 // PHP proxy for /api/ai-image (InfinityFree has no Node.js).
 // Mirrors web/server.cjs proxyAiImage().
 header('Cache-Control: no-store');
+require __DIR__ . '/rate-limit.php';
+
+// Image generation is expensive and upstream-quota limited, so the budget is
+// much tighter than the text fetch proxy.
+if (!nv_rate_limit('ai-image', 6, 60)) nv_reject_rate_limited(60);
 
 $MODEL_MAP = [
   'flux' => 'flux',

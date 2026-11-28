@@ -1,6 +1,9 @@
 <?php
 // PHP proxy for /api/fetch (hardened).
 header('Cache-Control: no-store');
+require __DIR__ . '/rate-limit.php';
+
+if (!nv_rate_limit('fetch', 30, 60)) nv_reject_rate_limited(60);
 
 $url = isset($_GET['url']) ? trim($_GET['url']) : '';
 if (!preg_match('#^https?://#i', $url)) {
@@ -32,6 +35,28 @@ if ($lowerHost === 'localhost' || $lowerHost === '127.0.0.1' || $lowerHost === '
 $ip = gethostbyname($host);
 if ($ip !== $host && filter_var($ip, FILTER_VALIDATE_IP)) {
   if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+    http_response_code(403);
+    header('Content-Type: text/plain; charset=utf-8');
+    echo 'Forbidden host';
+    exit;
+  }
+}
+
+// Optional egress allowlist. Set NV_FETCH_ALLOWLIST="example.com,api.foo.com"
+// in the hosting panel to restrict this proxy to known hosts; empty means
+// "any public host" (still SSRF-checked above).
+$allowlist = trim((string) getenv('NV_FETCH_ALLOWLIST'));
+if ($allowlist !== '') {
+  $allowedHost = false;
+  foreach (explode(',', $allowlist) as $entry) {
+    $entry = strtolower(trim($entry));
+    if ($entry === '') continue;
+    if ($lowerHost === $entry || substr($lowerHost, -strlen('.' . $entry)) === '.' . $entry) {
+      $allowedHost = true;
+      break;
+    }
+  }
+  if (!$allowedHost) {
     http_response_code(403);
     header('Content-Type: text/plain; charset=utf-8');
     echo 'Forbidden host';

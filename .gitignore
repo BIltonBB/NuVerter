@@ -17,6 +17,9 @@ obj/
 /gen_images.ps1
 .freebuff/
 
+# Dependencies
+node_modules/
+
 # OS + sync client temp folders
 .DS_Store
 Thumbs.db

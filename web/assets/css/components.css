@@ -460,12 +460,6 @@ input[type="range"]::-moz-range-thumb {
 }
 .queue-row.is-done { border-color: var(--green-border); }
 .queue-row.is-error { border-color: var(--red-border); }
-.queue-row.is-ghost {
-  opacity: .55;
-  background: transparent;
-  border-style: dashed;
-}
-.queue-row.is-ghost:hover { opacity: .82; }
 .queue-row.is-skipped { opacity: .7; }
 .file-ico {
   width: 40px;

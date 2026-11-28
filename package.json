@@ -2,11 +2,15 @@
   "name": "nuverter-web",
   "version": "1.0.0",
   "private": true,
-  "license": "GPL-3.0-or-later",
-  "author": "BiltonB",
   "scripts": {
     "start": "node web/server.cjs",
-    "check": "node --check web/assets/js/app.js"
+    "check": "node --check web/assets/js/app.js && node --check web/server.cjs",
+    "lint": "eslint .",
+    "test": "node --test test/server.test.mjs"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.5",
+    "globals": "^16.5.0"
   },
   "engines": {
     "node": ">=18"
