@@ -325,6 +325,255 @@ fn cleanup_stale_updates() {
     }
 }
 
+/* ---------- link downloads (desktop) ----------
+   The browser cannot pull media from YouTube and friends: those hosts send no
+   CORS headers and the web build has no server to proxy through. The desktop
+   app shells out to yt-dlp instead, keeping the download on the user's machine.
+   The binary lives in the app data dir and is fetched once on first use. */
+
+#[cfg(desktop)]
+fn ydl_exe_name() -> &'static str {
+    if cfg!(windows) { "yt-dlp.exe" } else { "yt-dlp" }
+}
+
+#[cfg(desktop)]
+fn ydl_local_path(app: &tauri::AppHandle) -> PathBuf {
+    app.path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("bin")
+        .join(ydl_exe_name())
+}
+
+#[cfg(desktop)]
+fn ydl_on_path() -> Option<PathBuf> {
+    match std::process::Command::new(ydl_exe_name()).arg("--version").output() {
+        Ok(out) if out.status.success() => Some(PathBuf::from(ydl_exe_name())),
+        _ => None,
+    }
+}
+
+// First a managed copy, then a binary shipped next to the app, then the PATH.
+#[cfg(desktop)]
+fn ydl_resolve(app: &tauri::AppHandle) -> Option<PathBuf> {
+    let local = ydl_local_path(app);
+    if local.exists() {
+        return Some(local);
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let bundled = dir.join(ydl_exe_name());
+            if bundled.exists() {
+                return Some(bundled);
+            }
+        }
+    }
+    ydl_on_path()
+}
+
+#[cfg(desktop)]
+// Audio is kept in its original container: converting to mp3 would require a
+// native ffmpeg, and the app decodes everything with ffmpeg.wasm instead.
+#[cfg(desktop)]
+fn ydl_format(quality: &str, audio_only: bool) -> String {
+    if audio_only {
+        return "bestaudio[ext=m4a]/bestaudio/best".to_string();
+    }
+    match quality {
+        "1080" => "bv*[height<=1080]+ba/b[height<=1080]/b".to_string(),
+        "720" => "bv*[height<=720]+ba/b[height<=720]/b".to_string(),
+        "480" => "bv*[height<=480]+ba/b[height<=480]/b".to_string(),
+        _ => "bv*+ba/b".to_string(),
+    }
+}
+
+#[cfg(desktop)]
+fn mime_for_ext(ext: &str) -> &'static str {
+    match ext {
+        "mp4" | "m4v" => "video/mp4",
+        "webm" => "video/webm",
+        "mkv" => "video/x-matroska",
+        "mov" => "video/quicktime",
+        "mp3" => "audio/mpeg",
+        "m4a" => "audio/mp4",
+        "opus" | "ogg" => "audio/ogg",
+        "wav" => "audio/wav",
+        "flac" => "audio/flac",
+        "jpg" | "jpeg" => "image/jpeg",
+        "png" => "image/png",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        _ => "application/octet-stream",
+    }
+}
+
+#[cfg(desktop)]
+#[derive(serde::Serialize)]
+struct YdlFile {
+    name: String,
+    mime: String,
+    size: u64,
+}
+
+#[cfg(desktop)]
+fn ydl_install_blocking(app: &tauri::AppHandle) -> Result<String, String> {
+    let target = ydl_local_path(app);
+    if target.exists() {
+        return Ok(target.to_string_lossy().to_string());
+    }
+    if let Some(dir) = target.parent() {
+        fs::create_dir_all(dir).map_err(|e| format!("could not create {}: {e}", dir.display()))?;
+    }
+    let url = if cfg!(windows) {
+        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+    } else {
+        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp"
+    };
+    use std::io::Write;
+    let resp = ureq::get(url).call().map_err(|e| format!("yt-dlp download failed: {e}"))?;
+    let mut reader = resp.into_reader();
+    let part = target.with_extension("part");
+    let mut out = fs::File::create(&part).map_err(|e| format!("could not write yt-dlp: {e}"))?;
+    std::io::copy(&mut reader, &mut out).map_err(|e| format!("yt-dlp download was interrupted: {e}"))?;
+    let _ = out.flush();
+    drop(out);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&part, fs::Permissions::from_mode(0o755));
+    }
+    fs::rename(&part, &target).map_err(|e| format!("could not finish installing yt-dlp: {e}"))?;
+    Ok(target.to_string_lossy().to_string())
+}
+
+#[cfg(desktop)]
+fn ydl_fetch_blocking(
+    app: &tauri::AppHandle,
+    url: &str,
+    quality: &str,
+    audio_only: bool,
+) -> Result<YdlFile, String> {
+    let bin = ydl_resolve(app).ok_or_else(|| "NO_YTDLP: yt-dlp is not installed".to_string())?;
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("fetch");
+    fs::create_dir_all(&dir).map_err(|e| format!("could not create the download folder: {e}"))?;
+    let template = dir.join("%(title).100B [%(id)s].%(ext)s");
+    let mut cmd = std::process::Command::new(&bin);
+    cmd.arg("--no-playlist")
+        .arg("--no-progress")
+        .arg("--no-warnings")
+        .arg("--no-mtime")
+        .arg("--restrict-filenames")
+        .arg("-f")
+        .arg(ydl_format(quality, audio_only))
+        .arg("-o")
+        .arg(&template)
+        .arg("--print")
+        .arg("after_move:filepath");
+    cmd.arg("--").arg(url);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let out = cmd.output().map_err(|e| format!("could not run yt-dlp: {e}"))?;
+    if !out.status.success() {
+        let detail = String::from_utf8_lossy(&out.stderr)
+            .lines()
+            .filter(|l| l.starts_with("ERROR"))
+            .take(2)
+            .collect::<Vec<_>>()
+            .join(" · ");
+        return Err(if detail.is_empty() {
+            "yt-dlp could not download that link.".to_string()
+        } else {
+            detail
+        });
+    }
+    let path = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .last()
+        .ok_or_else(|| "yt-dlp finished but reported no file.".to_string())?;
+    let path = PathBuf::from(path);
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .ok_or_else(|| "yt-dlp produced an unnamed file.".to_string())?;
+    let size = fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+    let ext = path
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    Ok(YdlFile { name, mime: mime_for_ext(&ext).to_string(), size })
+}
+
+#[cfg(desktop)]
+#[tauri::command]
+async fn ydl_install(app: tauri::AppHandle) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || ydl_install_blocking(&app))
+        .await
+        .map_err(|e| format!("install task failed: {e}"))?
+}
+
+#[cfg(desktop)]
+#[tauri::command]
+async fn ydl_fetch(
+    app: tauri::AppHandle,
+    url: String,
+    quality: String,
+    audio_only: bool,
+) -> Result<YdlFile, String> {
+    tauri::async_runtime::spawn_blocking(move || ydl_fetch_blocking(&app, &url, &quality, audio_only))
+        .await
+        .map_err(|e| format!("download task failed: {e}"))?
+}
+
+// Hands the finished download back as raw bytes; the web layer wraps it in a File.
+#[cfg(desktop)]
+#[tauri::command]
+fn ydl_read(app: tauri::AppHandle, name: String) -> Result<tauri::ipc::Response, String> {
+    let safe = PathBuf::from(&name);
+    if safe.components().count() != 1 {
+        return Err("that file name is not allowed".to_string());
+    }
+    let path = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("fetch")
+        .join(safe);
+    let bytes = fs::read(&path).map_err(|e| format!("could not read the download: {e}"))?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+#[cfg(mobile)]
+#[tauri::command]
+async fn ydl_install(_app: tauri::AppHandle) -> Result<String, String> {
+    Err("link downloads are desktop only".to_string())
+}
+
+#[cfg(mobile)]
+#[tauri::command]
+async fn ydl_fetch(
+    _app: tauri::AppHandle,
+    _url: String,
+    _quality: String,
+    _audio_only: bool,
+) -> Result<serde_json::Value, String> {
+    Err("link downloads are desktop only".to_string())
+}
+
+#[cfg(mobile)]
+#[tauri::command]
+fn ydl_read(_app: tauri::AppHandle, _name: String) -> Result<String, String> {
+    Err("link downloads are desktop only".to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg(desktop)]
@@ -360,7 +609,10 @@ pub fn run() {
             check_update,
             install_update,
             open_url,
-            save_to_uri
+            save_to_uri,
+            ydl_install,
+            ydl_fetch,
+            ydl_read
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

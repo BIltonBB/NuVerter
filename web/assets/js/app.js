@@ -10843,18 +10843,29 @@ const WF_NODES = {
 
   linkInput: {
     label: 'Fetch link', cat: 'input', group: 'Files', icon: 'link',
-    desc: 'Pull a file straight from a URL. Direct file links only — sites that block browser downloads (YouTube, most stream hosts) will not work.',
+    desc: 'Pull a file straight from a URL. In the browser this is direct file links only; the desktop app sends YouTube, Instagram, TikTok, X and similar links through yt-dlp.',
     ins: [], outs: ['file'],
-    fields: () => [wfF('url', 'File URL', 'text', '', { wide: true, placeholder: 'https://example.com/clip.mp4' })],
+    fields: () => [
+      wfF('url', 'Link', 'text', '', { wide: true, placeholder: isDesktopApp() ? 'https://youtu.be/… or any file URL' : 'https://example.com/clip.mp4' }),
+      ...(isDesktopApp() ? [
+        wfF('quality', 'Quality', 'select', 'best', { options: [['best', 'Best available'], ['1080', 'Up to 1080p'], ['720', 'Up to 720p'], ['480', 'Up to 480p']] }),
+        wfF('audioOnly', 'Audio only (m4a)', 'checkbox', false)
+      ] : [])
+    ],
     run: async (input, cfg, node, ctx) => {
       const url = String(cfg.url || '').trim();
       if (!url) throw new Error('Paste a link first.');
       if (!/^(https?:|data:|blob:)/i.test(url)) throw new Error('Only http://, https://, data: and blob: links work.');
       ctx?.log?.('Fetching ' + url.slice(0, 90));
+      if (isDesktopApp() && (wfLooksLikeMediaPage(url) || cfg.audioOnly)) return wfDesktopFetch(url, cfg, ctx);
       let res;
       try {
         res = await fetch(url);
       } catch {
+        if (isDesktopApp()) {
+          ctx?.log?.('The plain download was blocked — handing the link to yt-dlp');
+          return wfDesktopFetch(url, cfg, ctx);
+        }
         throw new Error('The host refused the request (CORS or offline). Download the file and add it under Sources.');
       }
       if (!res.ok) throw new Error('The host answered ' + res.status + '. Check the link is public.');
@@ -10904,6 +10915,41 @@ const WF_NODES = {
       const file = new File([text], 'clipboard.txt', { type: 'text/plain' });
       ctx?.log?.('Picked ' + text.length + ' characters from clipboard');
       return { file, name: 'clipboard.txt', kind: 'text', text };
+    }
+  },
+
+  /* ---- logic ---- */
+  collect: {
+    label: 'Combine links', cat: 'process', group: 'Logic', icon: 'arrow-down-to-line',
+    desc: 'Funnel several links into one node. Files stack up, text joins, and everything downstream sees the whole set.',
+    ins: ['file', 'text'], outs: ['file', 'text'],
+    fields: () => [
+      wfF('mode', 'Keep', 'select', 'both', { options: [['both', 'Files and text'], ['files', 'Files only'], ['text', 'Text only']] }),
+      wfF('separator', 'Text separator', 'text', '\n---\n', { help: 'Sits between each incoming text.' }),
+      wfF('label', 'Prefix text with its source name', 'checkbox', false)
+    ],
+    run: async (input, cfg, node, ctx) => {
+      const mode = String(cfg.mode || 'both');
+      const files = mode === 'text' ? [] : (input.allFiles || []).filter(Boolean);
+      const parts = [];
+      for (const p of input.parts || []) {
+        let body = String(p.text || '');
+        // A plain-text file arrives as a file with no text attached; read it so
+        // merging two .txt links really concatenates them.
+        if (!body && p.file && kindFromFile(p.file) === 'text') {
+          try { body = await p.file.text(); } catch {}
+        }
+        if (!body.trim()) continue;
+        parts.push({ name: p.name || p.file?.name || '', text: body });
+      }
+      if (mode === 'files') parts.length = 0;
+      if (!files.length && !parts.length) throw new Error('Nothing reached this node. Drag a link into it first.');
+      const sep = String(cfg.separator ?? '\n---\n');
+      const text = parts.map((p) => (cfg.label && p.name ? p.name + '\n' + p.text : p.text)).join(sep);
+      const textFile = new File([text], 'merged.txt', { type: 'text/plain' });
+      const file = files[0] || textFile;
+      ctx?.log?.(`Merged ${files.length} file${files.length === 1 ? '' : 's'} · ${parts.length} text${parts.length === 1 ? '' : 's'}`);
+      return { file, name: file.name || 'merged.txt', files: files.length ? files : [file], kind: kindFromFile(file), text };
     }
   },
 
@@ -11535,8 +11581,8 @@ function wfPortProblems() {
     if (!a || !b) continue;
     const outs = wfDef(a.type).outs || [];
     const ins = wfDef(b.type).ins || [];
-    if (outs.length && ins.length && !ins.includes(outs[0])) {
-      return `${wfDef(a.type).label} emits ${outs[0]} but ${wfDef(b.type).label} needs ${ins.join(' / ')}.`;
+    if (outs.length && ins.length && !outs.some((t) => ins.includes(t))) {
+      return `${wfDef(a.type).label} emits ${outs.join(' / ')} but ${wfDef(b.type).label} needs ${ins.join(' / ')}.`;
     }
   }
   return '';
@@ -11546,13 +11592,22 @@ function wfNodeInput(node, predOuts, sources) {
   if (node.type === 'input') return { file: sources[0]?.file, name: sources[0]?.name || '', kind: 'file', text: '' };
   if (predOuts.length) {
     const primary = predOuts[0];
+    // Several links can feed one node: keep every file and keep each text
+    // paired with the name of the node it came from.
+    const allFiles = [];
+    predOuts.forEach((o) => {
+      const list = Array.isArray(o.files) && o.files.length ? o.files : (o.file ? [o.file] : []);
+      list.forEach((f) => { if (f && !allFiles.includes(f)) allFiles.push(f); });
+    });
     return {
       ...primary,
       file: primary.file,
       name: primary.name,
       text: predOuts.map((o) => o.text).filter(Boolean).join('\n'),
-      files: predOuts.map((o) => o.file).filter(Boolean),
-      names: predOuts.map((o) => o.name).filter(Boolean)
+      files: allFiles,
+      names: predOuts.map((o) => o.name).filter(Boolean),
+      allFiles,
+      parts: predOuts.map((o) => ({ name: o.name || '', text: o.text || '', file: o.file || null }))
     };
   }
   const src = sources[0];
@@ -11657,9 +11712,9 @@ function workflowNodeInspector(data) {
     </div>`;
 }
 
-function wfEdgePath(a, b) {
+function wfEdgePath(a, b, offset = 0) {
   const x1 = a.x + 176, y1 = a.y + 34;
-  const x2 = b.x, y2 = b.y + 34;
+  const x2 = b.x, y2 = b.y + 34 + offset;
   const dx = Math.max(36, Math.abs(x2 - x1) * 0.45);
   return { x1, y1, x2, y2, d: `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}` };
 }
@@ -11695,11 +11750,18 @@ function workflowView() {
   const gridStyle = data.settings?.gridBg !== false
     ? `background-image:radial-gradient(circle, var(--border) 1px, transparent 1px);background-size:${Math.max(6, 24 * zoom)}px ${Math.max(6, 24 * zoom)}px;background-position:${pan.x}px ${pan.y}px;`
     : '';
+  // Several links can end on the same input port: spread them out so the
+  // fan-in is visible instead of drawing one line on top of another.
+  const edgeTargets = new Map();
+  data.edges.forEach((e) => { const list = edgeTargets.get(e.to) || []; list.push(e); edgeTargets.set(e.to, list); });
   const edges = data.edges.map((e) => {
     const a = data.nodes.find((n) => n.id === e.from);
     const b = data.nodes.find((n) => n.id === e.to);
     if (!a || !b) return '';
-    const p = wfEdgePath(a, b);
+    const list = edgeTargets.get(e.to) || [e];
+    const idx = list.indexOf(e);
+    const offset = list.length > 1 ? (idx - (list.length - 1) / 2) * 10 : 0;
+    const p = wfEdgePath(a, b, offset);
     return `<path d="${p.d}" class="wf-edge${data.running ? ' is-live' : ''}" marker-end="url(#wf-arrow)" />`;
   }).join('');
   const paletteQuery = String(data.paletteQuery || '').toLowerCase();
@@ -11761,7 +11823,7 @@ function workflowView() {
         <div class="wf-stage">
         <div class="wf-stage-main">
         <div class="stage-card">
-          <div class="stage-head"><div class="stage-head-copy"><strong>Canvas</strong><span>Drag empty space to pan · scroll to zoom · drag a port to connect</span></div></div>
+          <div class="stage-head"><div class="stage-head-copy"><strong>Canvas</strong><span>Drag empty space to pan · scroll to zoom · drag a port to connect · several links can feed one node</span></div></div>
           <div class="stage-body" style="padding:0">
             <div class="wf-toolbar">
               <button class="btn btn-primary btn-sm" data-action="wf-run" ${(sources.length || wfHasDetachedInput(data.nodes)) && data.nodes.length && !data.running ? '' : 'disabled'}>${icon(data.running ? 'loader-circle' : 'play')}${data.running ? 'Running…' : 'Run'}</button>
@@ -11896,6 +11958,43 @@ function wfNameFromUrl(url, mime) {
   if (/\.[a-z0-9]{2,5}$/i.test(base)) return base;
   const ext = (FORMATS && Object.keys(FORMATS).find((k) => FORMATS[k]?.mime === String(mime).split(';')[0])) || '';
   return ext ? base + '.' + ext : base;
+}
+
+function nvInvoke(cmd, args) {
+  const tauri = window.__TAURI__ || window.__TAURI_INTERNALS__;
+  const inv = tauri?.core?.invoke || tauri?.invoke;
+  if (typeof inv !== 'function') return Promise.reject(new Error('The desktop bridge is not available.'));
+  return inv.call(tauri?.core || tauri, cmd, args || {});
+}
+
+const WF_MEDIA_HOSTS = /(^|\.)(youtube\.com|youtu\.be|instagram\.com|tiktok\.com|twitter\.com|x\.com|vimeo\.com|twitch\.tv|soundcloud\.com|facebook\.com|fb\.watch|reddit\.com|redd\.it|dailymotion\.com|bilibili\.com|streamable\.com|pinterest\.com)$/i;
+
+function wfLooksLikeMediaPage(url) {
+  try {
+    return WF_MEDIA_HOSTS.test(new URL(url).hostname.toLowerCase().replace(/^www\./, ''));
+  } catch { return false; }
+}
+
+// Desktop only: hand the link to the bundled yt-dlp sidecar, which can reach
+// sites that refuse browser requests. Installs yt-dlp once if it is missing.
+async function wfDesktopFetch(url, cfg, ctx) {
+  const args = { url, quality: String(cfg.quality || 'best'), audioOnly: !!cfg.audioOnly };
+  let info;
+  try {
+    info = await nvInvoke('ydl_fetch', args);
+  } catch (err) {
+    const msg = String(err?.message || err);
+    if (!/NO_YTDLP/.test(msg)) throw new Error(msg);
+    ctx?.log?.('yt-dlp is missing — installing it once (about 20 MB)');
+    try { await nvInvoke('ydl_install'); }
+    catch (e) { throw new Error('Could not install yt-dlp: ' + (e?.message || e)); }
+    ctx?.log?.('yt-dlp installed, retrying the link');
+    info = await nvInvoke('ydl_fetch', args).catch((e) => { throw new Error(String(e?.message || e)); });
+  }
+  const buf = await nvInvoke('ydl_read', { name: info.name });
+  const file = new File([buf], info.name, { type: info.mime || 'application/octet-stream' });
+  ctx?.log?.('Downloaded ' + wfSize(file.size) + ' · ' + info.name);
+  return { file, name: info.name, kind: kindFromFile(file), text: '' };
 }
 
 function wfUniqueName(existing, name) {

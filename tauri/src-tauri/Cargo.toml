@@ -25,6 +25,8 @@ tauri-plugin-fs = "2"
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
 window-vibrancy = "0.8"
+# Downloads the yt-dlp binary on first use (see ydl_install in lib.rs).
+ureq = "2.12"
 
 [features]
 default = ["custom-protocol"]
