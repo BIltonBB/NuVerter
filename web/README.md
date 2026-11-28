@@ -20,8 +20,7 @@ npm test           # server/SSRF tests, then Playwright opens every sidebar view
 npm run test:e2e   # Playwright only
 ```
 
-The first local e2e run needs `npx playwright install chromium`. CI uses the
-runner's Chrome so it does not download a browser.
+The first e2e run needs `npx playwright install chromium`.
 
 The server only serves files and sets the `Cross-Origin-Opener-Policy` /
 `Cross-Origin-Embedder-Policy` headers that the bundled FFmpeg engine needs.
