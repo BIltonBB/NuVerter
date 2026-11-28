@@ -17,12 +17,16 @@ obj/
 /gen_images.ps1
 .freebuff/
 
-# OS
+# OS + sync client temp folders
 .DS_Store
 Thumbs.db
+.tmp.driveupload/
 
 # Rust/Tauri build
 tauri/src-tauri/target/
+
+# Updater signing keys are secret; keep them on the machine only
+tauri/src-tauri/.tauri/
 
 # Android build output, generated glue and local signing material
 tauri/dist/

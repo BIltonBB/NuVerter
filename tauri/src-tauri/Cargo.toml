@@ -2,6 +2,9 @@
 name = "nuverter-tauri"
 version = "1.1.36"
 description = "NuVerter desktop and mobile (Tauri)"
+authors = ["BiltonB"]
+license = "GPL-3.0-or-later"
+repository = "https://github.com/BIltonBB/NuVerter"
 edition = "2021"
 
 [lib]

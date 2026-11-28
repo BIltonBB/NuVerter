@@ -1,3 +1,6 @@
+// NuVerter — Copyright (C) 2026 BiltonB
+// Licensed under the GNU GPL v3 or later. See LICENSE and THIRD-PARTY.md.
+//
 // Zero-dependency local server for the Universal Converter studio.
 // Usage: node server.js [port]
 const http = require('http');

@@ -27,7 +27,7 @@
 | Local URL | http://localhost:4173/ |
 | Main app | `web/assets/js/app.js` (single file, ~13k lines) |
 | Markup/sprite | `web/index.html` |
-| Samples | `web/samples/demo-gradient.mp4`, `demo-portrait.mp4`, `demo-image.png`, `demo-photo.jpg`, `demo-audio.mp3`, `sample-speech.mp4`, `sample-speech-obama.webm` |
+| Samples | `web/samples/demo-gradient.mp4`, `demo-portrait.mp4`, `demo-image.png`, `demo-photo.jpg`, `demo-audio.mp3`, `sample-speech.webm` (synthetic, generated locally) |
 
 **PowerShell gotchas:** use `;` not `&&`. `$?` is unreliable; trust `node --check` / `$LASTEXITCODE`. No `head`/`sed`. `git push` may print a harmless `NativeCommandError` on stderr.
 

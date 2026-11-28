@@ -1,3 +1,6 @@
+// NuVerter — Copyright (C) 2026 BiltonB
+// Licensed under the GNU GPL v3 or later. See LICENSE and THIRD-PARTY.md.
+
 use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;

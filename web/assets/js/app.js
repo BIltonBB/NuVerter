@@ -1,5 +1,8 @@
 'use strict';
 
+/* NuVerter — Copyright (C) 2026 BiltonB
+   Licensed under the GNU GPL v3 or later. See LICENSE and THIRD-PARTY.md. */
+
 /* ==========================================================================
    NuVerter — local media suite
    Application logic
@@ -4254,11 +4257,11 @@ function subtitleEditorView() {
               <div class="empty-state sub-empty">
                 <span class="empty-ico">${icon('file-video')}</span>
                 <strong>Load a talking-head video</strong>
-                <p>Drop or pick a video, import a direct link, or try the bundled Obama speech sample from the Support menu.</p>
+                <p>Drop or pick a video, import a direct link, or try the bundled synthetic speech sample from the Support menu.</p>
                 <div class="sub-empty-actions">
                   <button class="btn btn-primary btn-sm" data-action="sub-pick">${icon('folder-open')}Load video</button>
                   <button class="btn btn-secondary btn-sm" data-action="import-link" data-context="subtitles">${icon('link')}From link</button>
-                  <button class="btn btn-ghost btn-sm" data-action="sub-sample">${icon('sparkles')}Sample speech - Obama</button>
+                  <button class="btn btn-ghost btn-sm" data-action="sub-sample">${icon('sparkles')}Sample speech</button>
                 </div>
               </div>`}
           </div>
@@ -8952,10 +8955,10 @@ async function handleSubtitleAction(action, el) {
     }
     case 'sub-sample': {
       try {
-        const res = await fetch('samples/sample-speech-obama.webm');
+        const res = await fetch('samples/sample-speech.webm');
         if (!res.ok) throw new Error('Sample video missing.');
         const blob = await res.blob();
-        loadSubtitleSource(new File([blob], 'sample-speech-obama.webm', { type: blob.type || 'video/webm' }));
+        loadSubtitleSource(new File([blob], 'sample-speech.webm', { type: blob.type || 'video/webm' }));
       } catch (err) { toast('Sample unavailable', err?.message || 'Keep the samples folder beside index.html.', 'error'); }
       break;
     }

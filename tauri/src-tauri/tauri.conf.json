@@ -33,6 +33,8 @@
     "active": true,
     "targets": ["nsis"],
     "createUpdaterArtifacts": true,
+    "publisher": "BiltonB",
+    "copyright": "Copyright (C) 2026 BiltonB",
     "android": {
       "minSdkVersion": 24
     },
